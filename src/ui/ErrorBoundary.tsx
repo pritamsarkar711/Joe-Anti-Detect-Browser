@@ -1,4 +1,4 @@
-import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { Component, type ReactNode } from 'react';
 
 /**
  * Last line of defence: a render error must never leave a blank window.
@@ -11,14 +11,15 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, { error
     return { error };
   }
 
-  componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('[joe] render failed', error, info.componentStack);
+  componentDidCatch() {
+    console.error('[joe] startup.render_failed');
   }
 
   private reset = () => {
+    if (!window.confirm('Delete local workspace settings and profiles from this view? This cannot be undone.')) return;
     try {
       window.localStorage.removeItem('joe-browser:v3');
-        window.localStorage.removeItem('joe-browser:v2');
+      window.localStorage.removeItem('joe-browser:v2');
     } catch {
       /* storage may be unavailable in a locked-down profile */
     }
@@ -49,23 +50,8 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, { error
         </svg>
         <h1 style={{ margin: 0, fontSize: 18 }}>Something went wrong</h1>
         <p style={{ margin: 0, maxWidth: 460, color: dark ? '#9aa1b0' : '#666c7a' }}>
-          The workspace hit an unexpected error. Your profiles are stored on disk, so a reset only clears the
-          cached browser view.
+          Reload first. Reset only if necessary: it removes the workspace saved in this view.
         </p>
-        <pre
-          style={{
-            margin: 0,
-            padding: 10,
-            maxWidth: 520,
-            maxHeight: 180,
-            overflow: 'auto',
-            fontSize: 11,
-            background: dark ? '#161920' : '#fff',
-            border: `1px solid ${dark ? 'rgba(255,255,255,.1)' : 'rgba(20,24,34,.12)'}`,
-          }}
-        >
-          {error.message}
-        </pre>
         <div style={{ display: 'flex', gap: 8 }}>
           <button
             type="button"

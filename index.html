@@ -20,7 +20,7 @@
         color: #666c7a; background: #f6f7f9; transition: opacity .18s ease;
       }
       #joe-boot svg { width: 44px; height: 44px; }
-      #joe-boot.hidden { opacity: 0; pointer-events: none; }
+      #joe-boot.hidden { display: none; }
       @media (prefers-color-scheme: dark) {
         html, body, #joe-boot { background: #0e1015; color: #9aa1b0; }
       }
@@ -34,7 +34,19 @@
         <path d="M29.4 12.5v15.4a8.4 8.4 0 0 1-16.8 0" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" />
       </svg>
       <span>Starting Joe Browser…</span>
+      <button type="button" hidden>Retry startup</button>
     </div>
+    <script>
+      // Independent of the bundle: a missing entry script cannot catch its own failure.
+      const shell = document.getElementById('joe-boot');
+      const retry = shell.querySelector('button');
+      retry.addEventListener('click', () => location.reload());
+      setTimeout(() => {
+        if (shell.classList.contains('hidden') || !retry.hidden) return;
+        shell.querySelector('span').textContent = 'Joe Browser is taking longer than expected. Retry if the workspace does not open.';
+        retry.hidden = false;
+      }, 10000);
+    </script>
     <noscript>Joe Browser needs JavaScript enabled.</noscript>
     <script type="module" src="/src/boot.tsx"></script>
   </body>

@@ -24,6 +24,9 @@ SRC="$ROOT/apps/android/app/src/main"
 ASSETS="$ROOT/apps/android/assets"
 OUT="$ROOT/apps/android/JoeBrowser.apk"
 WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+: "${ANDROID_KEYSTORE_BASE64:?Release keystore required}" "${ANDROID_KEY_ALIAS:?Key alias required}"
+: "${ANDROID_STORE_PASSWORD:?Store password required}" "${ANDROID_KEY_PASSWORD:?Key password required}"
 mkdir -p "$WORK/gen" "$WORK/classes" "$WORK/dex"
 
 echo "== build-tools: $BT_DIR =="
@@ -62,12 +65,10 @@ cp "$WORK/base.apk" "$WORK/unsigned.apk"
 "$ZIPALIGN" -f 4 "$WORK/unsigned.apk" "$WORK/aligned.apk"
 
 echo "== sign =="
-keytool -genkeypair -keystore "$WORK/joe.keystore" -alias joe \
-  -keyalg RSA -keysize 2048 -validity 10000 \
-  -storepass joebrowser -keypass joebrowser \
-  -dname "CN=Joe Browser, OU=Engineering, O=Joe Browser, L=Khulna, ST=Khulna, C=BD" >/dev/null 2>&1
-"$APKSIGNER" sign --ks "$WORK/joe.keystore" --ks-pass pass:joebrowser \
-  --key-pass pass:joebrowser --out "$OUT" "$WORK/aligned.apk"
+printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$WORK/joe.keystore"
+"$APKSIGNER" sign --ks "$WORK/joe.keystore" --ks-key-alias "$ANDROID_KEY_ALIAS" \
+  --ks-pass env:ANDROID_STORE_PASSWORD --key-pass env:ANDROID_KEY_PASSWORD \
+  --out "$OUT" "$WORK/aligned.apk"
 "$APKSIGNER" verify "$OUT"
 
 echo "== done =="

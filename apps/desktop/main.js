@@ -10,7 +10,7 @@
  *
  * The management UI is the same Vite/React build used by the web control plane.
  */
-const { app, BrowserWindow, session, ipcMain, shell, Menu } = require('electron');
+const { app, BrowserWindow, session, ipcMain, shell, Menu, dialog } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 // The fingerprint core is not optional: without it there are no profiles to
@@ -323,19 +323,35 @@ function createManagerWindow() {
   });
   managerWindow.webContents.on('did-fail-load', (_e, code, description, url, isMainFrame) => {
     if (!isMainFrame) return;
-    console.error('[joe] manager failed to load', code, description, url);
+    console.error('[joe] manager failed to load', code);
   });
   managerWindow.webContents.on('unresponsive', () => console.warn('[joe] manager unresponsive'));
 
   const ui = path.join(__dirname, 'web-dist', 'index.html');
-  if (fs.existsSync(ui)) {
-    managerWindow.loadFile(ui).catch((e) => console.error('[joe] UI load failed', e));
-  } else {
-    // Developer fallback only; shipped builds always contain web-dist.
-    console.warn('[joe] web-dist missing, loading control plane URL');
-    managerWindow.loadURL(process.env.JOE_CONTROL_PLANE_URL || 'https://joe-browser-control.vercel.app').catch((e) => console.error(e));
+  const win = managerWindow;
+  async function loadWorkspace() {
+    try {
+      await win.loadFile(ui);
+    } catch {
+      if (win.isDestroyed()) return;
+      console.error('[joe] startup.manager_document_failed');
+      win.show();
+      const { response } = await dialog.showMessageBox(win, {
+        type: 'error', message: 'Joe Browser could not open the installed workspace.',
+        detail: 'Retry, or reinstall if the application files are missing.',
+        buttons: ['Retry', 'Close'], cancelId: 1,
+      });
+      if (win.isDestroyed()) return;
+      if (response === 0) void loadWorkspace();
+      else win.close();
+    }
   }
-  managerWindow.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
+  void loadWorkspace();
+  win.webContents.on('will-navigate', event => event.preventDefault());
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url).catch(() => console.warn('[joe] external.open_failed'));
+    return { action: 'deny' };
+  });
   Menu.setApplicationMenu(null);
   return managerWindow;
 }

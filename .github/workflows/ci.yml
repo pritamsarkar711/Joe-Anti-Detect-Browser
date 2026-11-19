@@ -25,6 +25,8 @@ jobs:
         run: npm run check:bridges
       - name: Typecheck + production bundle
         run: npm run build
+      - name: Recover from a missing startup bundle
+        run: node scripts/check-startup.mjs
       - name: Bundle shared core for native shells
         run: npm run build:core
       - name: Build Android-bundled UI
