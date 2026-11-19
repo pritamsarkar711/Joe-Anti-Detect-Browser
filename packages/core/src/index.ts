@@ -13,8 +13,8 @@ export {
 } from './extensions';
 
 export {
-  PLANS, FREE_PROFILE_LIMIT, ADMIN_EMAIL,
+  PLANS, FREE_PROFILE_LIMIT, OWNER_EMAIL, isVerifiedAccount,
   planFor, isAdmin, checkProfileQuota, browserAllowed, lockedBrowsers, engineRequiresPremium,
-  accountFromServer,
-  type Plan, type PlanId, type Account, type Entitlement, type ServerAccountRow,
+  BROWSER_SUPPORT, SELECTABLE_BROWSERS, browserSupport, isBrowserAvailable,
+  type BrowserSupport, type Plan, type PlanId, type Account, type Entitlement,
 } from './plans';

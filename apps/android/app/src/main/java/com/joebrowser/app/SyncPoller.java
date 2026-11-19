@@ -36,8 +36,10 @@ public class SyncPoller extends Thread {
 
         while (running) {
             try {
-                // A blank key cannot authorise anything; sending it just makes
-                // one doomed request per tick.
+                // The relay is the joe-command-validate edge function, which
+                // validates the request and holds the service-role key itself.
+                // A blank anon key cannot present a JWT at all, so one doomed
+                // request per tick is exactly what to avoid.
                 String key = prefs.getString("anon_key", "");
                 if (key == null || key.length() == 0) {
                     try { Thread.sleep(5000); } catch (InterruptedException e) { return; }

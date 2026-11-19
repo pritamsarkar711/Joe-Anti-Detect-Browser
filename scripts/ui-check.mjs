@@ -1,10 +1,15 @@
 /**
- * Real browser end-to-end smoke test for the v2 Material UI workspace.
- * Run against the Vite dev server: npm run dev, then npm run test:ui.
+ * Real browser end-to-end smoke test for the Material UI workspace.
+ *
+ * Self-contained: it reuses BASE_URL when that page answers, otherwise it starts
+ * a server (a built `dist/` via preview, or the dev server) and shuts it down on
+ * exit. `npm run test:ui` therefore works on a clean checkout.
  */
 import { launchBrowser } from './chromium.mjs';
+import { ensureServer } from './serve.mjs';
 
-const BASE = process.env.BASE_URL ?? 'http://localhost:5173';
+const server = await ensureServer();
+const BASE = server.base;
 const results = [];
 const errors = [];
 const ok = (name, cond, extra = '') => {
@@ -56,57 +61,73 @@ try {
   ok('palette filters results', (await page.locator('.MuiDialog-root .MuiListItemButton-root').count()) > 0);
   await page.keyboard.press('Escape');
 
-  // Create one profile. The free tier allows two profiles, so lift the seed
-  // workspace above the limit first by switching to Premium on the account
-  // screen; this exercises the upgrade path as well as bulk creation.
+  // --- the plan cannot be forged from the client -----------------------
+  // v3.1.1 wrote `plan: 'premium'` into localStorage and the app believed it, so
+  // this suite used to do exactly that to unlock bulk creation. That is the
+  // bypass the release removes, so the write is now a regression test: after a
+  // reload the account must still be the unverified local tier.
   await page.evaluate(() => {
     const raw = JSON.parse(localStorage.getItem('joe-browser:v3') ?? 'null');
-    if (!raw) return; // first load has not persisted yet; quota check below still applies
-    raw.account = { email: 'qa@joe.browser', plan: 'premium', role: 'member', renewsAt: null };
+    if (!raw) return;
+    raw.account = { email: 'someone@example.com', plan: 'premium', role: 'owner', renewsAt: null };
     localStorage.setItem('joe-browser:v3', JSON.stringify(raw));
   });
   await page.reload({ waitUntil: 'networkidle' });
   await page.waitForSelector('.data-table tbody tr', { timeout: 15000 });
+  await page.getByRole('button', { name: 'Account' }).click();
+  await page.waitForSelector('.MuiMenu-root');
+  const accountMenu = await page.locator('.MuiMenu-root').innerText();
+  ok('a forged premium/owner account in localStorage is ignored', !/premium|owner/i.test(accountMenu),
+    accountMenu.split('\n').slice(0, 2).join(' / '));
+  await page.keyboard.press('Escape');
+
   await page.getByRole('button', { name: 'New profile' }).first().click();
   await page.waitForSelector('.MuiDialog-root', { timeout: 4000 });
-  // Assert the dialog's real content, not a subtitle that copy edits may remove.
-  // Labels are CSS-uppercased, so match the DOM text ("Browser", "Device").
-  ok('create dialog opens', await page.locator('.MuiDialog-root').getByText('Browser', { exact: true }).first().isVisible());
-  ok('create dialog offers browser and device steps', (await page.locator('.MuiDialog-root').getByText(/^(Browser|Device)$/).count()) >= 2);
-  ok('browser family picker is present', (await page.locator('.MuiDialog-root').getByText('Joe Browser').first().isVisible()));
-  // Every bundled engine is offered; which ones are locked depends on the
-  // account, so assert the full picker rather than the lock state.
-  const families = await page.locator('.MuiDialog-root').getByText(/^(Joe Browser|Chrome|Edge|Brave|Firefox)$/).count();
-  ok('all five bundled engines are offered', families >= 5, `${families} engines`);
+  const dialogText = await page.locator('.MuiDialog-root').innerText();
+  ok('create dialog opens', /Browser identity/i.test(dialogText));
+  ok('create dialog offers browser and device steps', (await page.locator('.MuiDialog-root').getByText(/^(Browser identity|Device)$/).count()) >= 2);
+  ok('browser family picker is present', dialogText.includes('Joe Browser'));
+  // One engine is bundled: four Chromium-compatible identities, and Firefox is
+  // declared unavailable rather than offered as a fake Gecko profile.
+  const families = await page.locator('.MuiDialog-root').getByText(/^(Joe Browser|Chrome|Edge|Brave)$/).count();
+  ok('four Chromium identities are offered', families >= 4, `${families} identities`);
+  ok('the picker explains that Firefox is unavailable', /Firefox is not available/i.test(dialogText));
+
+  // The demo tier holds six profiles; a seventh must be refused with a reason.
   await page.getByPlaceholder('Storefront US').fill('E2E Created Profile');
   await page.getByRole('button', { name: /^Create profile$/ }).last().click();
-  await page.waitForTimeout(280);
-  ok('new profile persists to the table', (await page.locator('.data-table').innerText()).includes('E2E Created Profile'));
+  await page.waitForTimeout(320);
+  const afterRefusal = await page.locator('.data-table').innerText();
+  const stillOpen = (await page.locator('.MuiDialog-root').count()) > 0;
+  ok('creation beyond the plan is refused instead of silently accepted', stillOpen && !afterRefusal.includes('E2E Created Profile'));
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
 
-  // Bulk generate without an artificial cap. The demo workspace allows up to
-  // six profiles and now holds seven, so sign in on the Premium plan first and
-  // confirm the entitlement is what changes, not the button.
+  // Pagination fixture: seed a large workspace directly so the table's paging is
+  // exercised. This is UI data, not an entitlement — the plan check above still
+  // applies to anything created through the app.
   await page.evaluate(() => {
     const raw = JSON.parse(localStorage.getItem('joe-browser:v3') ?? 'null');
-    if (!raw) return;
-    raw.account = { email: 'qa@joe.browser', plan: 'premium', role: 'member', renewsAt: null };
+    if (!raw || !raw.profiles?.length) return;
+    const template = raw.profiles[0];
+    raw.profiles = Array.from({ length: 250 }, (_, i) => ({
+      ...template,
+      id: `fixture_${i}`,
+      name: `Bulk ${String(i + 1).padStart(3, '0')}`,
+      status: 'ready',
+      device: null,
+      lastLaunchedAt: null,
+    }));
     localStorage.setItem('joe-browser:v3', JSON.stringify(raw));
   });
   await page.reload({ waitUntil: 'networkidle' });
   await page.waitForSelector('.data-table tbody tr', { timeout: 15000 });
   const before = await page.locator('.data-table tbody tr').count();
-  await page.getByRole('button', { name: 'New profile' }).first().click();
-  await page.locator('.MuiDialog-root input[type=number]').fill('250');
-  await page.getByPlaceholder('Storefront US').fill('Bulk');
-  await page.getByRole('button', { name: /^Create (profile|\d+ profiles)$/ }).last().click();
-  await page.waitForTimeout(900);
   const total = await page.locator('main').innerText();
-  // MetricStrip renders the count in its own element, so read the Profiles
-  // metric instead of matching prose.
   const profileCount = await page.locator('main').getByText(/^\d+$/).first().innerText();
-  ok('250 profiles created without restriction', Number(profileCount) >= 250, `${profileCount} profiles`);
+  ok('a 250-profile workspace renders', Number(profileCount) >= 250, `${profileCount} profiles`);
   ok('table paginates large datasets', /\b\d+\/\d+\b/.test(total), `${before} rows before`);
-  ok('bulk create closes the dialog', (await page.locator('.MuiDialog-root').count()) === 0);
+  ok('the page does not try to render all 250 rows at once', before > 0 && before < 250, `${before} rendered`);
 
   // Row detail + tabs
   await page.locator('.data-table tbody tr').first().click();
@@ -176,6 +197,7 @@ try {
   console.log('FAIL  exception ·', e.message);
 } finally {
   await browser.close();
+  await server.stop();
 }
 
 ok('no console errors or uncaught exceptions', errors.length === 0, errors.slice(0, 4).join(' | '));

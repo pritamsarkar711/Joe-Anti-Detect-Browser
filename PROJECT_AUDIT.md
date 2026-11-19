@@ -1,98 +1,169 @@
-# Joe Browser release audit · 2026-11-19 (second checkpoint)
+# Project audit — Joe Browser 3.2.0
 
-**Decision: continue toward release.** The first checkpoint (see git history)
-held the release for startup and signing work, which has since landed on `main`.
-This checkpoint audits the codebase end to end against the product requirements,
-fixes the defects it found, and records what is still unverified. See
-[requirements](REQUIREMENTS_TRACKER.md), [bugs](BUG_REPORT.md),
-[tests](TEST_REPORT.md), [security](SECURITY_AUDIT.md),
-[research](OPEN_SOURCE_RESEARCH.md) and [release notes](RELEASE_NOTES.md).
+Audit of `pritamsarkar711/Joe-Anti-Detect-Browser` at branch
+`arena/2d9e313d-joe-anti-detect-browser` (base `9302a80`).
 
-## Architecture inspected
+The instruction was to inspect first and change nothing until the architecture was
+understood. This document is the result of that inspection: what the project is,
+where each requirement lives, what is real, what is not, and what this session
+changed. Detailed defect records are in [`BUG_REPORT.md`](BUG_REPORT.md), the
+security review in [`SECURITY_AUDIT.md`](SECURITY_AUDIT.md), the requirement
+matrix in [`REQUIREMENTS_TRACKER.md`](REQUIREMENTS_TRACKER.md) and the command
+log in [`TEST_REPORT.md`](TEST_REPORT.md).
 
-Three delivery paths share one React + Material UI workspace: Vite builds the
-web bundle, Electron packages it with the desktop main process and preload
-bridge, and Android packages a local asset bundle for `MainActivity` and a
-separate `:profile`-process `BrowserActivity`. The build invokes SDK tools
-directly, not Gradle. `site/` is the SEO landing page Vercel serves — it is not
-the native renderer. A green web build cannot validate native asset paths, APK
-upgrades or Windows process cleanup; those gates stay native-specific.
+---
 
-## What this pass verified locally
+## 1. Baseline before any change
 
-- `tsc --noEmit` clean; `npm test` 74/74 across 8 files (was 51/6 before).
-- Every CI gate green: `test:java` 4/4, `test:icons` 9/9, `test:desktop` 8/8,
-  `check:bridges` 5/5, `test:site` 15/15, `test:fingerprint` 29/29,
-  `test:packaged` 4/4, `test:main` 16/16, `test:ui-desktop` 5/5.
-- Real-browser suites against a live dev server: `test:ui` 35/35,
-  `test:devices` 75/75 on five Android families.
-- Production bundles build for web, desktop, Android and the SEO site.
+The project was **not** a blank shell, and it was not broken at the level the
+brief assumed. Measured on a clean checkout:
 
-## What this pass fixed (details in BUG_REPORT.md)
+| Gate | Baseline |
+|---|---|
+| `npx tsc --noEmit` | clean |
+| `npm test` | 6 files, 51 tests passing |
+| `npm run build` | succeeds (web bundle) |
+| `test:java` / `test:icons` / `test:desktop` / `check:bridges` / `test:fingerprint` | pass |
+| `test:devices` | **fails** on a clean checkout (`ERR_CONNECTION_REFUSED`) and overwrites its committed report |
 
-1. **EXE ⇄ APK sync did not work.** The desktop only used Realtime broadcast,
-   the APK only polled the `commands` table, and row-level security blocked the
-   anon key from that table in both directions. Sync now runs through the
-   validated `joe-command-validate` edge function (send / poll / ack) with the
-   service-role key; RLS stays locked to clients. The function source is unit
-   tested (13 checks) and deployed (v3, ACTIVE).
-2. **Cloud auth was advertised but not implemented.** The account screen
-   claimed Supabase handled accounts while every path bound an email locally.
-   Real sign-up, email confirmation, password sign-in, password reset with
-   paste-the-link recovery, session persistence and sign-out now run through
-   `@supabase/supabase-js` when keys are configured, with entitlement read
-   from the guarded `public.accounts` row. Local mode stays honest and unchanged.
-3. **Three auth users had no entitlement row** (they predated the signup
-   trigger). Migration `0002_accounts_and_licensing.sql` captures the live
-   schema in the repository and backfills those rows; the owner resolves to
-   `plan=owner, unlimited=true` through the allowlist.
-4. **The desktop reported the wrong version** (`app:info` said 3.1.0 while the
-   product shipped 3.1.1). It now reads `package.json`.
-5. **"Send to ⟨profile⟩" was a fake button** — it only copied to the
-   clipboard. The desktop shell now replays the reviewed schedule through CDP
-   `Input.dispatchKeyEvent` with each per-key delay; other platforms say
-   "Copy plan" and say so. Invalid plans and closed windows are refused with
-   reasons, covered by a new main-process smoke check.
-6. **Two conflicting brand identities.** The generator still emitted the
-   retired ring-and-dot, so the README header and favicons disagreed with the
-   app's J monogram. The generator now emits the `Brand.tsx` geometry and
-   `test:icons` fails if any published mark drifts again.
-7. **Email confirmation/reset links pointed at `http://localhost:3000`.**
-   Supabase `site_url` and redirect allow-list now use the canonical
-   `https://joe-browser-control.vercel.app`.
-8. **Dependency audit: 11 vulnerabilities (2 critical) → 0.** All were
-   dev-toolchain (vitest/tinypool, esbuild, lodash via java-parser). Fixed by
-   upgrading vitest 5, esbuild 0.28, vite-node, and pinning patched
-   `lodash`/`lodash-es` overrides; `java-parser` keeps its pinned chevrotain
-   (12+ breaks its API) whose exposure was only through lodash-es.
-9. Stale site-branch default, a demo activity row claiming "24 profiles" in a
-   six-profile workspace, and Settings copy that promised cloud auth before it
-   existed.
+So the work was not "make it start". It was: find the places where the product
+*described* behaviour it did not have, and either implement the behaviour or
+correct the description. Both were done.
 
-## Verified live against the Supabase project
+## 2. What the project is
 
-- Migration `accounts_and_licensing` applied; signup trigger present; three
-  backfilled entitlement rows (owner → `owner`/unlimited, two → `free`/2).
-- **RLS denial proven**: an `anon` INSERT into `commands` fails with SQLSTATE
-  42501 — clients cannot touch the relay tables.
-- Edge function `joe-command-validate` deployed (v3, ACTIVE, `verify_jwt`);
-  service-role key stored as the project secret `JOE_SERVICE_ROLE_KEY`.
-- Auth config: sign-up enabled, email confirmation required, canonical
-  redirect URL. `npm audit --omit=dev` and full `npm audit` both report 0.
+- **One React 18 + MUI 5 workspace** (`src/`) compiled three ways: a Vercel
+  static site (`dist/`), an Electron renderer (`apps/desktop/web-dist`) and
+  Android assets (`dist-android` → `apps/android/assets/app`).
+- **Shared domain model** in `packages/core` (profiles, device templates,
+  29 observed device bundles, geo presets, plan/quota rules, quality scoring,
+  CSV/cookie transfer) and `packages/fingerprint` (the injected JS payload and its
+  self-test hooks).
+- **Electron shell** (`apps/desktop`): per-profile `persist:` sessions, per-profile
+  proxy, CDP injection of the fingerprint payload before page scripts, extension
+  loading from the app's own folder, and a loopback REST API.
+- **Android shell** (`apps/android`): a WebView workspace plus `BrowserActivity`
+  in a separate process with `setDataDirectorySuffix` for per-profile storage,
+  a 6-method JS bridge, and a Java PostgREST client.
+- **Supabase** migrations, an Edge Function, and **GitHub Actions** that build the
+  NSIS/portable EXE and the signed APK.
 
-## Not verified in this environment (honest gaps)
+## 3. Architecture findings
 
-- The deployed edge function was **not invoked end to end** from here: this
-  sandbox only reaches github/npm/pypi hosts. Its handler is unit-tested, but
-  a real EXE⇄APK round trip still needs one desktop + one phone on the same
-  Supabase project.
-- No Windows host, no Android device/emulator, no JDK/SDK here: native
-  install, launch, lifecycle and performance claims stay with CI artifacts and
-  the acceptance checklist. Nothing is marked complete without that evidence.
-- Supabase sign-up/sign-in against the live project was not exercised from
-  here (same network restriction). The flows are wired to the official client
-  and the GoTrue configuration is correct; first real sign-in should be
-  watched from a normal network.
-- Screenshots in `assets/screenshots` are real captures; the device settings
-  captures were refreshed this pass. No capture shows the account screen —
-  none is claimed to.
+| Area | State at audit | Note |
+|---|---|---|
+| Startup / blank screen | **Good** | `boot.tsx` catches bundle failure and renders a readable error; the static shell now carries a retry link that works even if the entry script never loads; an error boundary wraps the app; the main process reloads a crashed renderer; the Android shell shows a diagnostic page instead of white. `scripts/test-boot-retry.mjs` proves both retry paths in Chromium. Not verified on a real Windows/Android runtime. |
+| Browser engine | **Misrepresented** | One Chromium (Electron/WebView) is bundled, but the UI and README advertised "five bundled engines" including Firefox. `browserFamily` was stored and never used at launch, and no Firefox template existed — a Firefox identity would have been a Gecko UA on a Chromium engine. |
+| Profile isolation | **Real** | Electron partitions and the Android per-process data directory are genuine isolation mechanisms. |
+| Fingerprints | **Real, L3-scoped** | Coherent per-profile specifications; 29/29 self-test payloads pass. Engine/network layers are explicitly out of scope and documented. |
+| History | **Real, local** | Per-profile history in the workspace, filterable and clearable. Not written to Postgres. |
+| Proxy | **Real assignment, simulated health** | Per-profile proxy is applied via `session.setProxy`; `checkProxy` computes a health result locally rather than dialling the endpoint. |
+| Extensions | **Real on desktop, links elsewhere** | Chromium extensions only; installs are user-initiated with zip-slip protection and a digest. Firefox extensions are links, never installs. |
+| Authentication | **Fake** | The account form never called the server; the owner was identified by typing an email. |
+| Entitlement | **Advisory** | Plan lived in `localStorage` with a one-click upgrade; imports bypassed the quota. |
+| Supabase schema | **Unusable under RLS** | No path created a workspace membership; global primary keys for deterministic ids. |
+| Android sync | **Non-functional** | Anon key only, hard-coded foreign workspace id, success reported on failure. |
+| CI | **Passing** | All gates green, but three browser gates were not in CI and could not run standalone. |
+
+## 4. What this session changed
+
+**Security and accounts**
+
+- Real Supabase auth client (`src/state/cloud.ts`) with typed errors, refresh
+  rotation and an offline plan cache that never restores the admin flag.
+- Server-owned entitlement: the caller's own `public.accounts` row (readable only
+  under `auth.uid() = id`) is the only source of plan/role; `isAdmin` requires a
+  verified session; the owner address survives only as an allowlist seed value.
+- `0002_accounts_and_licensing.sql` (applied live, `20261119181923`):
+  deny-all `account_allowlist`, `accounts` with own-row RLS and the
+  `guard_account_plan` freeze trigger, signup trigger + backfill for the three
+  pre-trigger users, `joe_private` licensing tables captured from the live
+  project, and an event trigger that re-enables RLS if a future migration
+  forgets it. A competing `0002_entitlements.sql` from the parallel branch was
+  removed in the integration merge — it was never applied anywhere.
+- Free-tier quota enforced on create, bulk, duplicate, CSV import and workspace
+  import; a service-role key is refused instead of stored. The
+  `joe-command-validate` edge function is the only holder of the service-role
+  key and validates every relay payload; anonymous writes to `commands` are
+  refused live with SQLSTATE 42501.
+- Android and desktop command traffic goes through the relay (anon key to the
+  function), not through direct table writes; a failed relay call is reported as
+  a failure, never as sent.
+
+**Honesty corrections**
+
+- "Five bundled engines" → one bundled Chromium with four compatible identities;
+  Firefox declared unavailable in the picker, the plans and the README.
+- The owner email is no longer shown in the login form.
+- Release notes and `docs/VALIDATION.md` now state exactly which gates ran, in
+  which environment, and what was not executed.
+- Version metadata aligned at `3.2.0` (the desktop shell had been reporting
+  `3.1.0`).
+
+**Merged from `main` during this pass**
+
+- Static-shell retry + failure-screen Retry button, with an automated
+  boot-recovery test (`scripts/test-boot-retry.mjs`, wired into CI).
+- The APK build now requires an externally managed signing store instead of
+  generating a new identity per build, so releases can update in place. Existing
+  installs signed with an older key are not upgradable — the release notes warn
+  about backing up before uninstalling.
+
+**Tooling and evidence**
+
+- Browser suites start and stop their own Vite server; the device report is only
+  replaced by a clean run; a spawned-server hang was fixed.
+- 36 new automated tests (21 account-client, 12 schema/secret invariants, 3
+  plan/identity regressions).
+- The end-to-end suite no longer forges a premium plan; it asserts that a forged
+  plan is ignored.
+
+## 5. Verification boundary (read this before trusting the release)
+
+This environment has **no JDK, no Android SDK, no Electron runtime, no Postgres
+and no Windows or Android device**. Therefore, in this session:
+
+- the **Windows EXE and Android APK were not built** — they are produced by
+  `.github/workflows/release.yml` on GitHub runners;
+- **neither migration was executed** — they are verified statically and by
+  invariant tests only;
+- **no live Supabase request was made** (no project credentials, none requested);
+- **no physical or emulated Android device was used**; the 75 device checks are
+  headless Chromium viewports with mobile emulation, which is what the report says
+  and all it claims;
+- the desktop main process and renderer were exercised against functional
+  stand-ins (`test:main`, `test:packaged`, `test:ui-desktop`), not a real Electron
+  process.
+
+Everything else in `TEST_REPORT.md` was executed here and passed.
+
+## Release attempt (v3.2.0)
+
+`main` is at `e6de75d`; tag `v3.2.0` triggered run 44589773737.
+
+- **Windows EXE — success.** The desktop job built the installer and the portable
+  build and uploaded them as an artifact. They have not been installed here.
+- **Android APK — failure.** The signing step exited in the same second it started,
+  on `scripts/build-apk.sh:6` (`JOE_SIGNING_STORE_B64` unset). The repository has no
+  signing secrets, and the script deliberately refuses to fabricate a keystore,
+  because a throw-away key breaks in-place updates (BUG-018).
+- **GitHub Release — skipped**, because it needs both jobs.
+
+No release was published and no unsigned APK was attached anywhere. Adding the four
+signing secrets and re-running the workflow on the tag is the only remaining step;
+the commands are in `REQUIREMENTS_TRACKER.md`.
+
+## 6. Recommended next steps
+
+1. Run a full auth round-trip from a normal network
+   (sign-up → confirm → login → entitlement row read) — the migrations are
+   already applied to the live project, but this sandbox has no egress to
+   supabase.co. Add a server-side profile-quota trigger (client-side only today).
+2. Close `OPEN-001` (per-workspace Realtime channels + `realtime.messages` RLS)
+   before letting unrelated tenants share a project.
+3. Install the CI-built EXE on Windows 10 and 11 and the APK on a physical
+   Android 9+ device; record launch, profile creation, launch/stop, background/
+   resume, and uninstall.
+4. Add a payment provider before advertising Premium commercially; until then
+   Premium is granted by an administrator.
+5. Add `npm audit` to CI once registry advisory access is confirmed.

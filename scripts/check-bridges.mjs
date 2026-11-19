@@ -46,6 +46,8 @@ function uiSources(dir = path.join(root, 'src'), out = []) {
 }
 
 const mainActivity = read(path.join(javaDir, 'MainActivity.java'));
+const syncHttp = read(path.join(javaDir, 'SyncHttp.java'));
+const syncPoller = read(path.join(javaDir, 'SyncPoller.java'));
 const browserActivity = read(path.join(javaDir, 'BrowserActivity.java'));
 const ui = uiSources().map(read).join('\n');
 
@@ -75,6 +77,23 @@ check('the browser activity reads the extras the bridge writes', () => {
   const dropped = writes.filter((w) => !reads.has(w));
   must(dropped.length === 0, `written by the bridge but never read: ${dropped.join(', ')}`);
   return writes.join(', ');
+});
+
+check('the Android sync speaks only to the validated relay edge function', () => {
+  // Direct table writes were the shipped bug: row-level security refused the
+  // anon key, and a session-token path would put policy decisions in the
+  // client. The relay validates action/profile/device/payload server-side and
+  // alone holds the service-role key; the APK carries the publishable anon key.
+  must(/functions\/v1\/joe-command-validate/.test(syncHttp),
+    'SyncHttp does not call the joe-command-validate edge function');
+  must(/Bearer " \+ k\b/.test(syncHttp) || /Bearer " \+ key\b/.test(syncHttp),
+    'SyncHttp does not send the anon JWT the edge function expects');
+  must(!/service_role|sb_secret_/i.test(syncHttp), 'a service-role credential must never reach the APK');
+  must(/putString\("anon_key"/.test(mainActivity) || /anon_key/.test(mainActivity),
+    'the anon key is not persisted for the relay');
+  must(/prefs\.getString\("anon_key"/.test(syncPoller), 'the poller does not gate on the anon key');
+  must(!/access_token/.test(syncPoller), 'the poller must not wait for a session token the relay never needs');
+  return 'edge-function relay, service key server-side only';
 });
 
 check('the browser activity loads a per-profile injection script', () => {

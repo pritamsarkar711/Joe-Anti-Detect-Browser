@@ -18,6 +18,14 @@ create table if not exists public.account_allowlist (
   created_at timestamptz not null default now()
 );
 
+-- The allowlist decides who is premium/owner, so nobody but the database
+-- owner (the SECURITY DEFINER signup trigger) may touch it. RLS with zero
+-- policies is deny-all for anon and authenticated even when Supabase's
+-- default privileges have already granted table-level CRUD; the explicit
+-- revoke covers fresh projects where those defaults are absent.
+alter table public.account_allowlist enable row level security;
+revoke all on public.account_allowlist from anon, authenticated;
+
 -- ------------------------------------------------------------- 2. entitlement
 -- One row per auth user. Only the signup trigger inserts; clients may read
 -- their own row and update nothing that matters (see guard below).
@@ -143,6 +151,12 @@ create table if not exists joe_private.codes (
   redeemed_by uuid,
   revoked_at timestamptz
 );
+
+-- Belt and braces: deny-by-default on the licensing tables as well. The
+-- SECURITY DEFINER RPCs below run as the owner and are unaffected.
+alter table joe_private.accounts enable row level security;
+alter table joe_private.admins enable row level security;
+alter table joe_private.codes enable row level security;
 
 create or replace function joe_private.require_user()
 returns uuid

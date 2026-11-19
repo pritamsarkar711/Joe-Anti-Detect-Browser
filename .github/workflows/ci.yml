@@ -13,40 +13,70 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci --no-audit --no-fund
-      - name: Unit + SSR tests
+
+      - name: Unit, SSR and schema-invariant tests
+        # Includes tests/cloud.test.ts (account client) and tests/schema.test.ts
+        # (RLS, definer functions, quota trigger, credential scan).
         run: npm test
+
       - name: Java syntax check
         run: npm run test:java
+
       - name: Brand assets match the canonical mark
         run: npm run test:icons
+
       - name: Desktop packaging is complete
         run: npm run test:desktop
+
       - name: Native bridges agree with the UI
         run: npm run check:bridges
+
       - name: Typecheck + production bundle
+        # Built first so the browser suites below can serve dist/ via preview.
         run: npm run build
+
       - name: Exercise startup recovery in Chromium
-        run: node scripts/test-boot-retry.mjs
+        # A failed entry script or a failed app chunk must both offer a retry.
+        run: npm run test:boot
+
+      - name: Browser end-to-end against the real UI
+        # Self-serving since 3.2.0: starts its own Vite server and shuts it down.
+        run: npm run test:ui
+
+      - name: Mobile device matrix (five Android families)
+        # Also self-serving; only replaces the committed report on a clean run.
+        run: npm run test:devices
+
       - name: Bundle shared core for native shells
         run: npm run build:core
+
       - name: Build Android-bundled UI
         run: npm run build:android-ui
+
       - name: Generate APK assets from the shared core
         run: npm run build:assets
+
       - name: Build SEO site
         run: npm run build:site
+
       - name: Verify SEO metadata, provenance and license honesty
         run: npm run test:site
+
       - name: Verify fingerprint payload self-tests
         run: npm run test:fingerprint
+
       - name: Verify assets match the generated profiles
         run: npm run check:bridges
+
       - name: Verify the packaged desktop app boots
         run: npm run test:packaged
+
       - name: Exercise the desktop main process
         run: npm run test:main
+
       - name: Exercise the desktop renderer against its bridge
         run: npm run test:ui-desktop
+
       - name: Verify generated assets
         run: |
           test -f apps/android/assets/workspace.json
@@ -54,3 +84,17 @@ jobs:
           test -f apps/desktop/core.cjs
           test -f dist-site/index.html
           node -e "const w=require('./apps/android/assets/workspace.json'); if(!w.profiles.length) throw new Error('no profiles'); console.log('workspace profiles:', w.profiles.length)"
+
+      - name: Database migrations are present and fail closed
+        run: |
+          test -f supabase/migrations/0001_joe_browser_init.sql
+          test -f supabase/migrations/0002_entitlements.sql
+          node -e "
+            const fs=require('fs');
+            const sql=fs.readFileSync('supabase/migrations/0002_entitlements.sql','utf8');
+            for (const needle of ['my_entitlement','enforce_profile_quota','joe_bootstrap_workspace','security definer']) {
+              if (!sql.toLowerCase().includes(needle)) throw new Error('migration is missing '+needle);
+            }
+            if (/using\s*\(\s*true\s*\)/i.test(sql)) throw new Error('permissive RLS policy');
+            console.log('migration 0002 present and fail-closed');
+          "

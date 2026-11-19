@@ -1,56 +1,180 @@
-# Unreleased — cloud auth, validated sync, clean audit
+# Joe Browser 3.2.0
 
-## Cloud accounts are real now
+> **Integration note.** After the tag attempt described here, an integration
+> merge replaced the sync path with the validated `joe-command-validate` edge
+> function, applied `0002_accounts_and_licensing.sql` to the live project
+> (removing the never-applied `0002_entitlements.sql`), made "Paste as human"
+> actually type through CDP, fixed the brand generator's retired mark, and took
+> the dependency audit to 0. The numbers below are from the final re-run of
+> every suite after that merge. The release itself remains blocked on the APK
+> signing secrets.
 
-The account screen previously promised Supabase while binding every email
-locally. Sign-up (with email confirmation), sign-in, password reset with
-paste-link recovery, session persistence and sign-out now run through the
-official Supabase client; entitlement is read from a server-side account row.
-Local sign-in still works when cloud keys are not configured, and the UI says
-which mode you are in. Confirmation links point at the canonical
-`https://joe-browser-control.vercel.app` origin instead of `localhost:3000`.
+**Accounts are real in this release.** The previous build showed a sign-in form
+that never contacted a server: any password was accepted, and typing the owner's
+email address unlocked the owner plan. That is fixed, and the plan now comes from
+the database.
 
-## EXE ⇄ APK sync works through a validated relay
+Artifacts are built by `.github/workflows/release.yml` from a tagged commit:
 
-The desktop previously depended on Realtime broadcasts it could not write, and
-the APK polled a table row-level security blocked it from reading. Both sides
-now use the `joe-command-validate` edge function (send / poll / ack), which
-holds the only service-role key and validates action, profile, device and
-payload shape. Clients keep just the anon key; an anonymous INSERT into
-`commands` is denied with SQLSTATE 42501 on the live database. Migration
-`0002_accounts_and_licensing` captures the schema in the repository and
-backfills three pre-trigger users; the owner allowlist resolves to
-`plan=owner, unlimited=true`, and a trigger blocks client-side plan
-escalation.
+| Platform | File | Notes |
+|---|---|---|
+| Windows 10/11 | `JoeBrowser-Setup-3.2.0.exe` | NSIS installer, per-user, install directory selectable |
+| Windows 10/11 | `JoeBrowser-Portable-3.2.0.exe` | Portable, no install |
+| Android 9+ (API 28) | `JoeBrowser.apk` | `versionCode 6`, sideload |
 
-## Paste as human is no longer a fake button
+`SHA256SUMS.txt` accompanies every release; verify it before running anything.
+This document does **not** claim those binaries were produced or installed in the
+session that wrote it — see "What was not verified" below.
 
-"Send to ⟨profile⟩" only copied to the clipboard. The desktop shell now
-replays the reviewed keystroke plan through CDP `Input.dispatchKeyEvent` with
-each per-key delay, refusing invalid plans and closed windows with a reason;
-other platforms label the button "Copy plan". Accessibility text entry only —
-CAPTCHA challenges stay with a person.
+---
 
-## Quality and housekeeping
+## Highlights
 
-- `npm audit` (production and development): **11 vulnerabilities, 2 critical → 0**.
-- The brand generator emitted the retired ring-and-dot, so the README header
-  and favicons disagreed with the app's J monogram. One geometry now, and
-  `test:icons` fails if any published mark drifts.
-- Desktop `app:info` reported 3.1.0 while the product shipped 3.1.1.
-- The built site linked documentation to a branch that does not contain the
-  work; the branch is now derived from the build environment.
-- A demo activity row claimed "24 profiles" in a six-profile workspace.
-- Startup-retry and signing checkpoint (previous notes): retry loading the
-  workspace without clearing profiles when the entry script or application
-  chunk fails. No new installer or APK is published with these changes.
+### Authentication and entitlement
 
-For maintainers: configure repository signing secrets
-`JOE_SIGNING_STORE_B64` (base64-encoded keystore), `JOE_SIGNING_ALIAS`,
-`JOE_STORE_PASSWORD`, and `JOE_KEY_PASSWORD` through the CI secret store, not
-in source or chat. Preserve and back up the same signing identity across
-releases. Before distribution compare the APK signer certificate against the
-owner's trusted fingerprint, then test a clean install and in-place upgrade.
-Signature verification alone is not an installation test. The Windows EXE
-remains **unsigned** until a code-signing certificate is wired into the
-workflow.
+- **Real Supabase authentication** — sign-up, password login, password reset,
+  refresh-token rotation and sign-out. Failures are specific ("that email and
+  password do not match an account", "confirm your email first") instead of a
+  false success.
+- **No local privilege.** Administrator rights require a session verified by the
+  server **and** a role assigned by the server. Typing the owner address grants
+  nothing. A Premium plan written into `localStorage` is ignored on reload — this
+  is now an automated end-to-end assertion, not a promise.
+- **Plans are server-owned.** The app reads the caller's own `public.accounts`
+  row (row-level security: `auth.uid() = id`); the `guard_account_plan` trigger
+  makes plan and limit columns immutable to clients. The in-app "Unlock Premium"
+  button is gone, and nothing pretends a payment happened.
+- **Quota enforced in the shared core for UX** (including CSV and workspace
+  import, previously a one-click bypass) **and, for plans, in Postgres** by the
+  `guard_account_plan` trigger. A server-side profile-count trigger remains an
+  open item — not a claim.
+
+### Database
+
+`supabase/migrations/0002_accounts_and_licensing.sql` — **already applied to the
+live project** (version `20261119181923`):
+
+- creates the deny-all `account_allowlist` and the `public.accounts` entitlement
+  row for every auth user, with a backfill for the three users who signed up
+  before the trigger existed (the owner row resolves to plan `owner`, unlimited);
+- gives users read access to **their own row only** and freezes plan/limit with
+  the `guard_account_plan` trigger;
+- captures the `joe_private` licensing tables and the `msap_*` RPCs exactly as
+  they exist live, behind `require_user()`/`require_admin()`;
+- ends with an event trigger that re-enables row-level security if a future
+  migration forgets it.
+
+A competing `0002_entitlements.sql` from a parallel branch (workspace bootstrap,
+`entitlements`, `my_entitlement()`, quota trigger, composite primary keys) was
+**never applied to any project** and was removed in the integration merge so the
+repository has exactly one 0002 — the one the live database runs.
+
+### Android sync
+
+Commands now flow through the `joe-command-validate` edge function (send /
+poll / ack): the phone and the desktop present the publishable anon key, the
+function validates action, profile, device and payload, and only it holds the
+service-role key. Anonymous direct writes to `commands` are refused by RLS
+(SQLSTATE 42501, verified live), and a failed relay call is reported as a
+failure — never as sent.
+
+### Product honesty
+
+- **"Five bundled engines" removed.** One Chromium engine is bundled (Electron on
+  Windows, WebView on Android); Joe Browser, Chrome, Edge and Brave are compatible
+  identities on it. **Firefox is not offered**, because it is Gecko and a Firefox
+  user agent on Chromium is a contradiction a detector can see in one call. The
+  picker states this.
+- The owner email is no longer displayed in the sign-in form.
+- Version metadata is consistent again (`3.2.0`; the desktop shell had been
+  reporting `3.1.0`).
+
+### Startup recovery and signing
+
+- The static shell now offers a **Retry** link even when the entry script itself
+  never loads, and the failure screen has a Retry button. Automated in
+  `scripts/test-boot-retry.mjs` (both paths, headless Chromium) and in CI.
+- The APK build **requires an externally managed signing store** instead of
+  generating a new identity per build, so consecutive releases can update in
+  place. If you installed a build signed with an older, unavailable key, back up
+  your workspace first: uninstalling removes app data.
+
+### Reliability and evidence
+
+- `npm run test:ui`, `npm run test:devices` and `npm run screenshots` start their
+  own server and shut it down; they work on a clean checkout.
+- A failed device run no longer overwrites the committed `report.json` with a
+  "connection refused" result.
+- New tests: 25 for the account client, 10 schema/secret invariants, 13 for the
+  relay edge function, 2 security regressions, 2 rewritten end-to-end checks.
+
+---
+
+## Upgrade from 3.1.1
+
+1. Install the new build over the old one (settings and profiles are preserved;
+   the workspace key is unchanged).
+2. Apply `supabase/migrations/0002_accounts_and_licensing.sql` to your project
+   (`supabase db push`, or paste it into the SQL editor) — already applied to the
+   live project.
+3. Settings → Sync: paste the project URL and the **publishable (anon)** key. A
+   service-role key is refused — it must never be in a client.
+4. Sign in from Account & plan. Until you do, the app runs on the local free tier
+   and says so.
+
+If step 2 is skipped (or the entitlement row is missing), the account screen
+reports that and stays on the free tier instead of guessing.
+
+## Validation
+
+Executed in the session that produced this release (Debian, Node 22; no JDK,
+Android SDK, Electron runtime, Postgres or device):
+
+`tsc` clean · `npm test` 100/100 (9 files) · `test:ui` 37/37 · `test:devices` 75/75 ·
+`test:fingerprint` 29/29 · `test:site` 15/15 · `test:java` 4/4 (parse only) ·
+`test:icons` 9/9 · `test:desktop` 10/10 · `check:bridges` 6/6 ·
+`test:packaged` 4/4 · `test:main` 16/16 · `test:ui-desktop` 5/5 ·
+`npm audit` 0 (production and development). Live Supabase evidence: migration
+applied, entitlement rows backfilled, anon writes denied with SQLSTATE 42501.
+
+Full detail: [`TEST_REPORT.md`](TEST_REPORT.md),
+[`SECURITY_AUDIT.md`](SECURITY_AUDIT.md),
+[`PROJECT_AUDIT.md`](PROJECT_AUDIT.md),
+[`REQUIREMENTS_TRACKER.md`](REQUIREMENTS_TRACKER.md),
+[`BUG_REPORT.md`](BUG_REPORT.md).
+
+## What was not verified
+
+- **No Windows or Android binary was built or installed** in the session that
+  wrote these notes; the release workflow does that on GitHub runners.
+- **Migration 0002 was executed against the live project** (version
+  `20261119181923`) and its key properties verified there — backfilled
+  entitlement rows, deny-all allowlist, anon write refusal — but no sign-up →
+  confirm → login round-trip was run from this sandbox (no egress to
+  supabase.co). Migration 0001 was already live.
+- **No physical device or emulator** was used. The 75 "device" checks are headless
+  Chromium viewports with mobile emulation, portrait only.
+- **No third-party detector score** is claimed. None was reachable from the build
+  sandbox, and a score would describe the engine, not this code.
+
+## Known limitations
+
+- The desktop Realtime channel uses the fixed name `joe-sync` and the anon key, so
+  someone else holding that key could publish into it. Use one project per tenant
+  until this is closed (tracked as OPEN-001 in `BUG_REPORT.md`).
+- Workspaces live in `localStorage`; the `profiles`/`proxies` tables are
+  provisioned but not written by the app. Export/import is the supported way to
+  move a workspace between devices.
+- **No payment provider.** Premium is granted server-side by an administrator.
+- Profile **proxies are assigned for real, but health/latency values are
+  modelled**, not dialled.
+- Engine-level surfaces (TLS/JA4, HTTP/2 frame order, QUIC, font rasterisation, GPU
+  behaviour, CDP) remain engine-controlled. Joe Browser is a JavaScript-surface
+  (L3) tool and **is not undetectable**.
+
+## Licence
+
+Source: MIT. Documentation and brand assets: CC BY-ND 4.0. See [`LICENSE`](LICENSE),
+[`NOTICE`](NOTICE), [`TRADEMARK.md`](TRADEMARK.md) and
+[`docs/IP-POLICY.md`](docs/IP-POLICY.md). Third-party names and marks belong to
+their owners and are used for identification only.

@@ -27,7 +27,45 @@ export interface Plan {
   summary: string;
 }
 
-const ALL_BROWSERS: BrowserFamily[] = ['joe', 'chrome', 'edge', 'brave', 'firefox'];
+/**
+ * What the shells actually run.
+ *
+ * v3.1.1 advertised "five bundled engines" — Joe Browser, Chrome, Edge, Brave and
+ * Firefox. Only one engine is bundled: the Chromium that Electron and the Android
+ * WebView provide. Chrome, Edge and Brave are *compatible identities* on that
+ * engine (their own brands send a Chromium-shaped UA and Client Hints), which is
+ * coherent. Firefox is Gecko: a Firefox UA on a Chromium engine is a contradiction
+ * a detector can see in one call, so it is not offered at all rather than faked.
+ */
+export interface BrowserSupport {
+  family: BrowserFamily;
+  label: string;
+  /** the engine a profile in this family really runs on */
+  engine: 'chromium';
+  available: boolean;
+  note: string;
+}
+
+export const BROWSER_SUPPORT: BrowserSupport[] = [
+  { family: 'joe', label: 'Joe Browser', engine: 'chromium', available: true, note: 'Bundled Chromium build. No browser installed on the machine is used.' },
+  { family: 'chrome', label: 'Chrome', engine: 'chromium', available: true, note: 'Chrome-compatible identity on the bundled Chromium.' },
+  { family: 'edge', label: 'Edge', engine: 'chromium', available: true, note: 'Edge-compatible identity on the bundled Chromium.' },
+  { family: 'brave', label: 'Brave', engine: 'chromium', available: true, note: 'Brave-compatible identity on the bundled Chromium.' },
+  { family: 'firefox', label: 'Firefox', engine: 'chromium', available: false, note: 'Not offered: this build bundles no Gecko engine, and a Firefox identity on Chromium would be incoherent.' },
+];
+
+export function browserSupport(family: BrowserFamily): BrowserSupport {
+  return BROWSER_SUPPORT.find((b) => b.family === family) ?? BROWSER_SUPPORT[BROWSER_SUPPORT.length - 1];
+}
+
+export function isBrowserAvailable(family: BrowserFamily): boolean {
+  return browserSupport(family).available;
+}
+
+/** Identities a user can actually choose today. */
+export const SELECTABLE_BROWSERS: BrowserFamily[] = BROWSER_SUPPORT.filter((b) => b.available).map((b) => b.family);
+
+const ALL_BROWSERS: BrowserFamily[] = SELECTABLE_BROWSERS;
 
 export const FREE_PROFILE_LIMIT = 2;
 
@@ -72,7 +110,7 @@ export const PLANS: Record<PlanId, Plan> = {
     summary: 'Unlimited profiles, every bundled engine, advanced controls.',
     features: [
       'Unlimited browser profiles',
-      'Joe Browser, Chrome, Edge, Brave and Firefox engines',
+      'Joe Browser, Chrome, Edge and Brave identities on the bundled engine',
       'Advanced fingerprint classes and observed-device rotation',
       'Proxy monitor with offline and rotation alerts',
       'Bulk create, import and per-profile history export',
@@ -84,51 +122,41 @@ export const PLANS: Record<PlanId, Plan> = {
 
 export interface Account {
   email: string;
-  /** Local owner account has no server round-trip. */
   plan: PlanId;
   role: 'owner' | 'admin' | 'member';
   /** ISO timestamp; null for lifetime/free */
   renewsAt?: string | null;
-}
-
-/** The admin address unlocks every feature regardless of plan state. */
-export const ADMIN_EMAIL = 'pritamsarkar1321@gmail.com';
-
-export function isAdmin(account: Account | null | undefined): boolean {
-  if (!account) return false;
-  // `owner` is assigned server-side (account allowlist → handle_new_account),
-  // so a server-confirmed owner row counts even if the address ever changes.
-  if (account.role === 'owner') return true;
-  return account.email.trim().toLowerCase() === ADMIN_EMAIL;
+  /**
+   * True only when a server session proved this identity *and* the server
+   * assigned the role. A role string on its own is not evidence: v3.1.1 typed
+   * the owner address into a text box and became the owner with no password.
+   */
+  verified?: boolean;
+  /** Provenance of `plan`, shown in the UI instead of implying a checked state. */
+  source?: 'local' | 'server' | 'cache';
 }
 
 /**
- * A row of `public.accounts` as the database produces it (the
- * `handle_new_account` trigger fills plan/unlimited/profile_limit from the
- * allowlist; `guard_account_plan` stops clients from editing them).
- *
- * This is the server's word on entitlement — the client applies it instead of
- * trusting whatever the local workspace claims.
+ * The account seeded into `public.app_admins` by
+ * `supabase/migrations/0002_entitlements.sql`. It is a bootstrap value for the
+ * database, NOT an authorisation check in the client — see `isAdmin`.
  */
-export interface ServerAccountRow {
-  email?: string | null;
-  plan?: string | null;
-  unlimited?: boolean | null;
-  profile_limit?: number | null;
+export const OWNER_EMAIL = 'pritamsarkar1321@gmail.com';
+
+/**
+ * Administrator check.
+ *
+ * Requires a verified server session carrying an administrator role. Nothing in
+ * this app may grant that role locally, so an offline or edited workspace can
+ * never escalate itself.
+ */
+export function isAdmin(account: Account | null | undefined): boolean {
+  return !!account && account.verified === true && (account.role === 'owner' || account.role === 'admin');
 }
 
-export function accountFromServer(row: ServerAccountRow | null | undefined, fallbackEmail: string): Account {
-  const plan = String(row?.plan ?? 'free').trim().toLowerCase();
-  const mapped: PlanId =
-    plan === 'owner' || plan === 'premium' || row?.unlimited === true ? 'premium'
-    : plan === 'starter' ? 'starter'
-    : 'free';
-  return {
-    email: String(row?.email ?? fallbackEmail).trim().toLowerCase(),
-    plan: mapped,
-    role: plan === 'owner' ? 'owner' : 'member',
-    renewsAt: null,
-  };
+/** True when the plan was confirmed by the server (as opposed to a local default). */
+export function isVerifiedAccount(account: Account | null | undefined): boolean {
+  return !!account && account.verified === true;
 }
 
 export function planFor(account: Account | null | undefined): Plan {
@@ -183,5 +211,5 @@ export function lockedBrowsers(account: Account | null | undefined): BrowserFami
  * `browserAllowed` so the licence text can be shown before a download starts.
  */
 export function engineRequiresPremium(family: BrowserFamily): boolean {
-  return family === 'joe' || family === 'edge' || family === 'brave' || family === 'firefox';
+  return family === 'joe' || family === 'edge' || family === 'brave';
 }

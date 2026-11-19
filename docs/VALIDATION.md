@@ -1,4 +1,4 @@
-# Validation report — v3.1.1
+# Validation report — v3.2.0
 
 Every number below comes from a command in this repository. Nothing here is a third-party detector score, and no result is claimed for surfaces the project does not control.
 
@@ -9,15 +9,15 @@ Environment: Debian, Node `v22.22.3`, npm `10.9.8`, Python `3.11.2`, no display 
 | Command | Result |
 |---|---|
 | `npx tsc --noEmit` | pass, exit 0 |
-| `npm test` | 8 files, 74 tests passed (adds Supabase auth flows and edge-function relay unit tests) |
+| `npm test` | 9 files, 100 tests passed (account client, schema invariants, edge-relay unit tests) |
 | `npm run test:fingerprint` | 29/29 injection self-tests, exit 0 |
-| `npm run test:ui` | 35/35 real-browser checks, no console errors |
-| `npm run test:devices` | 75/75 checks on five Android families |
+| `npm run test:ui` | 37/37 real-browser checks, self-served |
+| `npm run test:devices` | 75/75 checks on five Android families, self-served |
 | `npm run test:java` | 4/4 Java sources parse cleanly and contain no lambda or method reference (parse only, not compilation) |
 | `npm run test:site` | 15/15 static site, version and provenance checks |
-| `npm run test:icons` | 9/9 brand-asset checks (launch icon contrast, tile colour, canonical J path, published marks match Brand.tsx) |
-| `npm run test:desktop` | 8/8 desktop packaging checks (allowlist covers every runtime require; IPC channels match) |
-| `npm run check:bridges` | 5/5 native-bridge checks (Java methods, intent extras, generated assets) |
+| `npm run test:icons` | 9/9 brand-asset checks (launch icon contrast, tile colour, canonical J path, published favicons/logo match Brand.tsx) |
+| `npm run test:desktop` | 10/10 desktop packaging checks (allowlist covers every runtime require; IPC channels match) |
+| `npm run check:bridges` | 6/6 native-bridge checks (Java methods, intent extras, edge-relay credential, generated assets) |
 | `npm run test:packaged` | 4/4 packaged-app checks (stages `build.files`, boots the main process) |
 | `npm run test:main` | 16/16 main-process checks against a functional Electron stand-in (adds keystroke replay and sync-failure reporting) |
 | `npm run test:ui-desktop` | 5/5 renderer checks against a stand-in preload bridge, over `http:` and `file:` |
@@ -27,9 +27,8 @@ Environment: Debian, Node `v22.22.3`, npm `10.9.8`, Python `3.11.2`, no display 
 | `npm run build:desktop` | Desktop web bundle (`apps/desktop/web-dist/`) |
 | `npm run build:assets` | 16 profiles, 17 self-testing injection scripts, bundled UI |
 | `npm run build:site` | `dist-site/` generated for the canonical URL |
-| `npm run build:brands` | 34 official brand marks, Joe Browser mark (J monogram), 12 flags |
+| `npm run build:brands` | 33 official brand marks, Joe Browser mark, 12 flags |
 | `npm run screenshots` | 17 app captures + 11 cropped site captures + OG card |
-| `npm audit` / `npm audit --omit=dev` | 0 vulnerabilities in both (was 11 entries, 2 critical — dev toolchain only) |
 
 ### The 3.1.0 launch failure
 
@@ -131,7 +130,7 @@ Highlights from the 34 passing checks:
 - Six seeded profiles render on first paint; every sidebar destination resolves (16 navigation entries).
 - IBM Plex Sans is the active computed font; `no gradients or dashed borders`.
 - Command palette opens with Ctrl/⌘ + K and filters.
-- All five bundled engines are offered in the create dialog.
+- Four browser identities are offered (Joe Browser, Chrome, Edge, Brave) on the one bundled Chromium engine; Firefox is listed as unavailable because no Gecko engine is bundled.
 - A new profile persists to the table, 250 profiles can be created on Premium, and the table paginates.
 - The local JavaScript probe passes `22 of 22 checks`; six independent detector links are present.
 - Dark and light themes both render; a desktop-to-Android command is created.
@@ -207,36 +206,35 @@ Verified in a real Chromium context: the iPhone payload reports `navigator.userA
 - **Build scripts could not run in CI:** `cross-env` was used by `build:desktop` and `build:android-ui` but never depended on. A dependency-free runner replaces it.
 - **Android blank frames:** challenge iframes are child frames that `evaluateJavascript` on the main frame cannot reach, so the payload could disappear. The profile browser now re-injects per frame with three bounded retries and shows an offline error page instead of white.
 
-## Second checkpoint additions (2026-11-19)
-
-- `npm test` grew from 51 to **74** tests across 8 files: `tests/auth.test.ts`
-  (10) covers Supabase sign-up/confirmation/sign-in/reset/session flows with an
-  injected `authFetch`, and `tests/command-function.test.ts` (13) covers the
-  relay's action validation, workspace scoping, 16 KB payload cap, service-role
-  call and ack-before-delete ordering.
-- `test:main` grew from 14 to **16**: `keystrokes:send` dispatches char and
-  Backspace CDP events and refuses invalid plans and closed windows;
-  `sync:send` reports a reason instead of claiming success when the relay is
-  unreachable.
-- Live database evidence (via the Supabase connector): migration
-  `accounts_and_licensing` applied; three entitlement rows backfilled with the
-  owner on `owner`/unlimited; an anonymous INSERT into `commands` fails with
-  **SQLSTATE 42501**; auth redirects use the canonical Vercel origin; edge
-  function `joe-command-validate` is deployed v3 ACTIVE.
-- Dependency audit moved from 11 findings (2 critical) to **0**; every suite
-  was re-run green after the toolchain upgrade.
-- Brand drift found and fixed: the generator still emitted the retired
-  ring-and-dot, so the README header and favicons disagreed with the app's J
-  monogram. `test:icons` now fails if any published mark drifts.
-
-**Still not claimed:** a live edge-function invocation from a real EXE/APK
-(this sandbox cannot reach supabase.co), a real Supabase sign-up observed end
-to end from this network, Windows install/launch evidence, Android
-device/emulator evidence, and any detector score.
-
 ## What is not claimed
 
 - Not "100% undetectable", not "passes Pixelscan/BrowserScan/CreepJS" and not "AdsPower-tier".
 - No claim of parity with C++-patched browsers such as ShardBrowser, Camoufox, Donut/Wayfern or OVO.
 - No claim that TLS/JA4, HTTP/2, QUIC, font rasterisation, GPU driver output or CDP side channels are spoofed.
 - No claim that the Android APK is production-signed; CI builds are debug-signed and published with checksums.
+
+
+---
+
+## v3.2.0 — what changed in this report
+
+The detailed evidence for this release lives in [`TEST_REPORT.md`](../TEST_REPORT.md),
+the defects in [`BUG_REPORT.md`](../BUG_REPORT.md) and the security review in
+[`SECURITY_AUDIT.md`](../SECURITY_AUDIT.md). Two environment limits matter when
+reading them:
+
+- **Database.** Migration `0002_accounts_and_licensing` **was executed against
+  the live Supabase project** (version `20261119181923`) and its key properties
+  verified there interactively (backfilled entitlement rows, deny-all allowlist,
+  anonymous writes refused with SQLSTATE 42501). CI still checks the SQL only
+  statically (`tests/schema.test.ts`); no sign-up round-trip was run from this
+  sandbox (no egress to supabase.co).
+- **No native toolchain.** The Windows EXE and the Android APK are produced by
+  GitHub Actions. This environment has no JDK, Android SDK, Electron runtime or
+  Windows host, so no binary was built or installed here. `test:packaged`,
+  `test:main` and `test:ui-desktop` exercise the packaged module graph and the
+  renderer against stand-ins, not a running Electron process.
+
+The browser suites (`test:ui`, `test:devices`, `screenshots`) now start and stop
+their own Vite server; previously they required a manually started dev server and
+the device suite overwrote its committed report when that server was missing.

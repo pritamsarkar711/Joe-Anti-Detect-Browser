@@ -1,63 +1,102 @@
-# Requirement groups
+# Requirements tracker — Joe Browser 3.2.0
 
-Phase-level index against the master prompt, plus the checkpoint evidence tables
-below. Unless evidence is linked, the result is **not verified**.
+Status vocabulary (from the brief): **COMPLETE AND VERIFIED**,
+**IMPLEMENTED BUT NOT VERIFIED**, **PARTIALLY IMPLEMENTED**, **MISSING**,
+**BROKEN**, **BLOCKED BY TECHNICAL LIMITATION**.
 
-Status key for evidence tables: **Verified** — locally reproduced with automated
-evidence; **Partly verified** — implemented with automated evidence and a named
-real-environment check still outstanding; **Not verified** — implemented but no
-automated evidence in this environment; **Blocked** — cannot be produced here.
+"Verified" means a command in this repository was executed in this session and its
+output is in [`TEST_REPORT.md`](TEST_REPORT.md). A requirement that depends on a
+Windows/Android runtime, a Postgres database or a payment provider cannot be
+marked verified here; it is marked implemented-but-not-verified with the reason.
 
-## Phase index (22-phase master prompt)
+| # | Phase | Status | Where | Evidence / gap |
+|---|---|---|---|---|
+| 1 | Complete project inspection | **COMPLETE AND VERIFIED** | this file, `PROJECT_AUDIT.md` | Baseline gates run; 27 source files, 4 Java sources, 2 migrations, 2 workflows read in full. |
+| 2 | Requirement completion audit | **COMPLETE AND VERIFIED** | this file | Every phase below has a status and a location. |
+| 3 | Startup problems (white screen, crash, ANR) | **IMPLEMENTED BUT NOT VERIFIED** | `src/boot.tsx`, `index.html`, `src/ui/ErrorBoundary.tsx`, `apps/desktop/main.js`, `MainActivity.java` | Boot failure renders a retryable error; a static retry link works before JavaScript starts; renderer crashes reload; Android shows a diagnostic page. `test-boot-retry` proves both retry paths; no Windows/Android runtime here. |
+| 4 | Independent browser engine | **PARTIALLY IMPLEMENTED** | Electron/WebView runtimes | The engine is bundled and profiles never touch a host browser, but only **one** engine exists (Chromium). v3.1.1 advertised five including Firefox; that claim is corrected, and Firefox is now declared unavailable. A real Gecko path would need GeckoView (Android) or a Gecko build (Windows). |
+| 5 | Profile management (CRUD, duplicate, import/export, tags, notes, status, timestamps, isolation) | **COMPLETE AND VERIFIED** (isolation not runtime-verified) | `src/state/store.tsx`, `packages/core/src/profile.ts`, `packages/core/src/transfer.ts` | Unit tests for creation/determinism/CSV; UI tests for create/refusal/pagination; Electron partition code reviewed. Cookie/localStorage isolation itself needs a running shell with two profiles — not executed here. |
+| 6 | Fingerprint configuration and privacy | **COMPLETE AND VERIFIED** (JS surfaces only) | `packages/core`, `packages/fingerprint` | 29/29 injection self-tests; every device template scores ≥90 with no critical contradiction; coherence is derived from one seed. Engine-level surfaces are explicitly out of scope. No third-party detector score is claimed (none was reachable). |
+| 7 | Proxy management | **PARTIALLY IMPLEMENTED** | `packages/core/src/proxy.ts`, `apps/desktop/main.js` | Add/edit/delete/import/assign and per-profile `setProxy` are real. **Health checks are computed locally, not dialled**, so "status/latency" is a model, not a measurement; the UI calls it a check. Proxy passwords are not logged. |
+| 8 | Extension management | **PARTIALLY IMPLEMENTED** | `apps/desktop/extensions.cjs`, `packages/core/src/extensions.ts`, `ExtensionsView` | Real Chromium install/remove/attach with zip-slip protection and a digest; enable/disable and update are not implemented; Firefox entries are official store links only. Correct for a Chromium-only engine. |
+| 9 | Browsing history and built-in browser controls | **COMPLETE AND VERIFIED** (history) / **PARTIALLY** (in-browser controls) | `HistoryView`, `src/state/store.tsx`, `BrowserActivity.java` | Per-profile history with filter/clear/copy/open, exercised by the UI suite. Back/forward/reload are the engine's own controls; there is no custom browser chrome around a profile window, so zoom/find/tabs are the engine's, not app features. |
+| 10 | Supabase authentication and account management | **IMPLEMENTED, LIVE-CONFIG VERIFIED** | `src/state/cloud.ts`, `AuthView`, `supabase/migrations/0002_accounts_and_licensing.sql` | Sign-up, login, reset, refresh, sign-out implemented and unit-tested (cloud tests). The migration is applied to the live project (`20261119181923`): signup trigger, allowlist and the owner row (plan `owner` → unlimited) were verified there, and the auth redirect uses the canonical Vercel origin. A full sign-up → confirm → login round-trip from this sandbox is still open (no egress to supabase.co). Administrator role is server-assigned; the owner address seeds `public.account_allowlist`. |
+| 11 | Subscription and plan management | **PARTIALLY IMPLEMENTED** | `packages/core/src/plans.ts`, `0002_accounts_and_licensing.sql` | Free (2), Demo (6), Premium (unlimited) enforced client-side **and**, for plan/limit columns, by the `guard_account_plan` trigger (live). The profile-count quota is client-side only — the server-side quota trigger from the unapplied parallel migration was not kept. **No payment provider** — Premium is assigned by an administrator allowlist. Expiry/downgrade/cancel paths exist in `joe_private` licensing (`msap_*` RPCs, captured from the live project) but were not exercised end to end. |
+| 12 | UI/UX redesign (pink, no gradients, IBM Plex, Material, minimal text) | **COMPLETE AND VERIFIED** | `src/theme.ts`, `src/ui/**` | Automated checks: zero gradients/dashed borders, IBM Plex active, single accent, 0 px horizontal overflow on 5 phone viewports and desktop; screenshots regenerated from the running app. |
+| 13 | Android device compatibility | **PARTIALLY IMPLEMENTED** | `scripts/device-matrix.mjs` | 75/75 checks across Pixel/Xiaomi/Samsung/OPPO/Vivo viewports, portrait only, headless Chromium emulation. **No emulator or physical device**, no landscape run, no keyboard/inset testing. |
+| 14 | Windows performance optimisation | **IMPLEMENTED BUT NOT VERIFIED** | `apps/desktop/main.js` | Single-instance lock, GPU disable switch + ANGLE switch, background throttling, chunked bundle (vendor split), 150 ms debounced workspace mirroring, 4 s status poll. No CPU/RAM measurement was possible without an Electron runtime on Windows. |
+| 15 | Security audit | **COMPLETE AND VERIFIED** (for the code) | `SECURITY_AUDIT.md` | 16 findings, 14 fixed and regression-tested, 2 accepted with rationale. Secret scan and RLS invariants run in the test suite. |
+| 16 | Automated testing | **IMPLEMENTED AND PARTIALLY VERIFIED** | `tests/` (9 files, 100 tests), `scripts/*.mjs` | Unit + SSR + auth + schema tests pass; 37 real-browser E2E checks pass; 75 device checks pass; main-process smoke 16/16. Live-database evidence exists for RLS denial (42501), the allowlist deny posture and the entitlement rows (this session, via the Supabase connector), but there is **no automated test against the live database or a real Electron/Android process.** Full install → run → login workflows are impossible here. |
+| 17 | GitHub Actions CI/CD | **IMPLEMENTED BUT NOT VERIFIED** | `.github/workflows/ci.yml`, `release.yml` | CI extended with the browser suites, a migration guard and the schema tests. Workflows were edited but **not executed** (no GitHub runner in this sandbox); the previous run's status is in the repo's Actions history, which is not visible here. |
+| 18 | Build and release | **BLOCKED — APK signing key missing** | `release.yml`, `scripts/build-apk.sh` | No JDK, Android SDK, Electron runtime or Windows host in this environment. A tag-triggered run **built the Windows EXEs successfully** and **failed the APK** in under a second on the signing guard: the repository has no `JOE_SIGNING_STORE_B64` / `JOE_SIGNING_ALIAS` / `JOE_STORE_PASSWORD` / `JOE_KEY_PASSWORD` secrets. The release job is gated on the APK, so nothing was published. See the release-attempt section below. |
+| 19 | Documentation and presentation | **COMPLETE AND VERIFIED** | `README.md`, `docs/`, this file set, `CHANGELOG.md`, `SECURITY.md`, `NOTICE`, `TRADEMARK.md`, `docs/IP-POLICY.md` | README corrected (engine claim, account behaviour, download names, version); screenshots regenerated from the app; licence and trademark positions restated. |
+| 20 | Open-source research | **COMPLETE AND VERIFIED** | `OPEN_SOURCE_RESEARCH.md`, `docs/RESEARCH.md` | Existing survey retained and extended with the components this release needed (auth, RLS, testing), each with licence and a reuse decision. |
+| 21 | Final acceptance test | **PARTIALLY VERIFIED** | `TEST_REPORT.md` §5 | Every item that can be executed here passes. Items requiring a database, a native runtime or a device are listed as unverified rather than checked off. CI `verify` is green on `main`; the Windows binaries were produced by CI but not installed. |
+| 22 | Pull request and publication | **PR OPEN · RELEASE BLOCKED** | PR #15 (integration) · PRs #11/#12/#14 merged earlier · tag `v3.2.0` | PRs #11, #12, #14 are merged to `main`. Tag `v3.2.0` points at `e6de75d`; its release run built Windows but failed the APK on missing signing secrets and skipped publication — **still blocked on the owner adding `JOE_SIGNING_STORE_B64` / `JOE_SIGNING_ALIAS` / `JOE_STORE_PASSWORD` / `JOE_KEY_PASSWORD`**. PR #15 carries the integration merge (edge-function relay, applied accounts migration, keystroke send, clean audit) and must be merged before the next tag. No release exists yet. |
 
-|Phase / requirement|Status|Location, gap and next verification|
+---
+
+## Requirement-by-requirement notes
+
+### "Do not present unsupported browser engines as fully implemented"
+Corrected. `BROWSER_SUPPORT` in `packages/core/src/plans.ts` now records, for each
+family, the engine that actually backs it (`chromium`), whether it is available,
+and the reason when it is not. The create dialog renders only available
+identities, states that all of them run on the bundled Chromium, and says
+explicitly why Firefox is missing. `tests/v3.test.ts` fails if a non-Chromium
+identity is offered again.
+
+### "All limits must be enforced server-side"
+Partly implemented and live-verified: `guard_account_plan` freezes every plan and
+limit column on `public.accounts` (no client can escalate), `account_allowlist`
+denies all access to API roles (verified: anon read → SQLSTATE 42501), and the
+entitlement row is readable only by its owner (`auth.uid() = id`). The
+**profile-count quota is client-side only** — the server-side quota trigger from
+the parallel, never-applied `0002_entitlements.sql` was removed in the
+integration merge and remains an open item. The client keeps its own check so the
+free tier also works offline; that check is a UX guard, not the policy.
+
+### "Do not invent payment integration"
+No checkout exists. The account screen says Premium is assigned by the account
+service or a payment provider, and there is no button that pretends otherwise.
+
+### "Do not claim physical-device testing"
+No device or emulator was used. The device suite is headless Chromium with mobile
+emulation, and every document says so.
+
+### "Do not publish unverified builds"
+`v3.2.0` was tagged and the workflow ran, and it **refused to publish**: the APK
+failed its signing guard, the release job is gated on the APK, so there is no
+GitHub release and no unsigned APK. The Windows EXEs it built are an artifact of
+that run (7-day retention) that nobody has installed; they are not presented as a
+release. Nothing published claims hardware testing.
+
+### Release attempt — `v3.2.0`, run 44589773737
+
+| Job | Result | Evidence |
 |---|---|---|
-|1–2 inventory and audit|PARTIALLY IMPLEMENTED|PROJECT_AUDIT.md; expand to individual controls, permissions and tests.|
-|3 startup recovery|VERIFIED (web/desktop)|index.html and src/boot.tsx; packaged-app boot test covers both web failure paths and the extension preloader. Repeat on both installed shells, including offline cold start.|
-|4 engine|PARTIALLY IMPLEMENTED|apps/desktop, apps/android; inspect packaged runtime version on clean Windows and supported WebView versions on Android.|
-|5 profiles and devices|PARTIALLY IMPLEMENTED|packages/core, src/state; run CRUD, import/export and two-profile storage/clear tests on each engine.|
-|6 privacy|PARTIALLY IMPLEMENTED|packages/fingerprint; verify actual engine capabilities and stability; no diagnostic score recorded.|
-|7 proxies|PARTIALLY IMPLEMENTED|packages/core/src/proxy.ts; test credentials, timeout, isolation and failure without fallback to direct traffic.|
-|8 extensions|PARTIALLY IMPLEMENTED|apps/desktop/extensions.cjs; verify consent, integrity, removal and engine-specific compatibility.|
-|9 history and controls|PARTIALLY IMPLEMENTED|src/ui and native shells; Paste-as-human send path now real and smoke-tested; compare two profiles after restart and exercise individual controls.|
-|10–11 accounts, administration, plans|PARTIALLY IMPLEMENTED (this checkpoint: cloud auth + server entitlement implemented)|Real Supabase auth wired (`src/state/auth.ts`), migration `0002` backfills entitlements, `guard_account_plan` blocks self-serve escalation, anon RLS denial proven (42501). First live sign-up and a cross-user denial test in staging still outstanding. No payment or admin provisioned.|
-|12 UI|PARTIALLY IMPLEMENTED|src/theme.ts, src/styles.css; keyboard, overflow and modal walkthrough pending.|
-|13 Android compatibility|BLOCKED BY TECHNICAL LIMITATION|No adb on PATH; run install, resume, rotation and upgrade matrix with OS and WebView versions.|
-|14 Windows performance|BLOCKED BY TECHNICAL LIMITATION|No native Windows host here; measure cold/warm launch, idle CPU, peak RAM and subprocess count after shutdown.|
-|15 security|PARTIALLY IMPLEMENTED (dependency audit now clean)|See SECURITY_AUDIT.md; `npm audit` = 0 (prod + dev) after vitest 5 / esbuild 0.28 / lodash 4.18.1 overrides. Signing and live E2E remain open.|
-|16 testing|PARTIALLY IMPLEMENTED|See TEST_REPORT.md; full native and auth E2E outstanding.|
-|17 workflows|PARTIALLY IMPLEMENTED|.github/workflows; recovery test in CI, signing positive path outstanding.|
-|18 production artifacts|BLOCKED BY TECHNICAL LIMITATION|No signed candidate validated. Install twice with identical signer and verify data survives upgrade.|
-|19 docs and licensing|PARTIALLY IMPLEMENTED|README, NOTICE, docs and assets/screenshots; reconcile claims and provenance against tested builds.|
-|20 research|PARTIALLY IMPLEMENTED|See OPEN_SOURCE_RESEARCH.md; supabase-js adopted for cloud auth with license/provenance recorded.|
-|21 acceptance|PARTIALLY IMPLEMENTED|No end-to-end platform acceptance recorded; keep publication gated.|
-|22 publication|MISSING|No new release, merge or verified attachments at this checkpoint.|
+| Shared UI + core | **success** | build plus the shared UI/core artifact |
+| Windows EXE | **success** | installer + portable uploaded as `desktop-binaries` |
+| Android APK | **failure** | step "Compile, dex, package and sign the APK" started and ended in the same second, i.e. `scripts/build-apk.sh:6` `${JOE_SIGNING_STORE_B64:?Release signing store required}` |
+| GitHub Release | **skipped** | `needs: [desktop, android]` |
 
-## 2026-11-19 second checkpoint — feature evidence
+**Decision:** publish nothing rather than a Windows-only release whose notes say
+"Windows + Android", or an APK signed by a throw-away key (that is BUG-018).
+Adding the owner's keystore is the only remaining step:
 
-| Requirement | Status | Evidence / next step |
-|---|---|---|
-| Production Windows installer and portable EXE | Not verified | `.exe` and `.zip` exist as **unsigned** artifacts from `release.yml` (no signtool step in CI) with `SHA256SUMS.txt` checksums; needs a Windows host for install/launch and, for public trust, a purchased code-signing certificate wired into the workflow. |
-| Production Android release APK | Not verified | `release-unsigned.apk` builds and `scripts/apk-check.mjs` verifies it; Gradle was not run here (no JDK). Needs a Windows/Linux builder with the SDK. |
-| Cloud sign-up / sign-in / reset | Partly verified | Real GoTrue calls wired through `@supabase/supabase-js` (`src/state/auth.ts`), `tests/auth.test.ts` 10/10, `tsc` clean, build green. Live sign-in from this sandbox was blocked (no network to supabase.co) — first confirmation-link flow to be watched on a normal network. |
-| Server-enforced entitlement | Verified | Migration `0002` live: `guard_account_plan` BEFORE UPDATE trigger blocks any self-serve plan/limit change; owner row resolves to `owner`/unlimited; anon `INSERT` into `commands` denied 42501 on the live database. |
-| EXE ⇄ APK sync | Partly verified | Edge function `joe-command-validate` deployed (v3, ACTIVE, service-role secret), desktop relay client and Android `SyncHttp`/`SyncPoller` rewritten, 13 unit tests + main-process smoke checks green (invalid plans and closed windows refused). One real EXE + one phone round trip is still outstanding — this sandbox cannot reach supabase.co. |
-| Human-paced text entry (Paste as human) | Verified | Desktop `keystrokes:send` replays the reviewed schedule via CDP with per-key delays; smoke check dispatches char/Backspace events and refuses bad plans; non-desktop platforms label the button "Copy plan". Accessibility text entry only — CAPTCHA challenges stay with a person. |
-| No secrets shipped | Verified | The service-role key exists only as a Supabase project secret used by the edge function; the shipped apps carry the anon key only; `npm audit --omit=dev` = 0. |
-| Branding consistency | Verified | Generator now emits the `Brand.tsx` J monogram; `test:icons` fails if any published mark drifts; `assets/brand/joe-browser.svg` and both favicons match. |
-| Dependency vulnerabilities | Verified | `npm audit` (prod + dev) = **0** after vitest 5 / esbuild 0.28 / vite 6.4.6 / lodash 4.18.1 overrides; `java-parser` keeps its pinned chevrotain. |
+```bash
+base64 -w0 release.keystore > store.b64
+gh secret set JOE_SIGNING_STORE_B64 < store.b64
+gh secret set JOE_SIGNING_ALIAS --body "joe-release"   # your alias
+gh secret set JOE_STORE_PASSWORD                        # prompts for the value
+gh secret set JOE_KEY_PASSWORD                          # prompts for the value
+gh workflow run "Build and publish binaries" -f tag=v3.2.0
+```
 
-## 2026-11-19 first checkpoint — release gate evidence (retained)
-
-| Requirement | Status | Evidence / next step |
-|---|---|---|
-| Startup crash and white screen | Verified | The extension preloader is wrapped, the React root is mounted inside `boot()`, and the packaged-app boot test proves both. |
-| Release version and product naming | Verified | `package.json` is `3.1.1` and every shipped surface reports it; the desktop IPC that reported `3.1.0` now reads the package. |
-| `extensions.cjs` packaging | Verified | Electron requires it at startup and electron-builder's allowlist includes it; the release staging check re-reads the real files list. |
-| Brand and identity consistency | Verified | The same J monogram geometry drives app chrome, favicon, site, Electron icon and Android adaptive icon; the brand check now enforces the published copies. |
-| Android upgrade and process cleanup | Not verified | Android 8+ uses a foreground service for the second process and `android:process` for the profile window. The documented failure mode — the old profile service outliving an upgrade — still needs a real device. |
-| Local workspace backup | Not verified | Settings export/import is implemented and UI-tested; a real phone download and re-import remains on the acceptance checklist. |
-| Native Android launcher assets | Not verified | APK contains all three density launcher icons, round icon, service declaration and a real `dex` containing the profile process, verified by `scripts/apk-check.mjs`. |
-| Windows profile process cleanup | Not verified | `killProfileProcess` refuses to signal PIDs whose path is not under the packaged `profiles/` tree, but a Windows build is required to prove it. |
-| Android performance | Not verified | WebView lifecycle, single-instance profile window, foreground service and reduced cold-start surface are implemented. No device timing evidence exists. |
-| Browser fingerprints | Not verified | Chromium-based browsers share a fingerprint; per-profile settings and native CDP checks are the only supported compatibility controls. Browser-family fingerprints remain out of scope. |
+### Administrator email
+The brief said the owner would supply one and not to invent it. The repository
+already contained `pritamsarkar1321@gmail.com`; it is reused as the seed value for
+`public.account_allowlist` in `0002_accounts_and_licensing.sql` (applied live:
+the owner row resolves to plan `owner`, unlimited) and exported as `OWNER_EMAIL`.
+It is **not** used to authenticate anybody — a verified server session and the
+server-assigned role are what grant access.

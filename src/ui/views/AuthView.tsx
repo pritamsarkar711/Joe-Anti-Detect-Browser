@@ -1,28 +1,24 @@
 import { useEffect, useState } from 'react';
-import { Box, Stack, Typography, Paper, TextField, Divider, Tabs, Tab, Alert, Chip } from '@mui/material';
+import { Box, Stack, Typography, Paper, TextField, Divider, Tabs, Tab, Alert, CircularProgress } from '@mui/material';
 import { useStore } from '@/state/store';
 import { PLANS } from '@joe/core';
-import {
-  authClient, completePasswordReset, currentSession, fetchServerAccount,
-  onAuthStateChange, sendPasswordReset, signIn as cloudSignIn, signOut as cloudSignOut,
-  signUp as cloudSignUp,
-} from '@/state/auth';
-import { accountFromServer } from '@joe/core';
 import { JoeMark } from '../Brand';
-import { Btn } from '../Primitives';
+import { Icon } from '../Icons';
+import { Btn, Tag } from '../Primitives';
 
-type Mode = 'signin' | 'create' | 'reset' | 'recovery';
+type Mode = 'signin' | 'create' | 'reset';
 
 /**
  * Account screen.
  *
- * Local mode (no keys): signing in binds this device's workspace to an email
- * and a plan without a server, and the copy says so.
+ * Two clearly separated states:
  *
- * Cloud mode (keys in Settings → Sync): the same form runs real Supabase
- * auth — sign-up with email confirmation, password sign-in, password reset by
- * email, paste-the-link recovery, session persistence, and entitlement read
- * from the guarded `accounts` row.
+ * - **Cloud** (a Supabase URL and publishable key are set): sign-up, password
+ *   login and password recovery are real requests, and the plan shown here is
+ *   read back from `my_entitlement()`. A password is never stored in the app.
+ * - **Local** (no project configured): the workspace belongs to this device.
+ *   No email is treated as an identity and no paid tier is granted — the screen
+ *   says that instead of showing a form that only pretends to authenticate.
  */
 export function AuthView() {
   const s = useStore();
@@ -30,116 +26,63 @@ export function AuthView() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
-  const [recoveryLink, setRecoveryLink] = useState('');
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
 
-  const cloud = Boolean(s.settings.supabaseUrl && s.settings.anonKey);
-  const client = authClient(s.settings.supabaseUrl, s.settings.anonKey);
+  const cloud = s.cloudConfigured;
+  const signedIn = s.authStatus === 'cloud' || s.authStatus === 'cloud-offline';
 
-  // Track the live cloud session so the screen can show who is signed in.
-  useEffect(() => {
-    if (!client) { setSessionEmail(null); return; }
-    let cancelled = false;
-    void currentSession(client).then((session) => {
-      if (!cancelled) setSessionEmail(session?.user?.email ?? null);
-    });
-    const off = onAuthStateChange(client, (_event, session) => {
-      if (!cancelled) setSessionEmail(session?.user?.email ?? null);
-    });
-    return () => { cancelled = true; off(); };
-  }, [client]);
-
-  const validEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
-  const strongEnough = password.length >= 8;
-
-  const finishSignIn = async (sessionEmailArg: string) => {
-    const row = client ? await fetchServerAccount(client) : null;
-    s.signIn(sessionEmailArg, row ? accountFromServer(row, sessionEmailArg) : null);
-    s.setView('profiles');
-  };
+  useEffect(() => { setError(''); setInfo(''); }, [mode]);
 
   const submit = async () => {
     setError('');
     setInfo('');
-    if (!validEmail) { setError('Enter a valid email address.'); return; }
-
-    if (mode === 'recovery') {
-      setBusy(true);
-      const result = client
-        ? await completePasswordReset(client, recoveryLink, password)
-        : { ok: false, error: 'Cloud accounts are not configured on this device.' };
-      setBusy(false);
-      if (!result.ok) { setError(result.error ?? 'Reset failed.'); return; }
-      setInfo('Password updated. You are signed in.');
-      setMode('signin');
-      setPassword('');
-      setRecoveryLink('');
-      if (client) {
-        const session = await currentSession(client);
-        if (session?.user?.email) await finishSignIn(session.user.email);
-      }
-      return;
-    }
-
     if (mode === 'reset') {
-      if (!cloud || !client) {
-        // No server round-trip exists without keys — say so rather than lie.
-        setInfo('Cloud accounts are not configured on this device, so no reset email can be sent. Add Supabase keys in Settings → Sync, or continue locally.');
-        return;
-      }
-      setBusy(true);
-      const result = await sendPasswordReset(client, email.trim().toLowerCase());
-      setBusy(false);
-      if (!result.ok) { setError(result.error ?? 'Could not send the reset email.'); return; }
-      setInfo('If that address has an account, a reset link is on its way. Open it, then paste the link here to set a new password.');
-      setMode('recovery');
+      const outcome = await s.resetPassword(email);
+      if (outcome.error) setError(outcome.error);
+      else setInfo(outcome.info ?? 'Reset email sent.');
       return;
     }
-
-    if (!cloud || !client) {
-      // Local mode: no password is stored, and the UI says that plainly.
-      s.signIn(email);
-      s.setView('profiles');
-      return;
-    }
-
-    if (!strongEnough) { setError('Use at least 8 characters.'); return; }
     if (mode === 'create' && password !== confirm) { setError('Passwords do not match.'); return; }
-
-    setBusy(true);
-    const result = mode === 'create'
-      ? await cloudSignUp(client, email.trim().toLowerCase(), password)
-      : await cloudSignIn(client, email.trim().toLowerCase(), password);
-    setBusy(false);
-
-    if (!result.ok) { setError(result.error ?? 'Authentication failed.'); return; }
-    if (result.needsConfirmation) {
-      setInfo('Check your inbox — confirm your email address, then sign in.');
-      setMode('signin');
-      setPassword('');
-      return;
-    }
-    if (result.session?.user?.email) {
-      await finishSignIn(result.session.user.email);
-      return;
-    }
-    setInfo('Signed in.');
-    s.setView('profiles');
+    const outcome = mode === 'create' ? await s.signUp(email, password) : await s.signIn(email, password);
+    if (outcome.error) { setError(outcome.error); return; }
+    if (outcome.info) setInfo(outcome.info);
   };
 
-  const signOut = async () => {
-    if (client) await cloudSignOut(client);
-    s.signOut();
-    setSessionEmail(null);
-    setInfo('Signed out.');
-  };
-
-  const switchMode = (_e: unknown, v: Mode) => {
-    setMode(v); setError(''); setInfo(''); setPassword(''); setConfirm(''); setRecoveryLink('');
-  };
+  if (signedIn) {
+    return (
+      <Box sx={{ display: 'grid', placeItems: 'center', minHeight: '70dvh', px: 2 }}>
+        <Paper variant="outlined" sx={{ width: '100%', maxWidth: 460, p: { xs: 2, sm: 3 } }}>
+          <Stack spacing={2}>
+            <Stack direction="row" alignItems="center" spacing={1.25}>
+              <JoeMark size={36} />
+              <Box sx={{ minWidth: 0, flex: 1 }}>
+                <Typography noWrap sx={{ fontSize: '0.95rem', fontWeight: 600 }}>{s.cloudEmail ?? s.account.email}</Typography>
+                <Typography variant="caption" color="text.secondary">{s.planLabel}</Typography>
+              </Box>
+              {s.account.role === 'owner' && <Tag tone="primary">Owner</Tag>}
+            </Stack>
+            <Alert
+              severity={s.authStatus === 'cloud' ? 'success' : 'warning'}
+              variant="outlined"
+              icon={<Icon name={s.authStatus === 'cloud' ? 'shield' : 'alert'} size={20} />}
+            >
+              {s.planNotice}
+            </Alert>
+            <Divider />
+            <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+              <Btn icon="refresh" onClick={() => { void s.refreshEntitlement(); }}>Refresh plan</Btn>
+              <Btn icon="restart" onClick={() => s.signOut()}>Sign out</Btn>
+              <Btn variant="primary" icon="arrow" onClick={() => s.setView('profiles')}>Profiles</Btn>
+            </Stack>
+            <Typography variant="caption" color="text.secondary">
+              The plan is read from your project's `my_entitlement()` function on every refresh. This screen cannot change it.
+            </Typography>
+          </Stack>
+        </Paper>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ display: 'grid', placeItems: 'center', minHeight: '70dvh', px: 2 }}>
@@ -152,20 +95,15 @@ export function AuthView() {
           </Typography>
         </Stack>
 
-        {sessionEmail && (
-          <Alert
-            severity="info" sx={{ mb: 1.5, py: 0.25 }}
-            action={<Btn size="small" onClick={() => void signOut()}>Sign out</Btn>}
-          >
-            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-              <Typography variant="caption" sx={{ fontWeight: 600 }}>{sessionEmail}</Typography>
-              <Chip size="small" label={s.planLabel} sx={{ height: 18, fontSize: '0.66rem' }} />
-            </Stack>
+        {!cloud && (
+          <Alert severity="info" variant="outlined" sx={{ mb: 2, fontSize: '0.78rem' }}>
+            No account service is configured on this device. Add your Supabase project URL and publishable key in
+            Settings → Sync to enable sign-up, login and password reset.
           </Alert>
         )}
 
         <Tabs
-          value={mode === 'recovery' ? 'reset' : mode} onChange={switchMode}
+          value={mode} onChange={(_e, v) => setMode(v)}
           variant="fullWidth" sx={{ mb: 2, minHeight: 34, '& .MuiTab-root': { minHeight: 34, fontSize: '0.76rem' } }}
         >
           <Tab value="signin" label="Sign in" />
@@ -177,60 +115,50 @@ export function AuthView() {
           <TextField
             size="small" label="Email" type="email" value={email} autoComplete="email"
             onChange={(e) => setEmail(e.target.value)} InputLabelProps={{ shrink: true }}
-            placeholder="you@example.com"
+            disabled={s.authBusy}
           />
           {mode !== 'reset' && (
             <TextField
-              size="small"
-              label={mode === 'recovery' ? 'New password' : 'Password'}
-              type="password" value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              helperText={cloud ? 'At least 8 characters' : 'Not stored in local mode'}
-              InputLabelProps={{ shrink: true }}
+              size="small" label="Password" type="password" value={password}
               autoComplete={mode === 'create' ? 'new-password' : 'current-password'}
+              onChange={(e) => setPassword(e.target.value)}
+              helperText="At least 8 characters"
+              disabled={s.authBusy}
             />
           )}
           {mode === 'create' && (
             <TextField
               size="small" label="Confirm password" type="password" value={confirm}
+              autoComplete="new-password"
               onChange={(e) => setConfirm(e.target.value)}
-              InputLabelProps={{ shrink: true }} autoComplete="new-password"
-            />
-          )}
-          {mode === 'recovery' && (
-            <TextField
-              size="small" label="Reset link from your email" value={recoveryLink}
-              onChange={(e) => setRecoveryLink(e.target.value)}
-              placeholder="https://…/#access_token=…"
-              InputLabelProps={{ shrink: true }} multiline minRows={2}
+              disabled={s.authBusy}
             />
           )}
 
-          {error && <Alert severity="error" sx={{ py: 0.25 }}>{error}</Alert>}
-          {info && <Alert severity="info" sx={{ py: 0.25 }}>{info}</Alert>}
+          {error && <Alert severity="error" sx={{ py: 0.25, fontSize: '0.78rem' }}>{error}</Alert>}
+          {info && <Alert severity="info" sx={{ py: 0.25, fontSize: '0.78rem' }}>{info}</Alert>}
 
-          <Btn variant="primary" full disabled={busy} icon={mode === 'reset' ? 'send' : 'person'} onClick={() => void submit()}>
-            {mode === 'signin' ? 'Sign in'
-              : mode === 'create' ? 'Create account'
-              : mode === 'reset' ? 'Send reset link'
-              : 'Set new password'}
+          <Btn
+            variant="primary" full
+            icon={mode === 'reset' ? 'send' : 'person'}
+            onClick={() => { void submit(); }}
+            disabled={s.authBusy || !cloud}
+          >
+            {s.authBusy
+              ? <CircularProgress size={16} color="inherit" />
+              : mode === 'signin' ? 'Sign in' : mode === 'create' ? 'Create account' : 'Send reset link'}
           </Btn>
 
-          {mode === 'recovery' && (
-            <Btn full icon="arrow" onClick={() => { setMode('reset'); setError(''); setInfo(''); }}>
-              Send a new link
-            </Btn>
-          )}
-
           <Divider />
-          <Btn full icon="arrow" onClick={() => { s.setView('profiles'); }}>
+
+          <Btn full icon="arrow" onClick={() => s.continueLocally()}>
             Continue without an account
           </Btn>
 
           <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>
             {cloud
-              ? 'Accounts are handled by your Supabase project. Passwords are never stored by the app.'
-              : 'Local mode: your email and plan stay on this device. No password is stored or sent.'}
+              ? 'Passwords are sent only to your Supabase project and are never stored by the app.'
+              : 'Without a project, this workspace stays on this device and keeps the free tier.'}
           </Typography>
         </Stack>
       </Paper>
