@@ -47,6 +47,7 @@ function uiSources(dir = path.join(root, 'src'), out = []) {
 
 const mainActivity = read(path.join(javaDir, 'MainActivity.java'));
 const syncHttp = read(path.join(javaDir, 'SyncHttp.java'));
+const syncPoller = read(path.join(javaDir, 'SyncPoller.java'));
 const browserActivity = read(path.join(javaDir, 'BrowserActivity.java'));
 const ui = uiSources().map(read).join('\n');
 
@@ -78,18 +79,21 @@ check('the browser activity reads the extras the bridge writes', () => {
   return writes.join(', ');
 });
 
-check('the Android sync authenticates with the user session, not the anon key alone', () => {
-  // RLS keys off auth.uid(); an anon-key request has no identity, so every
-  // command insert was refused while the UI still reported success.
-  must(/saveConfig\(String url, String anonKey, String accessToken\)/.test(mainActivity),
-    'saveConfig must accept the session token');
-  must(/putString\("access_token"/.test(mainActivity), 'the token is not persisted');
-  must(/Bearer " \+ bearer\(p\)/.test(syncHttp), 'SyncHttp does not send the session token');
-  must(/public static boolean signedIn/.test(syncHttp), 'SyncHttp cannot tell a signed-out client');
-  must(!/WORKSPACE_ID/.test(syncHttp), 'the workspace must come from the server default, not a constant');
-  must(/saveConfig\(url \?\? '', anonKey \?\? '', accessToken \?\? ''\)/.test(ui),
-    'the UI never passes its access token to the bridge');
-  return 'session JWT + server-resolved workspace';
+check('the Android sync speaks only to the validated relay edge function', () => {
+  // Direct table writes were the shipped bug: row-level security refused the
+  // anon key, and a session-token path would put policy decisions in the
+  // client. The relay validates action/profile/device/payload server-side and
+  // alone holds the service-role key; the APK carries the publishable anon key.
+  must(/functions\/v1\/joe-command-validate/.test(syncHttp),
+    'SyncHttp does not call the joe-command-validate edge function');
+  must(/Bearer " \+ k\b/.test(syncHttp) || /Bearer " \+ key\b/.test(syncHttp),
+    'SyncHttp does not send the anon JWT the edge function expects');
+  must(!/service_role|sb_secret_/i.test(syncHttp), 'a service-role credential must never reach the APK');
+  must(/putString\("anon_key"/.test(mainActivity) || /anon_key/.test(mainActivity),
+    'the anon key is not persisted for the relay');
+  must(/prefs\.getString\("anon_key"/.test(syncPoller), 'the poller does not gate on the anon key');
+  must(!/access_token/.test(syncPoller), 'the poller must not wait for a session token the relay never needs');
+  return 'edge-function relay, service key server-side only';
 });
 
 check('the browser activity loads a per-profile injection script', () => {

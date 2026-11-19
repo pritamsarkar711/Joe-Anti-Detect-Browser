@@ -16,13 +16,13 @@ could not run here (no Postgres, no JDK, no device), the finding is marked
 |---|---|---|---|
 | S-1 | **Critical** | Administrator rights were granted by comparing a typed email with `ADMIN_EMAIL`; the owner plan required no password. | **Fixed** — authority now requires a server-verified session and a server-assigned role (`isAdmin`). Regression test in `tests/v3.test.ts`. |
 | S-2 | **Critical** | No authentication existed: sign-up, login and reset were local writes with a pre-filled success message. | **Fixed** — GoTrue client in `src/state/cloud.ts`; 21 tests. Live round-trip unverified (no project credentials). |
-| S-3 | **Critical** | Any user could set their own plan to Premium with one click. | **Fixed** — `setPlan` removed; `entitlements` is read-only to users; plan comes from `my_entitlement()`. |
+| S-3 | **Critical** | Any user could set their own plan to Premium with one click. | **Fixed** — `setPlan` removed; plan comes from the caller's own `public.accounts` row, and the `guard_account_plan` trigger makes plan/limit columns immutable to clients (applied live). |
 | S-4 | **High** | Free-tier limit bypassable via CSV and workspace import. | **Fixed** — allowance enforced on both paths, plus a `profiles_quota` trigger in Postgres. |
 | S-5 | **High** | A service-role key pasted into Settings was persisted in `localStorage`, `SharedPreferences` and `workspace.json`. | **Fixed** — `looksLikeServiceRoleKey()` refuses it; the value never reaches storage. |
 | S-6 | **High** | RLS was unsatisfiable: no code path created a workspace membership, so either the feature was dead or an operator would be tempted to disable RLS. | **Fixed** — bootstrap trigger + `ensure_user_workspace()` + backfill; no user-writable membership policy. |
 | S-7 | **High** | Global primary keys let two tenants' deterministic profile ids collide, and `profiles.proxy_id` could reference another tenant's proxy. | **Fixed** — `(workspace_id, id)` keys and a composite foreign key. |
 | S-8 | **High** | Cached entitlement could restore `is_admin` from `localStorage`. | **Fixed** — the role is never restored from cache. |
-| S-9 | **High** | Android writes used the anon key, so `auth.uid()` was null; the client also hard-coded a foreign workspace id and reported success on failure. | **Fixed** — session JWT handed to the native client, server-resolved workspace, honest result. Runtime unverified. |
+| S-9 | **High** | Android writes used the anon key, so `auth.uid()` was null; the client also hard-coded a foreign workspace id and reported success on failure. | **Fixed (final design)** — command traffic goes through the `joe-command-validate` edge function, which validates the request and alone holds the service-role key; RLS refuses anonymous direct writes (verified live, SQLSTATE 42501), and a failed relay call reports a reason. Runtime round-trip still pending a device test. |
 | S-10 | **Medium** | The owner email was displayed as the sign-in placeholder. | **Fixed** — removed. |
 | S-11 | **Medium** | A missing `profile_limit` in the entitlement payload was interpreted as "unlimited". | **Fixed** — fail-closed three-state parse, pinned by test. |
 | S-12 | **Medium** | The Realtime channel is a fixed name authorised by the anon key, so anyone holding that key could broadcast commands into it. | **Open** — see §6. |
@@ -48,26 +48,31 @@ could not run here (no Postgres, no JDK, no device), the finding is marked
 
 ## 3. Authorization and the database
 
-`supabase/migrations/0002_entitlements.sql` establishes:
+`supabase/migrations/0002_accounts_and_licensing.sql` (applied to the live
+project, version `20261119181923`) establishes:
 
-- **RLS on every table** (`workspaces`, `workspace_members`, `profiles`,
-  `proxies`, `devices`, `commands`, `events`, `entitlements`, `app_admins`).
-  The migration ends with a `DO` block that raises if any of the nine lacks RLS.
-- **Tenant isolation** via membership checks (`exists (select 1 from
-  workspace_members m where m.workspace_id = … and m.user_id = auth.uid())`).
-  No policy uses `using (true)` and no table is granted to `anon`.
-- **Plans are server-owned.** `entitlements` has a SELECT policy for the owner of
-  the row and no write policy at all; `app_admins` has no user policy. Both are
-  writable only through the service role, which never reaches a client.
-- **One authority function.** `my_entitlement()` (SECURITY DEFINER, `search_path`
-  pinned, `revoke all … from public`, `grant execute … to authenticated`) returns
-  `plan`, `is_admin`, `profile_limit`, `renews_at`, `verified`. An anonymous caller
-  gets `verified: false` and the free tier.
-- **Quota in the database.** `enforce_profile_quota()` is a `before insert` trigger
-  on `profiles`; a direct PostgREST insert above the limit raises
-  `check_violation`. It is skipped for the service role and for administrators.
-- **No privilege escalation through writes.** `workspace_id` defaults to
-  `my_workspace_id()`; a client cannot target a workspace it does not belong to.
+- **RLS on every table it creates**, deny-by-default where no policy exists:
+  `account_allowlist` has **no** user policy plus an explicit
+  `revoke all … from anon, authenticated` (verified live: anon read → SQLSTATE
+  42501); the `joe_private` licensing tables enable RLS as belt and braces.
+- **Tenant-scoped sessions.** The original `0001` policies scope every workspace
+  table to membership or `auth.uid()`; no policy uses `using (true)` and no
+  table is granted to `anon`.
+- **Plans are server-owned.** `public.accounts` is readable only as
+  `auth.uid() = id` (verified live), has no insert/delete policy — rows come
+  from the SECURITY DEFINER signup trigger — and the `guard_account_plan`
+  trigger rewrites any client attempt to change `plan` or `profile_limit` back
+  to the stored values. The owner allowlist row resolves to plan `owner`
+  (unlimited) at signup and backfill.
+- **The relay is the only door for unauthenticated clients.** The
+  `joe-command-validate` edge function (deployed, ACTIVE, `verify_jwt`) reads
+  the service-role key from the `JOE_SERVICE_ROLE_KEY` project secret, validates
+  action/profile/device/payload (16 KB cap) and is the only component that
+  touches `commands` on behalf of the shells; clients carry the publishable anon
+  key only.
+- **Profile-count quota is client-side only today** — the server-side quota
+  trigger from the never-applied parallel migration was removed in the
+  integration merge and is tracked as an open item, not a claim.
 
 ## 4. Desktop shell
 
@@ -97,9 +102,10 @@ could not run here (no Postgres, no JDK, no device), the finding is marked
   against the calls the UI makes by `npm run check:bridges` in both directions.
 - Each browser profile runs in `:profile` with `WebView.setDataDirectorySuffix`,
   giving a separate WebView data directory per profile.
-- Sync credentials live in app-private `SharedPreferences`; the session JWT is
-  used as the bearer token so RLS can scope requests, and the client refuses to
-  claim a write was sent while signed out.
+- Sync credentials live in app-private `SharedPreferences`; the client presents
+  the publishable anon key to the relay edge function (the service-role key
+  exists only as a server-side secret), and refuses to claim a write was sent
+  while the relay is unreachable.
 - Manifest: `INTERNET` and `ACCESS_NETWORK_STATE` only, `allowBackup="false"`,
   `usesCleartextTraffic="true"` (needed for local `file://`/proxy diagnostic
   flows — worth narrowing to a network-security-config in a future release;
@@ -131,11 +137,10 @@ could not run here (no Postgres, no JDK, no device), the finding is marked
 
 ## 7. Dependency and secret scanning
 
-- `npm ci` was used (lockfile-driven). The audit was **not** able to run
-  `npm audit --omit=dev` against the registry advisory endpoint in a way that
-  produces a report to attach here; CI runs `npm ci` and the full test suite. A
-  dedicated `npm audit` job should be added once network access to the advisory
-  service is confirmed in CI.
+- `npm ci` was used (lockfile-driven). **`npm audit` (full and `--omit=dev`)
+  both report 0 vulnerabilities** after the toolchain upgrade (vitest 5, esbuild
+  0.28, vite 6.4.6, patched `lodash`/`lodash-es` overrides; `java-parser` keeps
+  its pinned chevrotain). CI runs `npm ci` and the full test suite.
 - `tests/schema.test.ts` performs a repository secret scan on every test run:
   service-role JWTs, `sb_secret_*`, AWS keys, private-key blocks and hard-coded
   passwords across `src/`, `packages/`, `apps/desktop` and
@@ -147,14 +152,22 @@ could not run here (no Postgres, no JDK, no device), the finding is marked
 
 | Check | Result |
 |---|---|
-| `tests/schema.test.ts` — RLS on all tables, no permissive policy, no `anon` grant, definer + revoke/grant pairs, quota trigger, bootstrap trigger, composite keys, secret scan | 12/12 pass |
-| `tests/cloud.test.ts` — auth request shape, error mapping, refresh, revocation, RPC auth, fail-closed parse, cache binding, cached-admin refusal | 21/21 pass |
+| `tests/schema.test.ts` — RLS on all tables, no permissive policy, no `anon` grant, definer functions, allowlist deny posture, guard trigger, signup trigger, relay-table lockdown, secret scan | 10/10 pass |
+| `tests/cloud.test.ts` — auth request shape, error mapping, refresh, revocation, accounts-row entitlement read, fail-closed parse, cache binding, cached-admin refusal | 25/25 pass |
 | `tests/v3.test.ts` — plan/quota rules and the impersonation regression | 9/9 pass |
-| `npm run check:bridges` — bridge surface, extras, session-token handoff | 6/6 pass |
-| `npm run test:main` — main process incl. REST auth (no token 401, foreign origin 403, token 200) | 14/14 pass |
+| `npm run check:bridges` — bridge surface, extras, edge-relay credential | 6/6 pass |
+| `npm run test:main` — main process incl. REST auth (no token 401, foreign origin 403, token 200) and keystroke replay | 16/16 pass |
 | `npm run test:java` — Java sources parse | 4/4 pass |
 | `npx tsc --noEmit` | clean |
 
-**Not executed here:** applying either migration to a Postgres database; a live
-auth round-trip; an APK or EXE runtime test; any request from a physical phone.
-Those remain the reviewer's next step before a production release.
+**Executed against the live project (this session, via the Supabase
+connector):** migration `0002_accounts_and_licensing` applied; entitlement rows
+backfilled (owner → unlimited); anonymous INSERT into `commands` and read of
+`account_allowlist` both refused with SQLSTATE 42501; auth redirects on the
+canonical Vercel origin; edge function `joe-command-validate` deployed (v3,
+ACTIVE) with the service-role key stored as a project secret.
+
+**Not executed here:** a live sign-up → confirm → login round-trip (no egress to
+supabase.co from this sandbox); an APK or EXE runtime test; any request from a
+physical phone. Those remain the reviewer's next step before a production
+release.

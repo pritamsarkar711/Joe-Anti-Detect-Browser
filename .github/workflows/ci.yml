@@ -88,13 +88,17 @@ jobs:
       - name: Database migrations are present and fail closed
         run: |
           test -f supabase/migrations/0001_joe_browser_init.sql
-          test -f supabase/migrations/0002_entitlements.sql
+          test -f supabase/migrations/0002_accounts_and_licensing.sql
           node -e "
             const fs=require('fs');
-            const sql=fs.readFileSync('supabase/migrations/0002_entitlements.sql','utf8');
-            for (const needle of ['my_entitlement','enforce_profile_quota','joe_bootstrap_workspace','security definer']) {
+            const files=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sql')).sort();
+            const expected=['0001_joe_browser_init.sql','0002_accounts_and_licensing.sql'];
+            if (JSON.stringify(files)!==JSON.stringify(expected)) throw new Error('unexpected migrations: '+files.join(', '));
+            const sql=fs.readFileSync('supabase/migrations/0002_accounts_and_licensing.sql','utf8');
+            for (const needle of ['guard_account_plan','handle_new_account','account_allowlist','enable row level security','security definer']) {
               if (!sql.toLowerCase().includes(needle)) throw new Error('migration is missing '+needle);
             }
             if (/using\s*\(\s*true\s*\)/i.test(sql)) throw new Error('permissive RLS policy');
+            if (/to\s+anon\b/i.test(sql)) throw new Error('grant to anon');
             console.log('migration 0002 present and fail-closed');
           "

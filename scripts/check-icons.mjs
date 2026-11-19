@@ -148,6 +148,20 @@ check('no launcher drawable is a plain white box', () => {
   return 'all ic_* drawables carry the identity';
 });
 
+check('favicon and README logo use the canonical J monogram', () => {
+  // The brand generator once emitted the retired ring-and-dot, so the README
+  // header and favicons disagreed with the app itself. Every published copy
+  // of the mark must be the J from Brand.tsx.
+  const files = ['public/favicon.svg', 'site/favicon.svg', 'assets/brand/joe-browser.svg'];
+  for (const rel of files) {
+    const svg = fs.readFileSync(path.join(root, rel), 'utf8');
+    must(svg.includes(J_PATH), `${rel} does not contain the canonical J path`);
+    must(svg.includes(MARK_COLOR), `${rel} does not use ${MARK_COLOR}`);
+    must(!/<circle/.test(svg), `${rel} still contains the retired ring-and-dot mark`);
+  }
+  return `${files.length} published marks match Brand.tsx`;
+});
+
 if (failed > 0) {
   console.log(`\n${failed} brand check${failed === 1 ? '' : 's'} failed`);
   process.exit(1);

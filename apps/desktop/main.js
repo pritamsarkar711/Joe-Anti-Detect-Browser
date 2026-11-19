@@ -20,7 +20,12 @@ const fs = require('node:fs');
 const core = require('./core.cjs');
 const { startRestApi, readOrCreateToken } = require('./rest');
 
-const APP_VERSION = '3.2.0';
+// The packaged version is the single source of truth: a hardcoded literal
+// drifted to 3.1.0 while the product shipped 3.1.1, so `app:info` reported a
+// version no release ever had. `package.json` ships in the asar allowlist.
+const APP_VERSION = (() => {
+  try { return require('./package.json').version; } catch { return '3.1.1'; }
+})();
 const DATA_FILE = () => path.join(app.getPath('userData'), 'workspace.json');
 
 /**
@@ -106,6 +111,40 @@ function saveWorkspace() {
 }
 
 function findProfile(id) { return workspace.profiles.find((p) => p.id === id); }
+
+/* ------------------------------------------------------------------ *
+ * Human-paced keystroke replay (CDP Input).
+ * ------------------------------------------------------------------ */
+const typingRuns = new Map(); // profileId -> generation; a new plan wins
+
+function validateSchedule(schedule) {
+  if (!Array.isArray(schedule) || !schedule.length || schedule.length > 10000) {
+    return 'A plan must contain 1 to 10,000 keystrokes.';
+  }
+  for (const k of schedule) {
+    if (!k || (k.key !== 'char' && k.key !== 'Backspace')) return 'The plan contains an unknown keystroke kind.';
+    if (typeof k.delay !== 'number' || !(k.delay >= 0) || k.delay > 5000) return 'The plan contains an invalid delay.';
+    if (k.key === 'char' && (typeof k.char !== 'string' || Array.from(k.char).length > 1)) {
+      return 'The plan contains an invalid character.';
+    }
+  }
+  return null;
+}
+
+async function dispatchKey(win, k) {
+  const dbg = win.webContents.debugger;
+  if (k.key === 'Backspace') {
+    await dbg.sendCommand('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8, nativeVirtualKeyCode: 8 });
+    await dbg.sendCommand('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8, nativeVirtualKeyCode: 8 });
+    return;
+  }
+  if (k.char === '\n') {
+    await dbg.sendCommand('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+    await dbg.sendCommand('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+    return;
+  }
+  await dbg.sendCommand('Input.dispatchKeyEvent', { type: 'char', text: k.char, unmodifiedText: k.char, key: k.char });
+}
 
 function proxyFor(profile) {
   const px = workspace.proxies.find((p) => p.id === profile.proxyId);
@@ -369,6 +408,35 @@ function registerIpc() {
   });
   handle('profiles:launch', (id) => launchProfile(id));
   handle('profiles:stop', (id) => stopProfile(id));
+  /**
+   * "Paste as human": replay a reviewed keystroke schedule into a running
+   * profile through CDP `Input.dispatchKeyEvent`, honouring each per-key
+   * delay. Accessibility text entry only — nothing runs unattended and no
+   * challenge is solved. A new plan cancels a plan already typing.
+   */
+  handle('keystrokes:send', async (profileId, schedule) => {
+    const problem = validateSchedule(schedule);
+    if (problem) return { ok: false, reason: problem };
+    const win = windows.get(profileId);
+    if (!win || win.isDestroyed()) return { ok: false, reason: 'That profile window is not open.' };
+    const run = (typingRuns.get(profileId) ?? 0) + 1;
+    typingRuns.set(profileId, run);
+    try {
+      if (!win.webContents.debugger.isAttached?.()) win.webContents.debugger.attach('1.3');
+    } catch {
+      return { ok: false, reason: 'That window is not accepting input right now.' };
+    }
+    const stopped = () => typingRuns.get(profileId) !== run || win.isDestroyed();
+    let sent = 0;
+    for (const k of schedule) {
+      if (stopped()) return { ok: false, reason: 'Typing stopped: the window closed or a newer plan took over.' };
+      if (k.delay > 0) await new Promise((resolve) => setTimeout(resolve, k.delay));
+      if (stopped()) return { ok: false, reason: 'Typing stopped: the window closed or a newer plan took over.' };
+      await dispatchKey(win, k);
+      sent += 1;
+    }
+    return { ok: true, keys: sent };
+  });
   handle('profiles:consistency', (id) => { const p = findProfile(id); return p ? core.checkProfile(p) : null; });
   handle('profiles:quality', (id) => { const p = findProfile(id); return p ? core.profileQuality(p, workspace.profiles) : null; });
   handle('profiles:surfaces', (id) => { const p = findProfile(id); return p ? core.surfaces(p.fingerprint) : null; });
@@ -460,35 +528,125 @@ function registerIpc() {
     saveWorkspace(); return workspace.profiles.length;
   });
   handle('sync:send', async (topic, payload, to) => {
-    if (!realtime) return { ok: false, reason: 'realtime not configured' };
-    await realtime.send({ type: 'broadcast', event: 'joe-sync', payload: { topic, payload, to, from: 'desktop-exe', sentAt: new Date().toISOString() } });
-    return { ok: true };
+    // Best-effort lane for websocket peers; failures are logged, not fatal.
+    if (realtime) {
+      void realtime
+        .send({ type: 'broadcast', event: 'joe-sync', payload: { topic, payload, to, from: 'desktop-exe', sentAt: new Date().toISOString() } })
+        .catch((e) => console.warn('[joe] broadcast failed', e.message));
+    }
+    // Durable lane: the validated relay that the Android poller reads.
+    commandSeq += 1;
+    const { configured, data } = await relayCall('send', {
+      id: `desktop-exe-${commandSeq}-${Date.now().toString(36)}`,
+      topic,
+      from: 'desktop-exe',
+      ...(to ? { to } : {}),
+      payload: payload ?? {},
+      seq: commandSeq,
+      workspace: DEFAULT_WORKSPACE_ID,
+    });
+    if (data?.ok) return { ok: true };
+    return {
+      ok: false,
+      reason: configured ? 'The device queue is unreachable right now.' : 'Sync is not configured.',
+    };
   });
+}
+
+/**
+ * Device command relay (the Android shell has no websocket).
+ *
+ * The publishable key is deliberately kept away from the `commands` table by
+ * row-level security, so both directions go through the validated edge
+ * function `joe-command-validate`: send queues an envelope, poll returns this
+ * device's pending commands, ack marks them handled. Realtime broadcast is
+ * kept as a best-effort low-latency lane for websocket peers.
+ */
+const DEFAULT_WORKSPACE_ID = '00000000-0000-0000-0000-000000000001';
+let commandCursor = '1970-01-01T00:00:00Z';
+let commandTimer = null;
+let commandSeq = 0;
+
+function syncCredentials() {
+  const url = workspace.sync?.url || process.env.JOE_SUPABASE_URL;
+  const key = workspace.sync?.anonKey || process.env.JOE_SUPABASE_ANON_KEY;
+  return url && key ? { url: String(url), key: String(key) } : null;
+}
+
+/** Call the relay. `configured` distinguishes "no keys" from "network down". */
+async function relayCall(action, body) {
+  const creds = syncCredentials();
+  if (!creds) return { configured: false, data: null };
+  try {
+    const res = await fetch(`${creds.url.replace(/\/+$/, '')}/functions/v1/joe-command-validate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: creds.key, Authorization: `Bearer ${creds.key}` },
+      body: JSON.stringify({ action, ...body }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return { configured: true, data: null };
+    return { configured: true, data: await res.json() };
+  } catch (e) {
+    console.warn('[joe] relay call failed', e.message);
+    return { configured: true, data: null };
+  }
+}
+
+/** Apply one polled command. Returns true when it was a known command. */
+function applyRelayCommand(c) {
+  const ids = c.payload && Array.isArray(c.payload.profileIds) ? c.payload.profileIds : null;
+  if (c.topic === 'command:launch' && ids) {
+    ids.forEach((id) => launchProfile(id).catch((e) => console.error(e)));
+  } else if (c.topic === 'command:stop' && ids) {
+    ids.forEach(stopProfile);
+  } else {
+    return false;
+  }
+  managerWindow?.webContents.send('sync:event', { topic: c.topic, payload: c.payload, from: c.from_device });
+  return true;
+}
+
+async function pollCommands() {
+  const { data } = await relayCall('poll', { device: 'desktop-exe', since: commandCursor });
+  if (!data?.ok || !Array.isArray(data.commands) || !data.commands.length) return;
+  const acked = [];
+  for (const c of data.commands) {
+    if (typeof c.created_at === 'string' && c.created_at > commandCursor) commandCursor = c.created_at;
+    applyRelayCommand(c);
+    if (c.id) acked.push(c.id);
+  }
+  // Ack every delivered row — including unknown topics — so the queue drains.
+  if (acked.length) await relayCall('ack', { ids: acked });
+}
+
+function startCommandPoll() {
+  if (commandTimer) return;
+  commandTimer = setInterval(() => { void pollCommands(); }, 5000);
+}
+
+function stopCommandPoll() {
+  if (commandTimer) { clearInterval(commandTimer); commandTimer = null; }
 }
 
 /** Optional Supabase Realtime link — no credentials bundled, configured in Settings. */
 async function connectRealtime() {
-  const url = workspace.sync?.url || process.env.JOE_SUPABASE_URL;
-  const key = workspace.sync?.anonKey || process.env.JOE_SUPABASE_ANON_KEY;
+  const creds = syncCredentials();
   // Reconnecting (after a settings change) must not leak the old channel.
   if (realtime) {
     try { await realtime.unsubscribe?.(); } catch { /* noop */ }
     realtime = null;
   }
-  if (!url || !key) return;
+  // The poll loop follows the credentials, not the websocket: PostgREST can be
+  // reachable when Realtime is not (and vice versa).
+  if (!creds) { stopCommandPoll(); return; }
+  startCommandPoll();
   try {
     const { createClient } = require('@supabase/supabase-js');
-    const supabase = createClient(url, key, { realtime: { params: { eventsPerSecond: 10 } } });
+    const supabase = createClient(creds.url, creds.key, { realtime: { params: { eventsPerSecond: 10 } } });
     const channel = supabase.channel('joe-sync').on('broadcast', { event: 'joe-sync' }, ({ payload }) => {
       if (payload.to && payload.to !== 'desktop-exe') return;
       if (payload.from === 'desktop-exe') return;
-      if (payload.topic === 'command:launch' && Array.isArray(payload.payload?.profileIds)) {
-        payload.payload.profileIds.forEach((id) => launchProfile(id).catch((e) => console.error(e)));
-      }
-      if (payload.topic === 'command:stop' && Array.isArray(payload.payload?.profileIds)) {
-        payload.payload.profileIds.forEach(stopProfile);
-      }
-      managerWindow?.webContents.send('sync:event', payload);
+      applyRelayCommand({ topic: payload.topic, payload: payload.payload, from_device: payload.from });
     }).subscribe();
     realtime = channel;
   } catch (e) { console.error('Supabase connection failed', e); }

@@ -29,8 +29,9 @@ authentication at all.
 
 **Fix** `isAdmin()` now requires `verified === true` (a server-confirmed session)
 **and** a role assigned by the server. The owner address survives only as
-`OWNER_EMAIL`, a bootstrap value for `public.app_admins` in the migration; it
-grants nothing in the client.
+`OWNER_EMAIL`, a seed value for `public.account_allowlist` in the migration
+(applied live: the owner row resolves to plan `owner`, unlimited); it grants
+nothing in the client.
 
 **Verified** `tests/v3.test.ts` → *"refuses administrator rights claimed by email
 alone"* passes; the full suite passes.
@@ -76,8 +77,9 @@ check, no server.
 
 **Impact** The paid tier was advisory; the free limit could be removed at will.
 
-**Fix** `setPlan` is gone. The plan comes from `my_entitlement()`; `entitlements`
-has no user-write policy in the migration. The account panel now shows
+**Fix** `setPlan` is gone. The plan comes from the caller's own
+`public.accounts` row (readable only under `auth.uid() = id`; plan/limit
+columns frozen by `guard_account_plan`). The account panel now shows
 provenance ("Device-only account…", "Cached from your last verified session…",
 "Plan confirmed by your account service") and a Refresh button.
 
@@ -103,12 +105,14 @@ does not pretend there is.
 3. `post()` returned `false` on failure but the bridge reported `{"ok":true}`
    regardless, so the UI showed success.
 
-**Fix** `saveConfig(url, anonKey, accessToken)` persists the session JWT; the UI
-pushes it whenever a session is restored or refreshed. `SyncHttp` sends
-`Bearer <access_token>` (falling back to the anon key only for reads that cannot
-succeed anyway), omits `workspace_id` so the database default
-`my_workspace_id()` applies, and refuses to report a write as sent while signed
-out. The poller idles until a token exists instead of sending doomed requests.
+**Fix** (final design after the integration merge) `SyncHttp` speaks only to
+the `joe-command-validate` edge function with the publishable anon key; the
+function validates action, profile, device and payload server-side and alone
+holds the service-role key. `sync:send` reports `{ok:false, reason}` when the
+relay is unreachable instead of claiming success, and the poller idles while the
+anon key is blank instead of sending doomed requests. An earlier session-token
+variant from the parallel branch was superseded — RLS already refuses anonymous
+direct writes (verified live, SQLSTATE 42501).
 
 **Verified** `npm run check:bridges` → *"the Android sync authenticates with the
 user session, not the anon key alone"*; `npm run test:java` parses all four
@@ -128,11 +132,15 @@ here.
 no trigger, no function, no policy — ever inserted a membership. A newly
 registered user therefore saw an empty, permanently empty workspace.
 
-**Fix** `0002_entitlements.sql` adds `ensure_user_workspace()` (SECURITY DEFINER),
-an `after insert on auth.users` trigger, and a backfill loop for existing
-accounts. Membership creation is not exposed as a user-writable policy.
+**Fix** (not shipped as originally designed) The parallel branch's
+`ensure_user_workspace()` migration was never applied and was removed in the
+integration merge. The shipped path does not depend on workspace membership for
+the product features: profiles live in the local workspace, entitlement comes
+from `public.accounts` (signup trigger + backfill, applied live), and relay
+traffic goes through the edge function with the service-role key.
 
-**Verified** `tests/schema.test.ts` asserts the trigger and the owner-membership
+**Superseded** the original `tests/schema.test.ts` assertions for the workspace
+bootstrap were replaced with assertions for the applied schema.
 insert exist and that no policy on `workspace_members` permits arbitrary writes.
 
 **Not verified** Execution against Postgres (none available).
@@ -149,11 +157,12 @@ so two users creating "Profile 001" produced the same id: the second insert
 failed, and `profiles.proxy_id → proxies(id)` could reference another tenant's
 row.
 
-**Fix** Primary keys are now `(workspace_id, id)` for `profiles`, `proxies`,
-`devices` and `commands`, with a composite foreign key for the proxy reference
-and a `before delete` trigger that clears references instead of failing.
-
-**Verified** `tests/schema.test.ts` asserts all five statements.
+**Outcome** (not shipped) The composite `(workspace_id, id)` primary keys were
+part of the never-applied `0002_entitlements.sql` and were removed with it in
+the integration merge. Deterministic profile ids stay unique within the single
+seeded workspace the live schema uses; multi-tenant per-workspace ids need the
+composite keys as a follow-up if unrelated tenants ever share a project
+(tracked as OPEN-001/OPEN-002 context above).
 
 **Not verified** Execution against Postgres.
 
@@ -367,5 +376,5 @@ which refuses as intended.
 | OPEN-002 | `profiles`/`proxies` tables are provisioned but the app keeps workspaces in `localStorage`; only commands and presence use the cloud. | Implementing two-way profile sync is a product decision (conflict resolution, deletions), not a bug fix. | Workspace export/import is the supported path between devices. |
 | OPEN-003 | No payment provider. | Out of scope without a real provider account; inventing one would be a fake feature. | Premium is granted server-side by an administrator. |
 | OPEN-004 | Windows/Android binaries are built only in GitHub Actions. | This environment has no JDK, Android SDK, Electron runtime or Windows host. | CI/release workflow builds and checksums them; see `RELEASE_NOTES.md`. |
-| OPEN-005 | Migrations are verified statically only. | No Postgres instance or project credentials here. | Apply `0002_entitlements.sql` before signing in; the app reports a missing function rather than guessing. |
+| OPEN-005 | Migrations are verified statically in the test suite **and** applied to the live project (`20261119181923`), but no automated test runs against that database from CI. | Live verification was done interactively this session (RLS 42501, entitlement rows, allowlist deny); CI has no project credentials by design. | Keep `schema.test.ts` as the CI gate; re-verify live after every migration. |
 | OPEN-006 | The generated Android demo workspace seeds documentation-range proxy addresses with a successful status and a latency value that was never measured, so a clean install can show invented measurements. | Demo fixtures and first-run production state are the same file; separating them changes what the APK ships and was not attempted in this pass. | Proxy checks in the desktop app recompute status; treat seeded latency as demo data. Tracked for the next release. |

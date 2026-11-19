@@ -71,17 +71,24 @@ correct the description. Both were done.
 
 - Real Supabase auth client (`src/state/cloud.ts`) with typed errors, refresh
   rotation and an offline plan cache that never restores the admin flag.
-- Server-owned entitlement: `my_entitlement()` is the only source of plan/role;
-  `isAdmin` requires a verified session; the owner address survives only as a
-  database bootstrap value.
-- `0002_entitlements.sql`: workspace bootstrap trigger + backfill, `entitlements`
-  and `app_admins` (read-only to users), quota trigger, per-workspace primary keys,
-  server-resolved `workspace_id`, and a final `DO` block that fails if RLS is
-  missing on any table.
+- Server-owned entitlement: the caller's own `public.accounts` row (readable only
+  under `auth.uid() = id`) is the only source of plan/role; `isAdmin` requires a
+  verified session; the owner address survives only as an allowlist seed value.
+- `0002_accounts_and_licensing.sql` (applied live, `20261119181923`):
+  deny-all `account_allowlist`, `accounts` with own-row RLS and the
+  `guard_account_plan` freeze trigger, signup trigger + backfill for the three
+  pre-trigger users, `joe_private` licensing tables captured from the live
+  project, and an event trigger that re-enables RLS if a future migration
+  forgets it. A competing `0002_entitlements.sql` from the parallel branch was
+  removed in the integration merge — it was never applied anywhere.
 - Free-tier quota enforced on create, bulk, duplicate, CSV import and workspace
-  import; a service-role key is refused instead of stored.
-- Android client uses the session JWT and no longer reports success while signed
-  out.
+  import; a service-role key is refused instead of stored. The
+  `joe-command-validate` edge function is the only holder of the service-role
+  key and validates every relay payload; anonymous writes to `commands` are
+  refused live with SQLSTATE 42501.
+- Android and desktop command traffic goes through the relay (anon key to the
+  function), not through direct table writes; a failed relay call is reported as
+  a failure, never as sent.
 
 **Honesty corrections**
 
@@ -148,8 +155,10 @@ the commands are in `REQUIREMENTS_TRACKER.md`.
 
 ## 6. Recommended next steps
 
-1. Apply both migrations to a staging project and run an auth round-trip
-   (sign-up → confirm → login → `my_entitlement()` → quota trigger rejection).
+1. Run a full auth round-trip from a normal network
+   (sign-up → confirm → login → entitlement row read) — the migrations are
+   already applied to the live project, but this sandbox has no egress to
+   supabase.co. Add a server-side profile-quota trigger (client-side only today).
 2. Close `OPEN-001` (per-workspace Realtime channels + `realtime.messages` RLS)
    before letting unrelated tenants share a project.
 3. Install the CI-built EXE on Windows 10 and 11 and the APK on a physical

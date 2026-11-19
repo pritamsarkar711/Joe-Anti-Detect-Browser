@@ -29,6 +29,9 @@ declare global {
         replace(data: unknown): Promise<{ ok: boolean; profiles: number }>;
         read(): Promise<NativeWorkspace>;
       };
+      keystrokes?: {
+        send(profileId: string, schedule: Array<{ char: string; delay: number; key: 'char' | 'Backspace' }>): Promise<{ ok?: boolean; keys?: number; reason?: string }>;
+      };
     };
     __joeOnCommand?: (commands: Array<{ id: string; topic: string; payload: Record<string, unknown> }>) => void;
   }

@@ -9,17 +9,17 @@ Environment: Debian, Node `v22.22.3`, npm `10.9.8`, Python `3.11.2`, no display 
 | Command | Result |
 |---|---|
 | `npx tsc --noEmit` | pass, exit 0 |
-| `npm test` | 8 files, 87 tests passed (adds the account client and schema invariants) |
+| `npm test` | 9 files, 100 tests passed (account client, schema invariants, edge-relay unit tests) |
 | `npm run test:fingerprint` | 29/29 injection self-tests, exit 0 |
-| `npm run test:ui` | 35/35 real-browser checks, self-served |
+| `npm run test:ui` | 37/37 real-browser checks, self-served |
 | `npm run test:devices` | 75/75 checks on five Android families, self-served |
 | `npm run test:java` | 4/4 Java sources parse cleanly and contain no lambda or method reference (parse only, not compilation) |
 | `npm run test:site` | 15/15 static site, version and provenance checks |
-| `npm run test:icons` | 8/8 brand-asset checks (launch icon contrast, tile colour, canonical J path) |
+| `npm run test:icons` | 9/9 brand-asset checks (launch icon contrast, tile colour, canonical J path, published favicons/logo match Brand.tsx) |
 | `npm run test:desktop` | 10/10 desktop packaging checks (allowlist covers every runtime require; IPC channels match) |
-| `npm run check:bridges` | 6/6 native-bridge checks (Java methods, intent extras, session-token handoff, generated assets) |
+| `npm run check:bridges` | 6/6 native-bridge checks (Java methods, intent extras, edge-relay credential, generated assets) |
 | `npm run test:packaged` | 4/4 packaged-app checks (stages `build.files`, boots the main process) |
-| `npm run test:main` | 14/14 main-process checks against a functional Electron stand-in |
+| `npm run test:main` | 16/16 main-process checks against a functional Electron stand-in (adds keystroke replay and sync-failure reporting) |
 | `npm run test:ui-desktop` | 5/5 renderer checks against a stand-in preload bridge, over `http:` and `file:` |
 | `npm run build` | typecheck + production bundle |
 | `npm run build:core` | `apps/desktop/core.cjs`, 58 exports |
@@ -223,8 +223,12 @@ the defects in [`BUG_REPORT.md`](../BUG_REPORT.md) and the security review in
 [`SECURITY_AUDIT.md`](../SECURITY_AUDIT.md). Two environment limits matter when
 reading them:
 
-- **No database.** Both migrations are checked statically (`tests/schema.test.ts`);
-  neither was executed against Postgres, and no Supabase project was contacted.
+- **Database.** Migration `0002_accounts_and_licensing` **was executed against
+  the live Supabase project** (version `20261119181923`) and its key properties
+  verified there interactively (backfilled entitlement rows, deny-all allowlist,
+  anonymous writes refused with SQLSTATE 42501). CI still checks the SQL only
+  statically (`tests/schema.test.ts`); no sign-up round-trip was run from this
+  sandbox (no egress to supabase.co).
 - **No native toolchain.** The Windows EXE and the Android APK are produced by
   GitHub Actions. This environment has no JDK, Android SDK, Electron runtime or
   Windows host, so no binary was built or installed here. `test:packaged`,

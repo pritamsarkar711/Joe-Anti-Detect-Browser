@@ -1,12 +1,29 @@
 /** Render the static SEO site with real URLs, local fonts and local brand assets. */
 import fs from 'node:fs';
 import path from 'node:path';
+import { execSync } from 'node:child_process';
 
 const root = process.cwd();
 const src = path.join(root, 'site');
 const out = path.join(root, 'dist-site');
 const siteUrl = (process.env.SITE_URL ?? 'https://joe-browser-control.vercel.app').replace(/\/+$/, '');
-const branch = process.env.SITE_BRANCH ?? 'arena/b5fe5e24-joe-anti-detect-browser';
+
+/**
+ * The footer links `blob/<branch>/docs/VALIDATION.md` on GitHub. A stale
+ * hardcoded branch 404s, so default to the branch being built (CI sets
+ * SITE_BRANCH explicitly; local and PR builds fall back to the real HEAD,
+ * then to main outside a git checkout).
+ */
+function currentBranch() {
+  if (process.env.SITE_BRANCH) return process.env.SITE_BRANCH;
+  try {
+    const name = execSync('git rev-parse --abbrev-ref HEAD', { cwd: root, stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString().trim();
+    if (name && name !== 'HEAD') return name;
+  } catch { /* not a git checkout */ }
+  return 'main';
+}
+const branch = currentBranch();
 
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });

@@ -15,8 +15,12 @@
  * Truth model
  * -----------
  * - Identity and plan come from the server: `/auth/v1/token` proves the password
- *   and `my_entitlement()` (see supabase/migrations/0002_entitlements.sql) is the
- *   only source of `plan` and `is_admin`.
+ *   and the caller's row in `public.accounts` (see
+ *   supabase/migrations/0002_accounts_and_licensing.sql, applied to the live
+ *   project) is the only source of `plan` and the administrator flag. The row
+ *   is read with the user's JWT under RLS (`auth.uid() = id`), and the
+ *   `guard_account_plan` trigger makes every plan/limit column immutable to
+ *   clients.
  * - The anon key is public by design and is never used as a credential of
  *   authority; every privileged read is a user JWT subject to RLS.
  * - When no project is configured, or the migration has not been applied, the
@@ -351,7 +355,8 @@ function readLimit(value: unknown): number | null | undefined {
 }
 
 /**
- * Parse the `my_entitlement()` JSONB payload without trusting missing fields.
+ * Parse the normalised entitlement payload built from the `accounts` row
+ * without trusting missing fields.
  *
  * Fail-closed rule: a missing or malformed limit is NOT "unlimited". Only an
  * explicit `profile_limit: null` or a premium plan grants unlimited profiles,
@@ -374,10 +379,12 @@ export function parseEntitlement(payload: unknown, now = Date.now()): ServerEnti
 /**
  * Read the authoritative entitlement for this user.
  *
- * `my_entitlement` is a SECURITY DEFINER function that returns the caller's plan,
- * the administrator flag and the profile cap. Reading it through RPC means the
- * client cannot fabricate a plan: the value is computed by Postgres from tables
- * the user has no write policy on.
+ * The row lives in `public.accounts`, readable only by its owner through the
+ * `accounts: read own` RLS policy (`auth.uid() = id`), and every plan/limit
+ * column is frozen by the `guard_account_plan` trigger — so the client cannot
+ * fabricate a plan no matter what it sends. The `owner` plan (allowlist
+ * bootstrap only) maps to premium plus the administrator flag, which the
+ * client-side `isAdmin()` still requires a verified session to honour.
  */
 export async function fetchEntitlement(
   config: CloudConfig,
@@ -385,12 +392,14 @@ export async function fetchEntitlement(
   fetchImpl: FetchLike = fetch,
 ): Promise<ServerEntitlement> {
   if (!isConfigured(config)) throw new CloudError('not_configured', 'No Supabase project is configured.');
+  const uid = String(session.user?.id ?? '').trim();
+  if (!uid) throw new CloudError('expired_session', 'The session has no user id. Sign in again.');
   let response: Response;
   try {
-    response = await fetchImpl(`${config.url}/rest/v1/rpc/my_entitlement`, {
-      method: 'POST',
+    const query = `${config.url}/rest/v1/accounts?select=plan,unlimited,profile_limit&id=eq.${encodeURIComponent(uid)}&limit=1`;
+    response = await fetchImpl(query, {
+      method: 'GET',
       headers: headersFor(config, session.accessToken),
-      body: '{}',
     });
   } catch (error) {
     throw new CloudError('network', error instanceof Error ? error.message : 'Network error.');
@@ -398,10 +407,10 @@ export async function fetchEntitlement(
   const body = await readJson(response);
   if (!response.ok) {
     const message = messageOf(body, '');
-    if (response.status === 404 || message.includes('Could not find the function')) {
+    if (response.status === 404 || message.includes('public.accounts') || message.includes('schema cache')) {
       throw new CloudError(
         'not_provisioned',
-        'The project is missing my_entitlement(). Apply supabase/migrations/0002_entitlements.sql.',
+        'The project is missing public.accounts. Apply supabase/migrations/0002_accounts_and_licensing.sql.',
       );
     }
     if (response.status === 401 || response.status === 403) {
@@ -409,7 +418,31 @@ export async function fetchEntitlement(
     }
     throw new CloudError(apiError(response.status), message || 'The project rejected the entitlement request.');
   }
-  return parseEntitlement(body);
+  if (!Array.isArray(body) || body.length === 0) {
+    throw new CloudError(
+      'not_provisioned',
+      'This account has no entitlement row yet. The signup trigger creates it; sign out and in again after the migration is applied.',
+    );
+  }
+  const row = (body[0] ?? {}) as { plan?: unknown; unlimited?: unknown; profile_limit?: unknown };
+  const rawPlan = typeof row.plan === 'string' ? row.plan : 'free';
+  const isOwner = rawPlan === 'owner';
+  const plan = isOwner ? 'premium' : rawPlan === 'premium' || rawPlan === 'starter' ? rawPlan : 'free';
+  const limit =
+    row.unlimited === true
+      ? null
+      : typeof row.profile_limit === 'number' && Number.isFinite(row.profile_limit)
+        ? row.profile_limit
+        : plan === 'premium'
+          ? null
+          : 2;
+  return parseEntitlement({
+    plan,
+    is_admin: isOwner,
+    profile_limit: limit,
+    renews_at: null,
+    verified: true,
+  });
 }
 
 /* ------------------------------------------------------------------ *

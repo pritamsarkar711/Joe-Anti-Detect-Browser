@@ -28,13 +28,15 @@ is disclosed after a fix ships or after 90 days, whichever comes first.
 ## In scope
 
 - Authentication and session handling (`src/state/cloud.ts`, the account screens).
-- Authorization and data isolation: RLS policies, `my_entitlement()`,
-  `is_admin()`, the profile-quota trigger and the workspace bootstrap
-  (`supabase/migrations/`).
+- Authorization and data isolation: RLS policies, the `accounts: read own`
+  policy, the `guard_account_plan` trigger, the allowlist deny posture and the
+  `joe-command-validate` edge relay (`supabase/migrations/`,
+  `supabase/functions/`).
 - The Electron shell: preload bridge surface, IPC handlers, the loopback REST API
   and its token/origin checks, profile partition isolation, extension unpacking.
 - The Android shell: the JS bridge, intent extras, per-profile data directories,
-  the PostgREST client and the credential it sends.
+  the edge-function relay client and the credential it sends (publishable anon
+  key only).
 - Secret handling: anything that would put a service-role key, a private key or a
   password into a client, a log, a screenshot or a commit.
 - Packaging integrity: a build that omits a runtime module, ships a debug build as

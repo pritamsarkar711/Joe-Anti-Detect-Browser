@@ -1,5 +1,14 @@
 # Joe Browser 3.2.0
 
+> **Integration note.** After the tag attempt described here, an integration
+> merge replaced the sync path with the validated `joe-command-validate` edge
+> function, applied `0002_accounts_and_licensing.sql` to the live project
+> (removing the never-applied `0002_entitlements.sql`), made "Paste as human"
+> actually type through CDP, fixed the brand generator's retired mark, and took
+> the dependency audit to 0. The numbers below are from the final re-run of
+> every suite after that merge. The release itself remains blocked on the APK
+> signing secrets.
+
 **Accounts are real in this release.** The previous build showed a sign-in form
 that never contacted a server: any password was accepted, and typing the owner's
 email address unlocked the owner plan. That is fixed, and the plan now comes from
@@ -31,33 +40,43 @@ session that wrote it — see "What was not verified" below.
   server **and** a role assigned by the server. Typing the owner address grants
   nothing. A Premium plan written into `localStorage` is ignored on reload — this
   is now an automated end-to-end assertion, not a promise.
-- **Plans are server-owned.** The app reads `my_entitlement()`; the `entitlements`
-  and `app_admins` tables have no user write policy. The in-app "Unlock Premium"
+- **Plans are server-owned.** The app reads the caller's own `public.accounts`
+  row (row-level security: `auth.uid() = id`); the `guard_account_plan` trigger
+  makes plan and limit columns immutable to clients. The in-app "Unlock Premium"
   button is gone, and nothing pretends a payment happened.
-- **Quota enforced twice.** In the shared core for UX, and in Postgres by a
-  `before insert` trigger so an API client cannot exceed the plan. CSV and
-  workspace import — previously a one-click bypass — now respect the limit too.
+- **Quota enforced in the shared core for UX** (including CSV and workspace
+  import, previously a one-click bypass) **and, for plans, in Postgres** by the
+  `guard_account_plan` trigger. A server-side profile-count trigger remains an
+  open item — not a claim.
 
 ### Database
 
-`supabase/migrations/0002_entitlements.sql` (apply it before signing in):
+`supabase/migrations/0002_accounts_and_licensing.sql` — **already applied to the
+live project** (version `20261119181923`):
 
-- creates a personal workspace and owner membership for every auth user, with a
-  backfill for existing accounts — without this, RLS made the cloud feature
-  permanently empty;
-- adds `entitlements` and `app_admins` with read-only access for users;
-- adds `my_entitlement()`, `is_admin()` and `enforce_profile_quota()`, all
-  `SECURITY DEFINER` with `search_path` pinned and `public` execution revoked;
-- scopes primary keys to `(workspace_id, id)`, because profile ids are
-  deterministic and two users creating "Profile 001" collided;
-- ends with a check that fails if row-level security is missing on any table.
+- creates the deny-all `account_allowlist` and the `public.accounts` entitlement
+  row for every auth user, with a backfill for the three users who signed up
+  before the trigger existed (the owner row resolves to plan `owner`, unlimited);
+- gives users read access to **their own row only** and freezes plan/limit with
+  the `guard_account_plan` trigger;
+- captures the `joe_private` licensing tables and the `msap_*` RPCs exactly as
+  they exist live, behind `require_user()`/`require_admin()`;
+- ends with an event trigger that re-enables row-level security if a future
+  migration forgets it.
+
+A competing `0002_entitlements.sql` from a parallel branch (workspace bootstrap,
+`entitlements`, `my_entitlement()`, quota trigger, composite primary keys) was
+**never applied to any project** and was removed in the integration merge so the
+repository has exactly one 0002 — the one the live database runs.
 
 ### Android sync
 
-The phone's PostgREST client now sends the signed-in user's session token instead
-of the anon key, lets the database resolve the workspace, and no longer reports a
-command as sent while signed out or after a failure. Previously every write was
-refused by RLS and the UI still showed success.
+Commands now flow through the `joe-command-validate` edge function (send /
+poll / ack): the phone and the desktop present the publishable anon key, the
+function validates action, profile, device and payload, and only it holds the
+service-role key. Anonymous direct writes to `commands` are refused by RLS
+(SQLSTATE 42501, verified live), and a failed relay call is reported as a
+failure — never as sent.
 
 ### Product honesty
 
@@ -86,8 +105,8 @@ refused by RLS and the UI still showed success.
   own server and shut it down; they work on a clean checkout.
 - A failed device run no longer overwrites the committed `report.json` with a
   "connection refused" result.
-- New tests: 21 for the account client, 12 schema/secret invariants, 2 security
-  regressions, 2 rewritten end-to-end checks.
+- New tests: 25 for the account client, 10 schema/secret invariants, 13 for the
+  relay edge function, 2 security regressions, 2 rewritten end-to-end checks.
 
 ---
 
@@ -95,25 +114,28 @@ refused by RLS and the UI still showed success.
 
 1. Install the new build over the old one (settings and profiles are preserved;
    the workspace key is unchanged).
-2. Apply `supabase/migrations/0002_entitlements.sql` to your project
-   (`supabase db push`, or paste it into the SQL editor).
+2. Apply `supabase/migrations/0002_accounts_and_licensing.sql` to your project
+   (`supabase db push`, or paste it into the SQL editor) — already applied to the
+   live project.
 3. Settings → Sync: paste the project URL and the **publishable (anon)** key. A
    service-role key is refused — it must never be in a client.
 4. Sign in from Account & plan. Until you do, the app runs on the local free tier
    and says so.
 
-If step 2 is skipped, the account screen reports that the project is missing
-`my_entitlement()` and stays on the free tier instead of guessing.
+If step 2 is skipped (or the entitlement row is missing), the account screen
+reports that and stays on the free tier instead of guessing.
 
 ## Validation
 
 Executed in the session that produced this release (Debian, Node 22; no JDK,
 Android SDK, Electron runtime, Postgres or device):
 
-`tsc` clean · `npm test` 87/87 · `test:ui` 37/37 · `test:devices` 75/75 ·
+`tsc` clean · `npm test` 100/100 (9 files) · `test:ui` 37/37 · `test:devices` 75/75 ·
 `test:fingerprint` 29/29 · `test:site` 15/15 · `test:java` 4/4 (parse only) ·
-`test:icons` 8/8 · `test:desktop` 10/10 · `check:bridges` 6/6 ·
-`test:packaged` 4/4 · `test:main` 14/14 · `test:ui-desktop` 5/5.
+`test:icons` 9/9 · `test:desktop` 10/10 · `check:bridges` 6/6 ·
+`test:packaged` 4/4 · `test:main` 16/16 · `test:ui-desktop` 5/5 ·
+`npm audit` 0 (production and development). Live Supabase evidence: migration
+applied, entitlement rows backfilled, anon writes denied with SQLSTATE 42501.
 
 Full detail: [`TEST_REPORT.md`](TEST_REPORT.md),
 [`SECURITY_AUDIT.md`](SECURITY_AUDIT.md),
@@ -125,8 +147,11 @@ Full detail: [`TEST_REPORT.md`](TEST_REPORT.md),
 
 - **No Windows or Android binary was built or installed** in the session that
   wrote these notes; the release workflow does that on GitHub runners.
-- **Neither migration was executed** against Postgres, and no live Supabase
-  request was made. Schema guarantees are checked statically.
+- **Migration 0002 was executed against the live project** (version
+  `20261119181923`) and its key properties verified there — backfilled
+  entitlement rows, deny-all allowlist, anon write refusal — but no sign-up →
+  confirm → login round-trip was run from this sandbox (no egress to
+  supabase.co). Migration 0001 was already live.
 - **No physical device or emulator** was used. The 75 "device" checks are headless
   Chromium viewports with mobile emulation, portrait only.
 - **No third-party detector score** is claimed. None was reachable from the build
