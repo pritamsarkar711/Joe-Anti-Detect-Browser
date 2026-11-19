@@ -94,7 +94,7 @@ export interface Toast { id: string; text: string; kind: 'ok' | 'warn' | 'err' |
  */
 const STORAGE_KEY = 'joe-browser:v3';
 const LEGACY_KEYS = ['joe-browser:v2'];
-export const APP_VERSION = '3.0.0';
+export const APP_VERSION = '3.1.0';
 
 const DEFAULT_SETTINGS: Settings = {
   theme: 'light',
