@@ -10,9 +10,16 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.net.URLEncoder;
 
-/** Minimal PostgREST client for EXE ⇄ APK sync. No external dependencies. */
+/**
+ * Client for the validated Supabase edge relay (joe-command-validate).
+ *
+ * The publishable key is kept away from the commands table by row-level
+ * security, so every direction goes through the edge function: send queues an
+ * envelope, poll returns this device's pending commands, ack marks them
+ * handled. No external dependencies, no lambdas (the APK toolchain here
+ * cannot desugar them — see scripts/check-java.mjs).
+ */
 public class SyncHttp {
 
     public static final String DEFAULT_URL = "https://rajxyaatbvlrxxzjntmo.supabase.co";
@@ -28,17 +35,6 @@ public class SyncHttp {
         return p.getString("anon_key", "");
     }
 
-    private static HttpURLConnection open(SharedPreferences p, String path, String method) throws Exception {
-        HttpURLConnection c = (HttpURLConnection) new URL(base(p) + path).openConnection();
-        c.setRequestMethod(method);
-        c.setConnectTimeout(6000);
-        c.setReadTimeout(6000);
-        c.setRequestProperty("apikey", key(p));
-        c.setRequestProperty("Authorization", "Bearer " + key(p));
-        c.setRequestProperty("Content-Type", "application/json");
-        return c;
-    }
-
     private static String read(HttpURLConnection c) throws Exception {
         BufferedReader r = new BufferedReader(new InputStreamReader(c.getInputStream(), "UTF-8"));
         StringBuilder sb = new StringBuilder();
@@ -48,52 +44,85 @@ public class SyncHttp {
         return sb.toString();
     }
 
-    /** Write a command so the desktop EXE (or the web dashboard) can pick it up. */
-    public static boolean post(SharedPreferences p, String topic, String from, String to, String payloadJson) {
-        if (key(p) == null || key(p).isEmpty()) return false;
+    /** POST one action to the relay. Returns the response body, or null. */
+    private static String call(SharedPreferences p, JSONObject body) {
+        String k = key(p);
+        if (k == null || k.isEmpty()) return null;
         HttpURLConnection c = null;
         try {
-            c = open(p, "/rest/v1/commands", "POST");
-            c.setRequestProperty("Prefer", "return=minimal");
+            c = (HttpURLConnection) new URL(base(p) + "/functions/v1/joe-command-validate").openConnection();
+            c.setRequestMethod("POST");
+            c.setConnectTimeout(6000);
+            c.setReadTimeout(6000);
+            c.setRequestProperty("apikey", k);
+            c.setRequestProperty("Authorization", "Bearer " + k);
+            c.setRequestProperty("Content-Type", "application/json");
             c.setDoOutput(true);
-            JSONObject body = new JSONObject();
-            body.put("id", from + "-" + System.currentTimeMillis());
-            body.put("workspace_id", WORKSPACE_ID);
-            body.put("topic", topic);
-            body.put("from_device", from);
-            body.put("to_device", to);
-            try { body.put("payload", new JSONObject(payloadJson)); }
-            catch (Exception e) { body.put("payload", new JSONObject().put("raw", payloadJson)); }
             OutputStream os = c.getOutputStream();
             os.write(body.toString().getBytes("UTF-8"));
             os.close();
             int code = c.getResponseCode();
-            return code >= 200 && code < 300;
+            if (code < 200 || code >= 300) return null;
+            return read(c);
         } catch (Exception e) {
-            return false;
+            return null;
         } finally {
             if (c != null) c.disconnect();
         }
     }
 
+    /** Queue a command so the desktop EXE (or the web dashboard) can pick it up. */
+    public static boolean post(SharedPreferences p, String topic, String from, String to, String payloadJson) {
+        try {
+            JSONObject body = new JSONObject();
+            body.put("action", "send");
+            body.put("id", from + "-" + System.currentTimeMillis());
+            body.put("workspace", WORKSPACE_ID);
+            body.put("topic", topic);
+            body.put("from", from);
+            if (to != null) body.put("to", to);
+            try {
+                body.put("payload", new JSONObject(payloadJson));
+            } catch (Exception e) {
+                body.put("payload", new JSONObject().put("raw", payloadJson));
+            }
+            body.put("seq", System.currentTimeMillis());
+            String resp = call(p, body);
+            if (resp == null) return false;
+            return new JSONObject(resp).optBoolean("ok", false);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     /** Poll commands addressed to this APK since the last poll timestamp. */
     public static String commandsSince(SharedPreferences p, String isoTimestamp) {
-        if (key(p) == null || key(p).isEmpty()) return null;
-        HttpURLConnection c = null;
         try {
-            String path = "/rest/v1/commands?select=id,topic,payload,from_device,created_at"
-                    + "&to_device=eq.android-apk&status=eq.pending"
-                    + "&created_at=gt." + URLEncoder.encode(isoTimestamp, "UTF-8")
-                    + "&order=created_at.asc&limit=20";
-            c = open(p, path, "GET");
-            int code = c.getResponseCode();
-            if (code < 200 || code >= 300) return null;
-            JSONArray arr = new JSONArray(read(c));
-            return arr.toString();
+            JSONObject body = new JSONObject();
+            body.put("action", "poll");
+            body.put("device", "android-apk");
+            body.put("since", isoTimestamp);
+            String resp = call(p, body);
+            if (resp == null) return null;
+            JSONObject parsed = new JSONObject(resp);
+            if (!parsed.optBoolean("ok", false)) return null;
+            JSONArray arr = parsed.optJSONArray("commands");
+            return arr == null ? "[]" : arr.toString();
         } catch (Exception e) {
             return null;
-        } finally {
-            if (c != null) c.disconnect();
+        }
+    }
+
+    /** Mark handled commands delivered so the queue drains across devices. */
+    public static void ack(SharedPreferences p, JSONArray ids) {
+        if (ids == null || ids.length() == 0) return;
+        try {
+            JSONObject body = new JSONObject();
+            body.put("action", "ack");
+            body.put("ids", ids);
+            call(p, body);
+        } catch (Exception ignored) {
+            // Bookkeeping only: the poll cursor already prevents re-delivery.
         }
     }
 }

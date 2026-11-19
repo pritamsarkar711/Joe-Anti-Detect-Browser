@@ -45,13 +45,15 @@ const cleanup = () => fs.rmSync(userData, { recursive: true, force: true });
 /* ------------------------------------------------------------------ mocks */
 const handlers = new Map();
 const sentToRenderer = [];
+const debuggerCommands = [];
 let createdWindows = [];
 
 class FakeWebContents {
   constructor() {
     this.debugger = {
       attach() {},
-      sendCommand() { return Promise.resolve(); },
+      isAttached() { return true; },
+      sendCommand(cmd, params) { debuggerCommands.push({ cmd, params }); return Promise.resolve(); },
     };
     this.userAgent = null;
   }
@@ -286,6 +288,32 @@ await check('profile launch applies a session, proxy and window', async () => {
   return 'session + window + UA applied';
 });
 
+await check('keystrokes:send replays a reviewed plan into a running window', async () => {
+  // Paste-as-human used to be a fake button that only copied. The real path
+  // dispatches each key through CDP with its delay and rejects bad plans.
+  const [profile] = await invoker('profiles:list')();
+  await invoker('profiles:launch')(profile.id);
+  const before = debuggerCommands.filter((c) => c.cmd === 'Input.dispatchKeyEvent').length;
+  const result = await invoker('keystrokes:send')(profile.id, [
+    { char: 'h', delay: 1, key: 'char' },
+    { char: 'i', delay: 1, key: 'char' },
+    { char: '', delay: 1, key: 'Backspace' },
+  ]);
+  must(result?.ok, `keystrokes:send failed: ${JSON.stringify(result)}`);
+  must(result.keys === 3, `expected 3 keys dispatched, got ${result.keys}`);
+  const dispatched = debuggerCommands.filter((c) => c.cmd === 'Input.dispatchKeyEvent');
+  must(dispatched.length >= before + 4, `expected char and backspace events, saw ${dispatched.length - before}`);
+  must(dispatched.some((c) => c.params?.type === 'char' && c.params?.text === 'h'), 'no char event for h');
+  must(dispatched.some((c) => c.params?.key === 'Backspace'), 'no Backspace event');
+
+  const badDelay = await invoker('keystrokes:send')(profile.id, [{ char: 'x', delay: -1, key: 'char' }]);
+  must(badDelay?.ok === false && badDelay.reason, 'an invalid schedule was accepted');
+  const closed = await invoker('keystrokes:send')('prf_missing', [{ char: 'x', delay: 1, key: 'char' }]);
+  must(closed?.ok === false && closed.reason, 'sending to a closed window reported success');
+  await invoker('profiles:stop')(profile.id);
+  return `${result.keys} keys dispatched, invalid plans refused`;
+});
+
 await check('the UI workspace syncs first, then launches the UI\'s own profiles', async () => {
   // The shipped bug: the UI's profiles existed only in localStorage, so this
   // exact call sequence threw "Unknown profile" and no window ever opened.
@@ -335,6 +363,15 @@ await check('sync credentials from the UI are stored and applied', async () => {
   must(saved.sync?.url === 'https://example.supabase.co', 'the URL was not persisted');
   must(saved.sync?.anonKey === 'test-key', 'the key was not persisted');
   return 'persisted to workspace.json and reconnected';
+});
+
+await check('sync:send reports a reason instead of claiming success', async () => {
+  // The relay points at a placeholder host here, so the send must fail — and
+  // say why. A silent `ok: true` is exactly the bug this guards against.
+  const result = await invoker('sync:send')('command:launch', { profileIds: ['prf_1'] }, 'android-apk');
+  must(result && result.ok === false, `expected a reported failure, got ${JSON.stringify(result)}`);
+  must(typeof result.reason === 'string' && result.reason.length > 0, 'failure carried no reason');
+  return result.reason;
 });
 
 await check('the local REST API answers /health and rejects unauthenticated calls', async () => {

@@ -178,7 +178,7 @@ export function ProfileDetail() {
 
         {tab === 'tools' && (
           <Stack spacing={2}>
-            <Paper variant="outlined" sx={{ p: 1.8 }}><PasteAsHuman profileName={p.name} /></Paper>
+            <Paper variant="outlined" sx={{ p: 1.8 }}><PasteAsHuman profileName={p.name} profileId={p.id} /></Paper>
             <Paper variant="outlined" sx={{ p: 1.5 }}>
               <Typography sx={{ fontSize: '0.84rem', fontWeight: 600, mb: 0.4 }}>History for this profile</Typography>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>

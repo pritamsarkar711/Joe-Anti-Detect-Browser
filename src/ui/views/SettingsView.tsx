@@ -60,8 +60,8 @@ export function SettingsView() {
                 )}
               </Stack>
               <Typography variant="caption" color="text.secondary">
-                Sign-in runs locally today. Cloud accounts (email sign-up, secure login and password reset) activate as soon as
-                Supabase credentials are set in Sync.
+                Without credentials, sign-in stays local — email and plan on this device only. With Supabase credentials in
+                Sync, the account screen runs real cloud auth: email sign-up, confirmation, secure login and password reset.
               </Typography>
             </Stack>
           </Panel>

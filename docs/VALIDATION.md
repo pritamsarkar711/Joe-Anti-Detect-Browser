@@ -9,17 +9,17 @@ Environment: Debian, Node `v22.22.3`, npm `10.9.8`, Python `3.11.2`, no display 
 | Command | Result |
 |---|---|
 | `npx tsc --noEmit` | pass, exit 0 |
-| `npm test` | 6 files, 51 tests passed |
+| `npm test` | 8 files, 74 tests passed (adds Supabase auth flows and edge-function relay unit tests) |
 | `npm run test:fingerprint` | 29/29 injection self-tests, exit 0 |
 | `npm run test:ui` | 35/35 real-browser checks, no console errors |
 | `npm run test:devices` | 75/75 checks on five Android families |
 | `npm run test:java` | 4/4 Java sources parse cleanly and contain no lambda or method reference (parse only, not compilation) |
 | `npm run test:site` | 15/15 static site, version and provenance checks |
-| `npm run test:icons` | 8/8 brand-asset checks (launch icon contrast, tile colour, canonical J path) |
+| `npm run test:icons` | 9/9 brand-asset checks (launch icon contrast, tile colour, canonical J path, published marks match Brand.tsx) |
 | `npm run test:desktop` | 8/8 desktop packaging checks (allowlist covers every runtime require; IPC channels match) |
 | `npm run check:bridges` | 5/5 native-bridge checks (Java methods, intent extras, generated assets) |
 | `npm run test:packaged` | 4/4 packaged-app checks (stages `build.files`, boots the main process) |
-| `npm run test:main` | 14/14 main-process checks against a functional Electron stand-in |
+| `npm run test:main` | 16/16 main-process checks against a functional Electron stand-in (adds keystroke replay and sync-failure reporting) |
 | `npm run test:ui-desktop` | 5/5 renderer checks against a stand-in preload bridge, over `http:` and `file:` |
 | `npm run build` | typecheck + production bundle |
 | `npm run build:core` | `apps/desktop/core.cjs`, 58 exports |
@@ -27,8 +27,9 @@ Environment: Debian, Node `v22.22.3`, npm `10.9.8`, Python `3.11.2`, no display 
 | `npm run build:desktop` | Desktop web bundle (`apps/desktop/web-dist/`) |
 | `npm run build:assets` | 16 profiles, 17 self-testing injection scripts, bundled UI |
 | `npm run build:site` | `dist-site/` generated for the canonical URL |
-| `npm run build:brands` | 33 official brand marks, Joe Browser mark, 12 flags |
+| `npm run build:brands` | 34 official brand marks, Joe Browser mark (J monogram), 12 flags |
 | `npm run screenshots` | 17 app captures + 11 cropped site captures + OG card |
+| `npm audit` / `npm audit --omit=dev` | 0 vulnerabilities in both (was 11 entries, 2 critical — dev toolchain only) |
 
 ### The 3.1.0 launch failure
 
@@ -205,6 +206,33 @@ Verified in a real Chromium context: the iPhone payload reports `navigator.userA
 - **Dead-end create flow:** the demo workspace held 24 profiles against a 2-profile free tier, so every create attempt was refused. The demo is now six profiles on a six-profile demo allowance; signing in switches to the real two-profile free tier or Premium.
 - **Build scripts could not run in CI:** `cross-env` was used by `build:desktop` and `build:android-ui` but never depended on. A dependency-free runner replaces it.
 - **Android blank frames:** challenge iframes are child frames that `evaluateJavascript` on the main frame cannot reach, so the payload could disappear. The profile browser now re-injects per frame with three bounded retries and shows an offline error page instead of white.
+
+## Second checkpoint additions (2026-11-19)
+
+- `npm test` grew from 51 to **74** tests across 8 files: `tests/auth.test.ts`
+  (10) covers Supabase sign-up/confirmation/sign-in/reset/session flows with an
+  injected `authFetch`, and `tests/command-function.test.ts` (13) covers the
+  relay's action validation, workspace scoping, 16 KB payload cap, service-role
+  call and ack-before-delete ordering.
+- `test:main` grew from 14 to **16**: `keystrokes:send` dispatches char and
+  Backspace CDP events and refuses invalid plans and closed windows;
+  `sync:send` reports a reason instead of claiming success when the relay is
+  unreachable.
+- Live database evidence (via the Supabase connector): migration
+  `accounts_and_licensing` applied; three entitlement rows backfilled with the
+  owner on `owner`/unlimited; an anonymous INSERT into `commands` fails with
+  **SQLSTATE 42501**; auth redirects use the canonical Vercel origin; edge
+  function `joe-command-validate` is deployed v3 ACTIVE.
+- Dependency audit moved from 11 findings (2 critical) to **0**; every suite
+  was re-run green after the toolchain upgrade.
+- Brand drift found and fixed: the generator still emitted the retired
+  ring-and-dot, so the README header and favicons disagreed with the app's J
+  monogram. `test:icons` now fails if any published mark drifts.
+
+**Still not claimed:** a live edge-function invocation from a real EXE/APK
+(this sandbox cannot reach supabase.co), a real Supabase sign-up observed end
+to end from this network, Windows install/launch evidence, Android
+device/emulator evidence, and any detector score.
 
 ## What is not claimed
 

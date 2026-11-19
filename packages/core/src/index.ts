@@ -15,5 +15,6 @@ export {
 export {
   PLANS, FREE_PROFILE_LIMIT, ADMIN_EMAIL,
   planFor, isAdmin, checkProfileQuota, browserAllowed, lockedBrowsers, engineRequiresPremium,
-  type Plan, type PlanId, type Account, type Entitlement,
+  accountFromServer,
+  type Plan, type PlanId, type Account, type Entitlement, type ServerAccountRow,
 } from './plans';

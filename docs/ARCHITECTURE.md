@@ -35,7 +35,8 @@ Joe Browser 2.0 is a TypeScript-first profile isolation system with thin native 
                     ┌─────────▼─────────┐
                     │ Supabase          │
                     │ Postgres + RLS    │
-                    │ Realtime commands │
+                    │ validated edge    │
+                    │ function (relay)  │
                     └───────────────────┘
 ```
 
@@ -68,7 +69,15 @@ The payload installs two hooks:
 
 ### `packages/sync`
 
-Transport-agnostic sync contracts plus a Supabase adapter. Desktop and Android exchange `commands` and publish `events`; device presence uses the `devices` table. Realtime carries live changes, and Postgres remains the source of truth.
+Transport-agnostic sync contracts plus a Supabase adapter. Desktop and Android
+exchange `commands` and publish `events`; device presence uses the `devices`
+table. **The relay is the `joe-command-validate` edge function** (actions
+`send` / `poll` / `ack`): clients call it with the publishable anon key, it
+validates action, profile, device, payload shape and size, and only it holds
+the service-role key. Row-level security denies clients direct access to the
+relay tables (an anonymous INSERT fails with SQLSTATE 42501), so Postgres
+remains the source of truth and the function is the only door. Realtime is no
+longer part of the command path.
 
 ## Native shells
 

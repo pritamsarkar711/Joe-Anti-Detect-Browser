@@ -27,7 +27,7 @@ Joe Browser is a source-available **profile isolation manager**. Each profile ke
 
 Engines ship **inside** the app: Joe Browser, Chrome, Edge, Brave and Firefox builds are launched from the bundled engine, so a profile never depends on, or connects to, a browser installed on the machine. A new profile opens `https://browserscan.net/` so it can be checked immediately.
 
-The Windows **EXE** and Android **APK** communicate through <img src="assets/brand/marks/supabase.svg" alt="Supabase" width="16" height="16" /> **Supabase** Realtime and Postgres. <img src="assets/brand/marks/vercel.svg" alt="Vercel" width="16" height="16" /> **Vercel** hosts this SEO site and control plane. <img src="assets/brand/marks/github.svg" alt="GitHub" width="16" height="16" /> **GitHub Actions** builds and publishes both binaries.
+The Windows **EXE** and Android **APK** communicate through <img src="assets/brand/marks/supabase.svg" alt="Supabase" width="16" height="16" /> **Supabase** — commands flow through a validated edge function that alone holds the service-role key; row-level security keeps clients out of the relay tables. <img src="assets/brand/marks/vercel.svg" alt="Vercel" width="16" height="16" /> **Vercel** hosts this SEO site and control plane. <img src="assets/brand/marks/github.svg" alt="GitHub" width="16" height="16" /> **GitHub Actions** builds and publishes both binaries.
 
 ### Download
 
@@ -51,7 +51,7 @@ Get all three from the [latest GitHub Release](https://github.com/pritamsarkar71
 | Proxies | Assign + geo match | Plus offline and rotation alerts |
 | Extras | History per profile, local probe | Bulk create, import, extension library, paste-as-human typing |
 
-The free limit is enforced in the shared core (`packages/core/src/plans.ts`) and is the same in the web UI, the desktop shell and the Android app. Existing profiles are never removed when a plan changes.
+The free limit is enforced in the shared core (`packages/core/src/plans.ts`) — the same in the web UI, the desktop shell and the Android app — **and server-side**: the `guard_account_plan` trigger blocks any client-side plan or limit escalation, and the owner allowlist row resolves to `owner`/`unlimited`. Existing profiles are never removed when a plan changes.
 
 ---
 
@@ -79,16 +79,16 @@ The interface follows the structure of `dunky11/react-saas-template` while adopt
 - **30 region presets** with DST-correct timezone offsets and proxy-to-locale matching. Example: <img src="assets/brand/flags/bd.svg" alt="Bangladesh flag" width="16" height="16" /> Bangladesh, <img src="assets/brand/flags/us.svg" alt="United States flag" width="16" height="16" /> United States, <img src="assets/brand/flags/gb.svg" alt="United Kingdom flag" width="16" height="16" /> United Kingdom, <img src="assets/brand/flags/de.svg" alt="Germany flag" width="16" height="16" /> Germany and <img src="assets/brand/flags/jp.svg" alt="Japan flag" width="16" height="16" /> Japan.
 - **Browsing history per profile**: every URL and search, filterable by profile, copyable and openable.
 - **Extension library**: 12 real extensions with per-family store deep links (Chrome, Edge, Firefox), recommended entries and opt-in auto-install.
-- **Paste as human**: a reviewed keystroke plan with per-character jitter, word-boundary beats and optional corrections, generated deterministically per seed. It does not solve CAPTCHAs — a person still completes any challenge.
+- **Paste as human**: a reviewed keystroke plan with per-character jitter, word-boundary beats and optional corrections, generated deterministically per seed. On Windows the plan is replayed into the open profile window through CDP with each per-key delay; elsewhere the button copies the plan and says so. It does not solve CAPTCHAs — a person still completes any challenge.
 - **Proxy manager**: HTTP, HTTPS, SOCKS4 and SOCKS5, bulk paste, country tags, assignment, health checks, offline/recovery notifications and one-click exit rotation.
 - **Quality metrics**: per-profile consistency, uniqueness, entropy, grade, real-backed status and distinct-bundle accounting. Informational engine limits are counted separately from real contradictions. Measured workspace consistency is 100%; measured uniqueness is 77% with grade B. No external score is claimed.
 - **Local JavaScript probe**: `22 of 22` internal checks pass for the bundled payload. The app links to independent detectors (IP Fighter, Pixelscan, BrowserScan, AmIUnique, CreepJS, BrowserLeaks) for testing inside a launched profile.
 - **Import and transfer**: JSON workspace import/export, CSV profile import/export, cookie JSON or `name=value` import.
 - **Bulk operations**: create, duplicate, launch, stop, export and delete above the free limit on Premium; 250-profile creation is covered by the browser smoke suite.
-- **Desktop and Android sync**: Supabase Realtime commands, RLS-scoped Postgres state, event log and device presence.
+- **Desktop and Android sync**: send / poll / ack through the `joe-command-validate` edge function (payload validated, service-role key server-side only), RLS-scoped Postgres state, event log and device presence.
 - **Local REST API**: the Windows app serves loopback endpoints for health, profiles, launch, quality, surfaces and injection script inspection — bound to loopback, token- and origin-gated.
 - **Validation views**: quality, observed data, JS surfaces, geo presets and explicit engine-level limits are visible in the app rather than hidden.
-- **Accounts**: local sign-in with an email and plan today; Supabase auth (sign-up, login, password reset) activates when project keys are set in Settings → Sync.
+- **Accounts**: real Supabase auth — sign-up with email confirmation, sign-in, password reset (paste-link recovery works from `file://`), session persistence and sign-out; entitlement is read from a server-side account row clients cannot escalate. Local sign-in remains available when cloud keys are not configured, and the UI says which mode you are in.
 
 ## Screenshots
 
@@ -125,7 +125,7 @@ All screenshots are captured from the running app by `npm run screenshots` and `
 | Shared core | <img src="assets/brand/marks/typescript.svg" alt="TypeScript" width="16" height="16" /> TypeScript: profiles, presets, geo, quality, consistency, transfer, sync |
 | Shared UI | <img src="assets/brand/marks/react.svg" alt="React" width="16" height="16" /> React 18 + <img src="assets/brand/marks/vite.svg" alt="Vite" width="16" height="16" /> Vite + <img src="assets/brand/marks/mui.svg" alt="Material UI" width="16" height="16" /> MUI 5 |
 | Desktop | <img src="assets/brand/marks/electron.svg" alt="Electron" width="16" height="16" /> Electron 33 + `electron-builder` + local REST API |
-| Android | <img src="assets/brand/marks/android.svg" alt="Android" width="16" height="16" /> Java / WebView, per-process data dirs, JS bridge, PostgREST sync |
+| Android | <img src="assets/brand/marks/android.svg" alt="Android" width="16" height="16" /> Java / WebView, per-process data dirs, JS bridge, edge-function sync |
 | Backend | <img src="assets/brand/marks/supabase.svg" alt="Supabase" width="16" height="16" /> Supabase: Postgres, Auth, RLS, Realtime, Edge Functions |
 | Hosting | <img src="assets/brand/marks/vercel.svg" alt="Vercel" width="16" height="16" /> Vercel static SEO site |
 | Build | <img src="assets/brand/marks/github.svg" alt="GitHub" width="16" height="16" /> GitHub Actions: Windows EXE, Android APK, checksums and release |
@@ -137,7 +137,7 @@ packages/sync          transport-agnostic EXE ↔ APK sync + Supabase adapter
 src/                   MUI workspace: nine views, grouped shell, command palette, toasts
 apps/desktop           Electron main, preload, REST API and builder config
 apps/android           Java sources, manifest, resources and APK build script
-supabase/              SQL migration
+supabase/              SQL migrations + validated edge function
 site/                  SEO landing page with local fonts, marks, flags and screenshots
 docs/                  architecture, validation and IP protection policy
 .github/workflows/     CI + binary release pipeline
@@ -150,9 +150,9 @@ docs/                  architecture, validation and IP protection policy
 ```bash
 npm install
 npm run dev                 # live control plane on http://localhost:5173
-npm test                    # 29 unit and SSR tests
+npm test                    # 74 unit and SSR tests
 npm run test:fingerprint    # 29/29 injection self-tests + workspace quality
-npm run test:ui             # 31 real-browser checks, needs the dev server
+npm run test:ui             # 35 real-browser checks, needs the dev server
 npm run test:devices        # 75 checks across five mobile devices, needs dev server
 npm run test:java           # Java source parser check
 npm run test:site           # static SEO site checks

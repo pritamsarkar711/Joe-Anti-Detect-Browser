@@ -8,6 +8,8 @@ import {
 } from '@joe/core';
 import { createLocalTransport, SyncClient, DEFAULT_PRESENCE, type DeviceKind, type DevicePresence, type SyncEnvelope, type Topic } from '@joe/sync';
 import { getNativeWorkspace, installCommandHandler, nativeKind, nativeLaunch, nativeStop, nativeDeviceName, syncWorkspaceToDesktop, pullDesktopWorkspace, isDesktopShell, pushSyncConfig, sendSyncCommand } from './native';
+import { authClient, accountForSession, currentSession, onAuthStateChange } from './auth';
+import type { Session } from '@supabase/supabase-js';
 
 export type View =
   | 'profiles' | 'proxies' | 'groups'
@@ -167,7 +169,7 @@ function seed(): Persisted {
     account: DEMO_ACCOUNT,
     profiles, proxies, groups: ['Default', ...groups],
     activity: [
-      { id: 'a0', at: new Date(Date.now() - 1000 * 60 * 4).toISOString(), kind: 'sync', text: 'Workspace synced', meta: '24 profiles' },
+      { id: 'a0', at: new Date(Date.now() - 1000 * 60 * 4).toISOString(), kind: 'sync', text: 'Workspace synced', meta: `${names.length} profiles` },
       { id: 'a1', at: new Date(Date.now() - 1000 * 60 * 38).toISOString(), kind: 'launch', text: 'Storefront US launched', meta: 'desktop' },
       { id: 'a2', at: new Date(Date.now() - 1000 * 60 * 95).toISOString(), kind: 'check', text: 'Proxy check finished', meta: '4 of 5 online' },
     ],
@@ -228,7 +230,14 @@ interface Store {
   planLabel: string;
   entitlement: Entitlement;
   lockedBrowser: (family: string) => boolean;
-  signIn: (email: string) => void;
+  /**
+   * Bind this workspace to an email.
+   *
+   * `server` is the entitlement read from `public.accounts` after a real
+   * Supabase sign-in; without it the sign-in is the honest local mode (email
+   * and plan on this device only).
+   */
+  signIn: (email: string, server?: Account | null) => void;
   signOut: () => void;
   setPlan: (plan: Account['plan']) => void;
   addHistory: (entries: Array<Omit<HistoryEntry, 'id' | 'at'> & { at?: string }>) => void;
@@ -359,6 +368,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /**
+   * Cloud session: with keys configured, restore the persisted Supabase
+   * session and keep the account aligned with the server's entitlement row.
+   * Without keys this is a no-op — the workspace stays in local mode, and a
+   * null session never overwrites a local sign-in.
+   */
+  useEffect(() => {
+    const client = authClient(data.settings.supabaseUrl, data.settings.anonKey);
+    if (!client) return;
+    let cancelled = false;
+    const apply = async (session: Session | null) => {
+      if (cancelled || !session?.user?.email) return;
+      const account = await accountForSession(client, session);
+      if (cancelled || !account) return;
+      setData((d) => (
+        d.account.email === account.email && d.account.plan === account.plan && d.account.role === account.role
+          ? d
+          : { ...d, account }
+      ));
+    };
+    void currentSession(client).then((s) => { void apply(s); });
+    const off = onAuthStateChange(client, (event, session) => {
+      if (event === 'SIGNED_OUT') { setData((d) => ({ ...d, account: DEFAULT_ACCOUNT })); return; }
+      void apply(session);
+    });
+    return () => { cancelled = true; off(); };
+  }, [data.settings.supabaseUrl, data.settings.anonKey]);
+
   useEffect(() => {
     document.documentElement.dataset.theme = data.settings.theme;
     document.documentElement.dataset.density = data.settings.density;
@@ -447,16 +484,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       : `${planFor(data.account).name} plan${planFor(data.account).profileLimit ? ` · ${planFor(data.account).profileLimit} profiles` : ' · unlimited'}`,
     entitlement: checkProfileQuota(data.account, data.profiles.length, 1),
     lockedBrowser: (family) => !browserAllowed(data.account, family as never),
-    signIn: (email) => {
+    signIn: (email, server) => {
       const clean = email.trim().toLowerCase();
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clean)) { toast('Enter a valid email address', 'warn'); return; }
-      const admin = clean === ADMIN_EMAIL.toLowerCase();
-      setData((d) => ({
-        ...d,
-        account: { email: clean, plan: admin ? 'premium' : d.account.plan, role: admin ? 'owner' : 'member', renewsAt: null },
-      }));
-      log('edit', admin ? 'Owner signed in' : 'Signed in', clean);
-      toast(admin ? 'Signed in as owner — all features unlocked' : 'Signed in');
+      setData((d) => {
+        // Cloud sign-in: the database row (allowlist-driven, guard-protected)
+        // decides the plan. Local sign-in keeps the demo/free plan as before.
+        const account: Account = server
+          ? { ...server, email: clean }
+          : clean === ADMIN_EMAIL.toLowerCase()
+            ? { email: clean, plan: 'premium', role: 'owner', renewsAt: null }
+            : { email: clean, plan: d.account.plan, role: 'member', renewsAt: null };
+        return { ...d, account };
+      });
+      const owner = server ? isAdmin(server) : clean === ADMIN_EMAIL.toLowerCase();
+      log('edit', owner ? 'Owner signed in' : 'Signed in', clean);
+      toast(owner ? 'Signed in as owner — all features unlocked' : 'Signed in');
     },
     signOut: () => { setData((d) => ({ ...d, account: DEFAULT_ACCOUNT })); toast('Signed out', 'info'); },
     setPlan: (plan) => { setData((d) => ({ ...d, account: { ...d.account, plan } })); toast(`Switched to ${plan}`); },

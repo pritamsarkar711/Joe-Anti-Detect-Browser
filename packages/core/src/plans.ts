@@ -95,7 +95,40 @@ export interface Account {
 export const ADMIN_EMAIL = 'pritamsarkar1321@gmail.com';
 
 export function isAdmin(account: Account | null | undefined): boolean {
-  return !!account && account.email.trim().toLowerCase() === ADMIN_EMAIL;
+  if (!account) return false;
+  // `owner` is assigned server-side (account allowlist → handle_new_account),
+  // so a server-confirmed owner row counts even if the address ever changes.
+  if (account.role === 'owner') return true;
+  return account.email.trim().toLowerCase() === ADMIN_EMAIL;
+}
+
+/**
+ * A row of `public.accounts` as the database produces it (the
+ * `handle_new_account` trigger fills plan/unlimited/profile_limit from the
+ * allowlist; `guard_account_plan` stops clients from editing them).
+ *
+ * This is the server's word on entitlement — the client applies it instead of
+ * trusting whatever the local workspace claims.
+ */
+export interface ServerAccountRow {
+  email?: string | null;
+  plan?: string | null;
+  unlimited?: boolean | null;
+  profile_limit?: number | null;
+}
+
+export function accountFromServer(row: ServerAccountRow | null | undefined, fallbackEmail: string): Account {
+  const plan = String(row?.plan ?? 'free').trim().toLowerCase();
+  const mapped: PlanId =
+    plan === 'owner' || plan === 'premium' || row?.unlimited === true ? 'premium'
+    : plan === 'starter' ? 'starter'
+    : 'free';
+  return {
+    email: String(row?.email ?? fallbackEmail).trim().toLowerCase(),
+    plan: mapped,
+    role: plan === 'owner' ? 'owner' : 'member',
+    renewsAt: null,
+  };
 }
 
 export function planFor(account: Account | null | undefined): Plan {

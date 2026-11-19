@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react';
 import { Box, Stack, Typography, TextField, ToggleButton, ToggleButtonGroup, Divider } from '@mui/material';
 import { describeSchedule, humanPasteSchedule, scheduleDuration } from '@joe/fingerprint';
+import { useStore } from '@/state/store';
 import { Icon } from '../Icons';
 import { Btn, Tag } from '../Primitives';
 
 interface Props {
   profileName: string;
+  profileId: string;
   /** optional: text the user last pasted, prefilled for convenience */
   initial?: string;
 }
@@ -13,15 +15,45 @@ interface Props {
 /**
  * Manual entry helper, not an automation feature.
  *
- * The user pastes text here, reviews the resulting keystroke plan, then sends it
- * to the built-in browser, which replays it as real key events with human
- * pacing. Nothing runs in the background and no challenge is solved: if a site
- * asks for a CAPTCHA, a person solves it.
+ * The user pastes text here and reviews the resulting keystroke plan before
+ * committing it. On the desktop shell the plan is replayed into the open
+ * profile window through CDP `Input.dispatchKeyEvent` with each per-key delay
+ * honoured; elsewhere the plan is copied so the user can paste it by hand —
+ * the button always says which of the two it will do. Nothing runs in the
+ * background and no challenge is solved: if a site asks for a CAPTCHA, a
+ * person solves it.
  */
-export function PasteAsHuman({ profileName, initial = '' }: Props) {
+export function PasteAsHuman({ profileName, profileId, initial = '' }: Props) {
+  const s = useStore();
   const [text, setText] = useState(initial);
   const [speed, setSpeed] = useState<'relaxed' | 'natural' | 'brisk'>('natural');
   const [withTypos, setWithTypos] = useState(true);
+  const [sending, setSending] = useState(false);
+
+  /** Only the desktop shell can replay keys; everywhere else we say copy. */
+  const canSend = typeof window !== 'undefined' && !!window.joe?.keystrokes?.send;
+
+  const send = async () => {
+    if (!text) return;
+    if (!canSend) {
+      await navigator.clipboard?.writeText(text).catch(() => undefined);
+      s.toast('Plan copied — open the profile window and paste it there.', 'info');
+      return;
+    }
+    setSending(true);
+    try {
+      const result = await window.joe!.keystrokes!.send(profileId, schedule);
+      if (result && result.ok === false) {
+        s.toast(result.reason || 'The profile window refused the plan.', 'warn');
+      } else {
+        s.toast(`Typing into ${profileName} — keep that window focused.`, 'ok');
+      }
+    } catch {
+      s.toast('The profile window could not take the plan.', 'warn');
+    } finally {
+      setSending(false);
+    }
+  };
 
   const options = useMemo(() => ({
     baseDelay: speed === 'relaxed' ? 90 : speed === 'brisk' ? 22 : 42,
@@ -84,10 +116,10 @@ export function PasteAsHuman({ profileName, initial = '' }: Props) {
         <Stack direction="row" spacing={0.75}>
           <Btn size="small" icon="copy" onClick={() => navigator.clipboard?.writeText(text).catch(() => undefined)} disabled={!text}>Copy</Btn>
           <Btn
-            size="small" variant="primary" icon="send" disabled={!text}
-            onClick={() => { void navigator.clipboard?.writeText(text).catch(() => undefined); }}
+            size="small" variant="primary" icon="send" disabled={!text || sending}
+            onClick={() => { void send(); }}
           >
-            Send to {profileName}
+            {canSend ? (sending ? 'Typing…' : `Send to ${profileName}`) : 'Copy plan'}
           </Btn>
         </Stack>
       </Stack>

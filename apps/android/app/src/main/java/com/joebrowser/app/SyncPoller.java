@@ -4,6 +4,8 @@ import android.app.Activity;
 import android.content.SharedPreferences;
 import android.webkit.WebView;
 
+import org.json.JSONArray;
+
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
@@ -50,6 +52,19 @@ public class SyncPoller extends Thread {
                             web.evaluateJavascript(script, null);
                         }
                     });
+                    // Ack after dispatch so a delivered command never reappears
+                    // (the poll cursor has second precision; the queue does not).
+                    try {
+                        JSONArray rows = new JSONArray(payload);
+                        JSONArray ids = new JSONArray();
+                        for (int i = 0; i < rows.length(); i++) {
+                            String id = rows.getJSONObject(i).optString("id");
+                            if (id.length() > 0) ids.put(id);
+                        }
+                        SyncHttp.ack(prefs, ids);
+                    } catch (Exception ignored) {
+                        // Ack is bookkeeping; dispatch already happened.
+                    }
                 }
                 prefs.edit().putString("last_poll", now).apply();
                 since = now;
