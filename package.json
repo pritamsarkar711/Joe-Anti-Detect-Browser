@@ -1,9 +1,9 @@
 {
   "name": "joe-browser",
-  "version": "3.1.1",
+  "version": "3.2.0",
   "private": true,
   "type": "module",
-  "description": "Joe Browser — Material UI profile-isolation workspace for Windows, Android and the web, synced with Supabase and Vercel.",
+  "description": "Joe Browser \u2014 Material UI profile-isolation workspace for Windows, Android and the web, synced with Supabase and Vercel.",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",

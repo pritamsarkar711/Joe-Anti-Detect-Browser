@@ -11,8 +11,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { launchBrowser } from './chromium.mjs';
+import { ensureServer } from './serve.mjs';
 
-const BASE = process.env.BASE_URL ?? 'http://localhost:5173';
+const server = await ensureServer();
+const BASE = server.base;
 const OUT = path.join(process.cwd(), 'assets', 'screenshots');
 const SITE_OUT = path.join(process.cwd(), 'site', 'screens');
 fs.mkdirSync(OUT, { recursive: true });
@@ -116,6 +118,7 @@ await mobile.screenshot({ path: path.join(SITE_OUT, '13-mobile-profiles.png'), a
 console.log('saved 13-mobile-profiles.png');
 
 await browser.close();
+await server.stop();
 if (errors.length) { console.error('page errors:', errors.slice(0, 5)); process.exit(1); }
 
 const siteShots = fs.readdirSync(SITE_OUT).filter((f) => f.endsWith('.png'));

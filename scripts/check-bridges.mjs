@@ -46,6 +46,7 @@ function uiSources(dir = path.join(root, 'src'), out = []) {
 }
 
 const mainActivity = read(path.join(javaDir, 'MainActivity.java'));
+const syncHttp = read(path.join(javaDir, 'SyncHttp.java'));
 const browserActivity = read(path.join(javaDir, 'BrowserActivity.java'));
 const ui = uiSources().map(read).join('\n');
 
@@ -75,6 +76,20 @@ check('the browser activity reads the extras the bridge writes', () => {
   const dropped = writes.filter((w) => !reads.has(w));
   must(dropped.length === 0, `written by the bridge but never read: ${dropped.join(', ')}`);
   return writes.join(', ');
+});
+
+check('the Android sync authenticates with the user session, not the anon key alone', () => {
+  // RLS keys off auth.uid(); an anon-key request has no identity, so every
+  // command insert was refused while the UI still reported success.
+  must(/saveConfig\(String url, String anonKey, String accessToken\)/.test(mainActivity),
+    'saveConfig must accept the session token');
+  must(/putString\("access_token"/.test(mainActivity), 'the token is not persisted');
+  must(/Bearer " \+ bearer\(p\)/.test(syncHttp), 'SyncHttp does not send the session token');
+  must(/public static boolean signedIn/.test(syncHttp), 'SyncHttp cannot tell a signed-out client');
+  must(!/WORKSPACE_ID/.test(syncHttp), 'the workspace must come from the server default, not a constant');
+  must(/saveConfig\(url \?\? '', anonKey \?\? '', accessToken \?\? ''\)/.test(ui),
+    'the UI never passes its access token to the bridge');
+  return 'session JWT + server-resolved workspace';
 });
 
 check('the browser activity loads a per-profile injection script', () => {

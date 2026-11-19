@@ -16,7 +16,6 @@ import java.net.URLEncoder;
 public class SyncHttp {
 
     public static final String DEFAULT_URL = "https://rajxyaatbvlrxxzjntmo.supabase.co";
-    private static final String WORKSPACE_ID = "00000000-0000-0000-0000-000000000001";
 
     private static String base(SharedPreferences p) {
         String url = p.getString("supabase_url", DEFAULT_URL);
@@ -28,13 +27,33 @@ public class SyncHttp {
         return p.getString("anon_key", "");
     }
 
+    /**
+     * The credential to send.
+     *
+     * A signed-in session token identifies the user, so row-level security can
+     * scope the request to their workspace. Without it the anon key leaves
+     * `auth.uid()` empty and every write is denied — which is what made the
+     * documented phone-to-desktop sync a no-op.
+     */
+    private static String bearer(SharedPreferences p) {
+        String token = p.getString("access_token", "");
+        if (token != null && token.length() > 0) return token;
+        return key(p);
+    }
+
+    /** True when a signed-in session exists; polling without one cannot succeed. */
+    public static boolean signedIn(SharedPreferences p) {
+        String token = p.getString("access_token", "");
+        return token != null && token.length() > 0;
+    }
+
     private static HttpURLConnection open(SharedPreferences p, String path, String method) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(base(p) + path).openConnection();
         c.setRequestMethod(method);
         c.setConnectTimeout(6000);
         c.setReadTimeout(6000);
         c.setRequestProperty("apikey", key(p));
-        c.setRequestProperty("Authorization", "Bearer " + key(p));
+        c.setRequestProperty("Authorization", "Bearer " + bearer(p));
         c.setRequestProperty("Content-Type", "application/json");
         return c;
     }
@@ -51,6 +70,8 @@ public class SyncHttp {
     /** Write a command so the desktop EXE (or the web dashboard) can pick it up. */
     public static boolean post(SharedPreferences p, String topic, String from, String to, String payloadJson) {
         if (key(p) == null || key(p).isEmpty()) return false;
+        // An anonymous write is refused by RLS; reporting it as sent would be a lie.
+        if (!signedIn(p)) return false;
         HttpURLConnection c = null;
         try {
             c = open(p, "/rest/v1/commands", "POST");
@@ -58,7 +79,8 @@ public class SyncHttp {
             c.setDoOutput(true);
             JSONObject body = new JSONObject();
             body.put("id", from + "-" + System.currentTimeMillis());
-            body.put("workspace_id", WORKSPACE_ID);
+            // workspace_id is intentionally omitted: the database default resolves
+            // the caller's own workspace from their membership.
             body.put("topic", topic);
             body.put("from_device", from);
             body.put("to_device", to);
@@ -79,6 +101,7 @@ public class SyncHttp {
     /** Poll commands addressed to this APK since the last poll timestamp. */
     public static String commandsSince(SharedPreferences p, String isoTimestamp) {
         if (key(p) == null || key(p).isEmpty()) return null;
+        if (!signedIn(p)) return null;
         HttpURLConnection c = null;
         try {
             String path = "/rest/v1/commands?select=id,topic,payload,from_device,created_at"

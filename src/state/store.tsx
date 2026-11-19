@@ -2,12 +2,19 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import {
   createProfile, generateProfiles, hashString, DEVICE_TEMPLATES, checkProxy, parseProxyLines, proxyUrl,
   applyRealPreset, getRealPreset, applyGeoToSpec, geoForCountry, profilesFromCsv,
-  ADMIN_EMAIL, planFor, isAdmin, checkProfileQuota, browserAllowed,
+  planFor, isAdmin, checkProfileQuota, browserAllowed,
   type Account, type BrowserProfile, type ProxyConfig, type ProfileStatus, type Entitlement,
   importWorkspace as parseWorkspace, exportWorkspace as makeExport, type WorkspaceExport,
 } from '@joe/core';
 import { createLocalTransport, SyncClient, DEFAULT_PRESENCE, type DeviceKind, type DevicePresence, type SyncEnvelope, type Topic } from '@joe/sync';
 import { getNativeWorkspace, installCommandHandler, nativeKind, nativeLaunch, nativeStop, nativeDeviceName, syncWorkspaceToDesktop, pullDesktopWorkspace, isDesktopShell, pushSyncConfig, sendSyncCommand } from './native';
+import {
+  CloudError, cacheEntitlement, ensureFreshSession, fetchEntitlement, isConfigured,
+  loadCachedEntitlement, loadSession, looksLikeServiceRoleKey, normalizeConfig,
+  saveSession, sendRecoveryEmail, signInWithPassword, signOut as cloudSignOut,
+  signUp as cloudSignUp,
+  type CloudConfig, type CloudSession, type ServerEntitlement,
+} from './cloud';
 
 export type View =
   | 'profiles' | 'proxies' | 'groups'
@@ -51,6 +58,8 @@ const DEMO_ACCOUNT: Account = {
   plan: 'starter',
   role: 'member',
   renewsAt: null,
+  verified: false,
+  source: 'local',
 };
 
 const DEFAULT_ACCOUNT: Account = {
@@ -58,7 +67,47 @@ const DEFAULT_ACCOUNT: Account = {
   plan: 'free',
   role: 'member',
   renewsAt: null,
+  verified: false,
+  source: 'local',
 };
+
+/**
+ * A stored account is a claim, not proof.
+ *
+ * Anything privileged is stripped here and can only come back from
+ * `my_entitlement()` over an authenticated session. Without this, a plan written
+ * by an older build (or by hand) would keep granting premium forever, which is
+ * exactly the bypass this release removes.
+ */
+function sanitizeAccount(account: Account | undefined | null): Account {
+  if (!account) return DEMO_ACCOUNT;
+  const role = account.role === 'owner' || account.role === 'admin' ? 'member' : account.role;
+  return {
+    ...account,
+    role,
+    plan: account.plan === 'premium' ? 'free' : account.plan,
+    verified: false,
+    source: 'local',
+    renewsAt: null,
+  };
+}
+
+/** Account derived from a server entitlement. Only this path grants privileges. */
+function accountFromEntitlement(email: string, entitlement: ServerEntitlement): Account {
+  return {
+    email,
+    plan: entitlement.plan,
+    role: entitlement.isAdmin ? 'owner' : 'member',
+    renewsAt: entitlement.renewsAt,
+    verified: entitlement.source !== 'local',
+    source: entitlement.source,
+  };
+}
+
+export type AuthStatus = 'signed-out' | 'working' | 'cloud' | 'cloud-offline';
+
+/** `info` is a neutral message (e.g. "confirm your email"); `error` is a failure. */
+export interface AuthOutcome { error: string | null; info?: string }
 
 export interface Settings {
   theme: 'dark' | 'light';
@@ -94,7 +143,7 @@ export interface Toast { id: string; text: string; kind: 'ok' | 'warn' | 'err' |
  */
 const STORAGE_KEY = 'joe-browser:v3';
 const LEGACY_KEYS = ['joe-browser:v2'];
-export const APP_VERSION = '3.1.1';
+export const APP_VERSION = '3.2.0';
 
 const DEFAULT_SETTINGS: Settings = {
   theme: 'light',
@@ -194,7 +243,7 @@ function load(): Persisted {
     const parsed = JSON.parse(raw) as Partial<Persisted>;
     if (!Array.isArray(parsed.profiles)) return seed();
     return {
-      account: parsed.account ?? DEFAULT_ACCOUNT,
+      account: sanitizeAccount(parsed.account),
       profiles: parsed.profiles.map(normalizeProfile),
       proxies: parsed.proxies ?? [],
       groups: parsed.groups ?? ['Default'],
@@ -228,16 +277,30 @@ interface Store {
   planLabel: string;
   entitlement: Entitlement;
   lockedBrowser: (family: string) => boolean;
-  signIn: (email: string) => void;
+  /** Where the plan and role came from: server, cached server answer, or device. */
+  entitlementSource: ServerEntitlement['source'];
+  /** Plain-language provenance shown in the account screens. */
+  planNotice: string;
+  authStatus: AuthStatus;
+  authBusy: boolean;
+  cloudConfigured: boolean;
+  /** null when the account service is not configured or not reachable */
+  cloudEmail: string | null;
+  signIn: (email: string, password: string) => Promise<AuthOutcome>;
+  signUp: (email: string, password: string) => Promise<AuthOutcome>;
+  resetPassword: (email: string) => Promise<AuthOutcome>;
   signOut: () => void;
-  setPlan: (plan: Account['plan']) => void;
+  /** Keep using this device without an account. Never grants a paid tier. */
+  continueLocally: () => void;
+  /** Re-read the entitlement for the current session. */
+  refreshEntitlement: () => Promise<string | null>;
   addHistory: (entries: Array<Omit<HistoryEntry, 'id' | 'at'> & { at?: string }>) => void;
   clearHistory: (profileId?: string) => void;
   selectedId: string | null; setSelectedId: (id: string | null) => void;
   createOpen: boolean; setCreateOpen: (v: boolean) => void;
   paletteOpen: boolean; setPaletteOpen: (v: boolean) => void;
   addProfiles: (p: BrowserProfile[]) => void;
-  createOne: (input: Parameters<typeof createProfile>[0]) => BrowserProfile;
+  createOne: (input: Parameters<typeof createProfile>[0]) => BrowserProfile | null;
   updateProfile: (id: string, patch: Partial<BrowserProfile>) => void;
   deleteProfiles: (ids: string[]) => void;
   duplicateProfiles: (ids: string[]) => void;
@@ -281,8 +344,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     lastSeen: new Date().toISOString(),
   })));
   const [syncEvents, setSyncEvents] = useState<SyncEnvelope[]>([]);
+  const [session, setSession] = useState<CloudSession | null>(null);
+  const [authStatus, setAuthStatus] = useState<AuthStatus>('signed-out');
+  const [authBusy, setAuthBusy] = useState(false);
+  const [entitlementSource, setEntitlementSource] = useState<ServerEntitlement['source']>('local');
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevProxyStatus = useRef<Map<string, string>>(new Map());
+
+  const cloudConfig = useMemo<CloudConfig>(
+    () => normalizeConfig({ url: data.settings.supabaseUrl, anonKey: data.settings.anonKey }),
+    [data.settings.supabaseUrl, data.settings.anonKey],
+  );
+  const cloudConfigured = isConfigured(cloudConfig);
 
   /**
    * Persist on every data change, including the very first render. The old code
@@ -354,10 +427,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // syncing immediately after an update instead of needing the field re-saved.
   useEffect(() => {
     if (nativeKind() === 'web') return;
-    pushSyncConfig(data.settings.supabaseUrl, data.settings.anonKey);
-    // Intentionally once per mount: later changes go through setSetting.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    pushSyncConfig(data.settings.supabaseUrl, data.settings.anonKey, session?.accessToken ?? '');
+    // Re-runs when the session is restored or its access token is rotated, so the
+    // native client never keeps a stale credential.
+  }, [data.settings.supabaseUrl, data.settings.anonKey, session]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = data.settings.theme;
@@ -437,6 +510,205 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () => { offBus(); offAck(); offLaunch(); };
   }, [devices, log]);
 
+  /**
+   * Apply a server answer to the account.
+   *
+   * This is the only code path that can grant a paid plan or the owner role.
+   */
+  const applyEntitlement = useCallback((email: string, entitlement: ServerEntitlement) => {
+    setEntitlementSource(entitlement.source);
+    setData((d) => ({ ...d, account: accountFromEntitlement(email || d.account.email, entitlement) }));
+  }, []);
+
+  /** Read `my_entitlement()` and fall back to the cached answer when offline. */
+  const readEntitlement = useCallback(async (config: CloudConfig, active: CloudSession): Promise<string | null> => {
+    try {
+      const entitlement = await fetchEntitlement(config, active);
+      cacheEntitlement(entitlement, active.user.email);
+      applyEntitlement(active.user.email, entitlement);
+      setAuthStatus('cloud');
+      return null;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not read your plan.';
+      if (error instanceof CloudError && error.code === 'expired_session') {
+        saveSession(null);
+        setSession(null);
+        setAuthStatus('signed-out');
+        return message;
+      }
+      const cached = loadCachedEntitlement(Date.now(), active.user.email);
+      if (cached) applyEntitlement(active.user.email, cached);
+      setAuthStatus('cloud-offline');
+      return message;
+    }
+  }, [applyEntitlement]);
+
+  /**
+   * Restore a stored session on start.
+   *
+   * No session means no verified plan: the account stays on the local tier until
+   * the server answers, which is why a hand-edited workspace cannot keep a
+   * premium claim after a restart.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    const restore = async () => {
+      if (!cloudConfigured) {
+        setSession(null);
+        setAuthStatus('signed-out');
+        return;
+      }
+      const stored = loadSession();
+      if (!stored) {
+        setAuthStatus('signed-out');
+        return;
+      }
+      try {
+        const fresh = await ensureFreshSession(cloudConfig, stored);
+        if (cancelled) return;
+        if (!fresh) {
+          saveSession(null);
+          setSession(null);
+          setAuthStatus('signed-out');
+          return;
+        }
+        saveSession(fresh);
+        setSession(fresh);
+        setAuthStatus('working');
+        await readEntitlement(cloudConfig, fresh);
+      } catch {
+        // Offline start: keep the session and the cached entitlement if any.
+        if (cancelled) return;
+        setSession(stored);
+        const cached = loadCachedEntitlement(Date.now(), stored.user.email);
+        if (cached) applyEntitlement(stored.user.email, cached);
+        setAuthStatus('cloud-offline');
+      }
+    };
+    void restore();
+    return () => { cancelled = true; };
+  }, [cloudConfigured, cloudConfig, applyEntitlement, readEntitlement]);
+
+  /** Keep the access token fresh while the app stays open. */
+  useEffect(() => {
+    if (!session || !cloudConfigured) return;
+    const timer = setInterval(() => {
+      void (async () => {
+        try {
+          const fresh = await ensureFreshSession(cloudConfig, session);
+          if (!fresh) {
+            saveSession(null);
+            setSession(null);
+            setAuthStatus('signed-out');
+            setData((d) => ({ ...d, account: sanitizeAccount(d.account) }));
+            toast('Your session expired — sign in again', 'warn');
+            return;
+          }
+          if (fresh !== session) { saveSession(fresh); setSession(fresh); }
+        } catch { /* offline: retry on the next tick */ }
+      })();
+    }, 5 * 60 * 1000);
+    return () => clearInterval(timer);
+  }, [session, cloudConfig, cloudConfigured, toast]);
+
+  const signIn = useCallback(async (email: string, password: string): Promise<AuthOutcome> => {
+    const address = email.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(address)) return { error: 'Enter a valid email address.' };
+    if (!cloudConfigured) {
+      return { error: 'No account service is configured. Add your Supabase project URL and publishable key in Settings → Sync.' };
+    }
+    if (!password) return { error: 'Enter your password.' };
+    setAuthBusy(true);
+    setAuthStatus('working');
+    try {
+      const next = await signInWithPassword(cloudConfig, address, password);
+      saveSession(next);
+      setSession(next);
+      const problem = await readEntitlement(cloudConfig, next);
+      if (problem) toast(problem, 'warn');
+      toast(`Signed in as ${next.user.email}`);
+      return { error: null };
+    } catch (error) {
+      setAuthStatus('signed-out');
+      return { error: error instanceof Error ? error.message : 'Sign-in failed.' };
+    } finally {
+      setAuthBusy(false);
+    }
+  }, [cloudConfig, cloudConfigured, readEntitlement, toast]);
+
+  const signUp = useCallback(async (email: string, password: string): Promise<AuthOutcome> => {
+    const address = email.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(address)) return { error: 'Enter a valid email address.' };
+    if (!cloudConfigured) {
+      return { error: 'No account service is configured. Add your Supabase project URL and publishable key in Settings → Sync.' };
+    }
+    if (password.length < 8) return { error: 'Use at least 8 characters.' };
+    setAuthBusy(true);
+    setAuthStatus('working');
+    try {
+      const result = await cloudSignUp(cloudConfig, address, password);
+      if (!result.session) {
+        setAuthStatus('signed-out');
+        return { error: null, info: `Check ${address} for the confirmation link, then sign in.` };
+      }
+      saveSession(result.session);
+      setSession(result.session);
+      const problem = await readEntitlement(cloudConfig, result.session);
+      if (problem) toast(problem, 'warn');
+      toast('Account created');
+      return { error: null };
+    } catch (error) {
+      setAuthStatus('signed-out');
+      return { error: error instanceof Error ? error.message : 'Could not create the account.' };
+    } finally {
+      setAuthBusy(false);
+    }
+  }, [cloudConfig, cloudConfigured, readEntitlement, toast]);
+
+  const resetPassword = useCallback(async (email: string): Promise<AuthOutcome> => {
+    const address = email.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(address)) return { error: 'Enter a valid email address.' };
+    if (!cloudConfigured) {
+      return { error: 'No account service is configured, so no reset email can be sent. Add your Supabase project keys in Settings → Sync.' };
+    }
+    setAuthBusy(true);
+    try {
+      await sendRecoveryEmail(cloudConfig, address);
+      return { error: null, info: `If ${address} has an account, a reset link is on its way.` };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : 'Could not send the reset email.' };
+    } finally {
+      setAuthBusy(false);
+    }
+  }, [cloudConfig, cloudConfigured]);
+
+  const doSignOut = useCallback(() => {
+    void cloudSignOut(cloudConfig, session);
+    saveSession(null);
+    cacheEntitlement(null);
+    setSession(null);
+    setAuthStatus('signed-out');
+    setEntitlementSource('local');
+    setData((d) => ({ ...d, account: d.profiles.length > 2 ? DEMO_ACCOUNT : DEFAULT_ACCOUNT }));
+    toast('Signed out — this device is on the local tier', 'info');
+  }, [cloudConfig, session, toast]);
+
+  const refreshEntitlement = useCallback(async (): Promise<string | null> => {
+    if (!session) return 'Sign in to a cloud account first.';
+    const fresh = await ensureFreshSession(cloudConfig, session).catch(() => null);
+    if (!fresh) {
+      saveSession(null);
+      setSession(null);
+      setAuthStatus('signed-out');
+      return 'Your session expired — sign in again.';
+    }
+    saveSession(fresh);
+    setSession(fresh);
+    const problem = await readEntitlement(cloudConfig, fresh);
+    if (!problem) toast('Plan confirmed by your account service');
+    return problem;
+  }, [cloudConfig, session, readEntitlement, toast]);
+
   const api = useMemo<Store>(() => ({
     ...data, devices, toasts, appVersion: APP_VERSION,
     view, setView, groupFilter, setGroupFilter,
@@ -447,19 +719,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       : `${planFor(data.account).name} plan${planFor(data.account).profileLimit ? ` · ${planFor(data.account).profileLimit} profiles` : ' · unlimited'}`,
     entitlement: checkProfileQuota(data.account, data.profiles.length, 1),
     lockedBrowser: (family) => !browserAllowed(data.account, family as never),
-    signIn: (email) => {
-      const clean = email.trim().toLowerCase();
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clean)) { toast('Enter a valid email address', 'warn'); return; }
-      const admin = clean === ADMIN_EMAIL.toLowerCase();
-      setData((d) => ({
-        ...d,
-        account: { email: clean, plan: admin ? 'premium' : d.account.plan, role: admin ? 'owner' : 'member', renewsAt: null },
-      }));
-      log('edit', admin ? 'Owner signed in' : 'Signed in', clean);
-      toast(admin ? 'Signed in as owner — all features unlocked' : 'Signed in');
+    entitlementSource,
+    planNotice: entitlementSource === 'server'
+      ? 'Plan confirmed by your account service.'
+      : entitlementSource === 'cache'
+        ? 'Cached from your last verified session — reconnect to refresh it.'
+        : 'Device-only account: the plan has not been verified by a server.',
+    authStatus,
+    authBusy,
+    cloudConfigured,
+    cloudEmail: session?.user.email ?? null,
+    signIn: async (email, password) => {
+      const outcome = await signIn(email, password);
+      if (!outcome.error) { log('edit', 'Signed in', email.trim().toLowerCase()); setView('profiles'); }
+      return outcome;
     },
-    signOut: () => { setData((d) => ({ ...d, account: DEFAULT_ACCOUNT })); toast('Signed out', 'info'); },
-    setPlan: (plan) => { setData((d) => ({ ...d, account: { ...d.account, plan } })); toast(`Switched to ${plan}`); },
+    signUp: async (email, password) => {
+      const outcome = await signUp(email, password);
+      if (!outcome.error && !outcome.info) { log('edit', 'Account created', email.trim().toLowerCase()); setView('profiles'); }
+      return outcome;
+    },
+    resetPassword,
+    signOut: doSignOut,
+    continueLocally: () => { setView('profiles'); toast('Using this device without an account', 'info'); },
+    refreshEntitlement,
     addHistory: (entries) => setData((d) => ({
       ...d,
       history: [
@@ -487,7 +770,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const quota = checkProfileQuota(data.account, data.profiles.length, 1);
       if (!quota.allowed) {
         toast(quota.reason, 'warn');
-        return null as unknown as BrowserProfile;
+        return null;
       }
       const p = createProfile(input, Date.now() % 100000);
       setData((d) => ({ ...d, profiles: [p, ...d.profiles] }));
@@ -563,10 +846,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     importCsv: (text) => {
       const rows = profilesFromCsv(text);
       if (!rows.length) return 0;
-      const groups = [...new Set(rows.map((r) => r.group))];
-      const created = rows.map((r, i) => createProfile({ name: r.name, group: r.group, notes: r.notes, seed: `csv::${r.name}::${i}` }, i));
+      // The free tier is enforced on every path that adds profiles. Importing a
+      // 250-row CSV was a one-click way around the two-profile limit.
+      const limit = planFor(data.account).profileLimit;
+      const room = limit === null ? rows.length : Math.max(0, limit - data.profiles.length);
+      if (!room) { toast(checkProfileQuota(data.account, data.profiles.length, 1).reason, 'warn'); return 0; }
+      const take = rows.slice(0, room);
+      const groups = [...new Set(take.map((r) => r.group))];
+      const created = take.map((r, i) => createProfile({ name: r.name, group: r.group, notes: r.notes, seed: `csv::${r.name}::${i}` }, i));
       setData((d) => ({ ...d, profiles: [...created, ...d.profiles], groups: [...new Set([...d.groups, ...groups])] }));
       log('import', `${created.length} profiles imported from CSV`);
+      if (take.length < rows.length) toast(`Imported ${take.length} of ${rows.length} — plan limit reached`, 'warn');
       return created.length;
     },
     setStatus: (ids, status, device) => {
@@ -616,26 +906,48 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     importData: (json) => {
       const parsed = parseWorkspace(json);
-      const profiles = parsed.profiles.map(normalizeProfile);
+      const incoming = parsed.profiles.map(normalizeProfile);
+      const known = new Set(data.profiles.map((p) => p.id));
+      const limit = planFor(data.account).profileLimit;
+      const room = limit === null ? incoming.length : Math.max(0, limit - data.profiles.length);
+      // Only genuinely new rows consume a seat; re-importing an existing
+      // workspace replaces rows instead of duplicating them.
+      const fresh = incoming.filter((p) => !known.has(p.id));
+      const allowed = fresh.slice(0, room);
+      if (fresh.length > allowed.length) {
+        toast(`Imported ${allowed.length} of ${fresh.length} new profiles — plan limit reached`, 'warn');
+      }
+      const allowedIds = new Set(allowed.map((p) => p.id));
+      const keep = new Set(incoming.map((p) => p.id));
       setData((d) => ({
         ...d,
-        profiles: [...profiles, ...d.profiles.filter((p) => !profiles.some((x) => x.id === p.id))],
+        profiles: [
+          ...allowed,
+          ...incoming.filter((p) => known.has(p.id)),
+          ...d.profiles.filter((p) => !allowedIds.has(p.id) && !keep.has(p.id)),
+        ],
         proxies: [...parsed.proxies, ...d.proxies.filter((p) => !parsed.proxies.some((x) => x.id === p.id))],
         groups: [...new Set([...d.groups, ...parsed.groups])],
       }));
-      log('import', `${profiles.length} profiles imported`);
-      return profiles.length;
+      log('import', `${allowed.length} new profiles imported`);
+      return allowed.length;
     },
     exportData: () => { log('export', 'Workspace exported'); return makeExport(data.profiles, data.proxies, data.groups); },
     reset: () => { setData(seed()); setGroupFilter(null); toast('Demo workspace restored', 'info'); },
     setSetting: (k, v) => {
+      // A service-role key bypasses every RLS policy; refusing it in the client
+      // is the last line of defence behind the packaging checks.
+      if (k === 'anonKey' && looksLikeServiceRoleKey(String(v))) {
+        toast('That is a service-role key. Paste the publishable (anon) key instead — a service key must never ship in an app.', 'err');
+        return;
+      }
       setData((d) => {
         const settings = { ...d.settings, [k]: v };
         // The APK keeps its Supabase credentials in SharedPreferences for the
         // Java poller; the UI stores them in localStorage. Push on change so
         // sync starts working without an app restart.
         if (k === 'supabaseUrl' || k === 'anonKey') {
-          pushSyncConfig(settings.supabaseUrl, settings.anonKey);
+          pushSyncConfig(settings.supabaseUrl, settings.anonKey, session?.accessToken ?? '');
         }
         return { ...d, settings };
       });
@@ -656,7 +968,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setDevices((d) => d.map((x) => x.kind === kind ? { ...x, online, lastSeen: new Date().toISOString() } : x));
       log('sync', `${kind} ${online ? 'connected' : 'disconnected'}`);
     },
-  }), [data, devices, toasts, view, groupFilter, selectedId, createOpen, paletteOpen, syncEvents, log, toast]);
+  }), [data, devices, toasts, view, groupFilter, selectedId, createOpen, paletteOpen, syncEvents, log, toast,
+    entitlementSource, authStatus, authBusy, cloudConfigured, session, signIn, signUp, resetPassword, doSignOut, refreshEntitlement]);
 
   useEffect(() => {
     setDevices((d) => d.map((x) => ({ ...x, profiles: data.profiles.filter((p) => p.device === x.kind).length })));
