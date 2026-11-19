@@ -25,6 +25,8 @@ jobs:
         run: npm run check:bridges
       - name: Typecheck + production bundle
         run: npm run build
+      - name: Exercise startup recovery in Chromium
+        run: node scripts/test-boot-retry.mjs
       - name: Bundle shared core for native shells
         run: npm run build:core
       - name: Build Android-bundled UI
