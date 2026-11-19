@@ -38,7 +38,11 @@ public class SyncPoller extends Thread {
                 final String now = fmt.format(new Date());
                 if (payload != null && !payload.equals("[]")) {
                     final String script = "window.__joeOnCommand && window.__joeOnCommand(" + payload + ");";
-                    activity.runOnUiThread(() -> web.evaluateJavascript(script, null));
+                    activity.runOnUiThread(new Runnable() {
+                        @Override public void run() {
+                            web.evaluateJavascript(script, null);
+                        }
+                    });
                 }
                 prefs.edit().putString("last_poll", now).apply();
                 since = now;
