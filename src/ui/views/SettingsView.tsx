@@ -54,14 +54,14 @@ export function SettingsView() {
                   <Btn size="small" icon="restart" onClick={() => s.signOut()}>Sign out</Btn>
                 ) : (
                   <>
-                    <Btn size="small" variant="primary" icon="spark" onClick={() => s.setPlan('premium')}>Unlock Premium</Btn>
-                    <Btn size="small" icon="person" onClick={() => s.setView('settings')}>Change account</Btn>
+                    <Btn size="small" variant="primary" icon="spark" onClick={() => s.setPlan('premium')}>Preview Premium</Btn>
+                    <Btn size="small" icon="person" onClick={() => { s.signOut(); s.setView('account'); }}>Change account</Btn>
                   </>
                 )}
               </Stack>
               <Typography variant="caption" color="text.secondary">
-                Sign-in runs locally today. Cloud accounts (email sign-up, secure login and password reset) activate as soon as
-                Supabase credentials are set in Sync.
+                No payment provider is connected — Premium previews locally and never charges. With Supabase keys in Sync,
+                sign-in, account creation and password reset run through your Supabase project.
               </Typography>
             </Stack>
           </Panel>

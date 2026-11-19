@@ -31,24 +31,38 @@ export function AuthView() {
   const validEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
   const strongEnough = password.length >= 8;
 
-  const submit = () => {
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
     setError('');
     if (!validEmail) { setError('Enter a valid email address.'); return; }
-    if (mode === 'reset') {
-      // No server round-trip exists without keys — say so rather than lie.
-      setSent(true);
-      return;
-    }
-    if (!cloud) {
-      // Local mode: no password is stored, and the UI says that plainly.
-      s.signIn(email);
+    setBusy(true);
+    try {
+      if (mode === 'reset') {
+        // Cloud mode sends a real recovery email; without keys the notice
+        // below says plainly that no email can leave this device.
+        const problem = await s.resetPassword(email.trim());
+        if (problem) { setError(problem); return; }
+        setSent(true);
+        return;
+      }
+      if (!cloud) {
+        // Local mode: no password is stored, and the UI says that plainly.
+        const problem = await s.signIn(email.trim());
+        if (problem) { setError(problem); return; }
+        s.setView('profiles');
+        return;
+      }
+      if (!strongEnough) { setError('Use at least 8 characters.'); return; }
+      if (mode === 'create' && password !== confirm) { setError('Passwords do not match.'); return; }
+      const problem = mode === 'create'
+        ? await s.signUp(email.trim(), password)
+        : await s.signIn(email.trim(), password);
+      if (problem) { setError(problem); return; }
       s.setView('profiles');
-      return;
+    } finally {
+      setBusy(false);
     }
-    if (!strongEnough) { setError('Use at least 8 characters.'); return; }
-    if (mode === 'create' && password !== confirm) { setError('Passwords do not match.'); return; }
-    s.signIn(email);
-    s.setView('profiles');
   };
 
   return (
@@ -101,7 +115,7 @@ export function AuthView() {
             </Alert>
           )}
 
-          <Btn variant="primary" full icon={mode === 'reset' ? 'send' : 'person'} onClick={submit}>
+          <Btn variant="primary" full disabled={busy} icon={mode === 'reset' ? 'send' : 'person'} onClick={() => { void submit(); }}>
             {mode === 'signin' ? 'Sign in' : mode === 'create' ? 'Create account' : 'Send reset link'}
           </Btn>
 

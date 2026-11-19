@@ -9,6 +9,7 @@ import {
 } from '@joe/core';
 import { createLocalTransport, SyncClient, DEFAULT_PRESENCE, type DeviceKind, type DevicePresence, type SyncEnvelope, type Topic } from '@joe/sync';
 import { getNativeWorkspace, installCommandHandler, nativeKind, nativeLaunch, nativeStop, nativeDeviceName, syncWorkspaceToDesktop, pullDesktopWorkspace, isDesktopShell, pushSyncConfig, sendSyncCommand, getNativeHistory, clearNativeHistory } from './native';
+import { configureCloudAuth, cloudConfigured, signInCloud, signUpCloud, signOutCloud, recoverCloud, restoreSession, fetchEntitlement, accountFromEntitlement } from './supabaseAuth';
 
 export type View =
   | 'profiles' | 'proxies' | 'groups'
@@ -236,7 +237,10 @@ interface Store {
   planLabel: string;
   entitlement: Entitlement;
   lockedBrowser: (family: string) => boolean;
-  signIn: (email: string) => void;
+  /** Local sign-in binds an email; cloud sign-in runs through Supabase and returns an error message on failure. */
+  signIn: (email: string, password?: string) => Promise<string | null>;
+  signUp: (email: string, password: string) => Promise<string | null>;
+  resetPassword: (email: string) => Promise<string | null>;
   signOut: () => void;
   setPlan: (plan: Account['plan']) => void;
   addHistory: (entries: HistoryEntryInput[]) => void;
@@ -366,6 +370,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // Intentionally once per mount: later changes go through setSetting.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /**
+   * Cloud accounts: point the auth client at the configured project and adopt
+   * an existing session (with its server-side entitlement) on start-up.
+   * Without keys the app stays local-first and the AuthView says so.
+   */
+  useEffect(() => {
+    const ready = configureCloudAuth(data.settings.supabaseUrl, data.settings.anonKey);
+    if (!ready) return;
+    let cancelled = false;
+    void (async () => {
+      const session = await restoreSession();
+      if (cancelled || !session) return;
+      const ent = await fetchEntitlement(session);
+      if (cancelled) return;
+      setData((d) => ({ ...d, account: { email: session.user.email, ...accountFromEntitlement(session.user.email, ent) } }));
+    })();
+    return () => { cancelled = true; };
+  }, [data.settings.supabaseUrl, data.settings.anonKey]);
 
   /**
    * Merge visits into the workspace history.
@@ -511,9 +534,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       : `${planFor(data.account).name} plan${planFor(data.account).profileLimit ? ` · ${planFor(data.account).profileLimit} profiles` : ' · unlimited'}`,
     entitlement: checkProfileQuota(data.account, data.profiles.length, 1),
     lockedBrowser: (family) => !browserAllowed(data.account, family as never),
-    signIn: (email) => {
+    /**
+     * Cloud mode (Supabase configured) runs a real password sign-in and adopts
+     * the server's entitlement. Local mode binds an email to this device and
+     * stores no password — the AuthView says which mode is active.
+     */
+    signIn: async (email, password) => {
       const clean = email.trim().toLowerCase();
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clean)) { toast('Enter a valid email address', 'warn'); return; }
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clean)) return 'Enter a valid email address.';
+      if (cloudConfigured()) {
+        const result = await signInCloud(clean, password ?? '');
+        if (result.error) return result.error;
+        const session = result.session;
+        if (session) {
+          const ent = await fetchEntitlement(session);
+          setData((d) => ({ ...d, account: { email: session.user.email, ...accountFromEntitlement(session.user.email, ent) } }));
+          log('edit', 'Signed in', session.user.email);
+          toast(isAdmin({ ...data.account, email: session.user.email }) ? 'Signed in as owner — all features unlocked' : 'Signed in');
+        }
+        return null;
+      }
       const admin = clean === ADMIN_EMAIL.toLowerCase();
       setData((d) => ({
         ...d,
@@ -521,9 +561,42 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }));
       log('edit', admin ? 'Owner signed in' : 'Signed in', clean);
       toast(admin ? 'Signed in as owner — all features unlocked' : 'Signed in');
+      return null;
     },
-    signOut: () => { setData((d) => ({ ...d, account: DEFAULT_ACCOUNT })); toast('Signed out', 'info'); },
-    setPlan: (plan) => { setData((d) => ({ ...d, account: { ...d.account, plan } })); toast(`Switched to ${plan}`); },
+    signUp: async (email, password) => {
+      const clean = email.trim().toLowerCase();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clean)) return 'Enter a valid email address.';
+      if (!cloudConfigured()) return 'Create an account needs Supabase keys in Settings → Sync.';
+      const result = await signUpCloud(clean, password);
+      if (result.error) return result.error;
+      if (result.session) {
+        const ent = await fetchEntitlement(result.session);
+        setData((d) => ({ ...d, account: { email: result.session!.user.email, ...accountFromEntitlement(result.session!.user.email, ent) } }));
+        log('edit', 'Account created', clean);
+        toast('Account created');
+      } else {
+        log('edit', 'Confirmation email sent', clean);
+        toast('Check your email to confirm your account', 'info');
+      }
+      return null;
+    },
+    resetPassword: async (email) => {
+      const clean = email.trim().toLowerCase();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clean)) return 'Enter a valid email address.';
+      if (!cloudConfigured()) return null; // the form shows the honest local-mode notice
+      const result = await recoverCloud(clean);
+      return result.error;
+    },
+    signOut: () => {
+      void signOutCloud();
+      setData((d) => ({ ...d, account: DEFAULT_ACCOUNT }));
+      toast('Signed out', 'info');
+    },
+    /**
+     * Local plan preview only. No payment provider is connected — this never
+     * charges anyone and is labelled as a preview in the UI.
+     */
+    setPlan: (plan) => { setData((d) => ({ ...d, account: { ...d.account, plan } })); toast(`Previewing ${plan} on this device`); },
     addHistory: pushHistory,
     clearHistory: (profileId) => {
       clearNativeHistory(profileId);
