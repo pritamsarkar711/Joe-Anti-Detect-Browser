@@ -177,6 +177,36 @@ try {
     return 'error shown to the user';
   });
 
+  await check('the built bundle loads from file:// as Electron serves it', async () => {
+    // `file:` behaves differently from http: absolute asset paths, module scripts
+    // and fetch all change meaning. The installed app loads index.html this way,
+    // so testing only over HTTP would miss a blank window in the shipped build.
+    const filePage = await browser.newPage({ viewport: { width: 1200, height: 800 } });
+    const fileErrors = [];
+    filePage.on('pageerror', (e) => fileErrors.push(e.message));
+    filePage.on('console', (m) => { if (m.type() === 'error') fileErrors.push(m.text()); });
+    await filePage.addInitScript(() => {
+      window.joe = {
+        isDesktop: true,
+        info: async () => ({ version: 'test', platform: 'win32' }),
+        profiles: { list: async () => [], launch: async () => ({ ok: true }), stop: async () => ({ ok: true }) },
+        workspace: { replace: async (d) => ({ ok: true, profiles: d.profiles.length }), read: async () => ({ profiles: [], proxies: [], groups: ['Default'] }) },
+        sync: { send: async () => ({ ok: true }), configure: async () => ({ ok: true }) },
+      };
+    });
+    await filePage.goto(`file://${path.join(outDir, 'index.html')}`, { waitUntil: 'domcontentloaded' });
+    await filePage.waitForTimeout(2500);
+    const text = await filePage.locator('body').innerText();
+    must(text.trim().length > 200, 'the app rendered nothing over file://');
+    must(/Profiles/i.test(text), 'the profile workspace did not render over file://');
+    const rows = await filePage.locator('tr, [role="row"]').count();
+    must(rows > 0, 'no profile rows rendered over file://');
+    must(fileErrors.length === 0, `file:// errors: ${fileErrors.slice(0, 3).join(' | ')}`);
+    await filePage.close();
+    return `${rows} rows, no errors`;
+  });
+
+
   await page.screenshot({ path: path.join(os.tmpdir(), 'joe-ui-smoke.png') });
 } finally {
   if (browser) await browser.close().catch(() => {});

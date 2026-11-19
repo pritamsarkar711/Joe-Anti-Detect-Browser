@@ -210,7 +210,7 @@ jobs:
             **Validation**: `tsc` clean; `npm test` 51/51, `test:fingerprint` 29/29,
             `test:devices` 75/75, `test:ui` 35/35, `test:site` 15/15, `test:java` 4/4,
             `test:icons` 8/8, `test:desktop` 8/8, `check:bridges` 5/5, `test:packaged` 4/4,
-            `test:main` 14/14, `test:ui-desktop` 4/4. Each packaging gate is verified to
+            `test:main` 14/14, `test:ui-desktop` 5/5. Each packaging gate is verified to
             fail when the fix is reverted, so none of them can pass vacuously. The Android
             APK, the NSIS installer and the portable EXE are built by this workflow from
             this tag. Details in `docs/VALIDATION.md`.
