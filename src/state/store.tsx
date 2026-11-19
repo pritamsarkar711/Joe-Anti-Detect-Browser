@@ -7,7 +7,7 @@ import {
   importWorkspace as parseWorkspace, exportWorkspace as makeExport, type WorkspaceExport,
 } from '@joe/core';
 import { createLocalTransport, SyncClient, DEFAULT_PRESENCE, type DeviceKind, type DevicePresence, type SyncEnvelope, type Topic } from '@joe/sync';
-import { getNativeWorkspace, installCommandHandler, nativeKind, nativeLaunch, nativeStop, nativeDeviceName } from './native';
+import { getNativeWorkspace, installCommandHandler, nativeKind, nativeLaunch, nativeStop, nativeDeviceName, syncWorkspaceToDesktop, pullDesktopWorkspace, isDesktopShell, pushSyncConfig, sendSyncCommand } from './native';
 
 export type View =
   | 'profiles' | 'proxies' | 'groups'
@@ -94,7 +94,7 @@ export interface Toast { id: string; text: string; kind: 'ok' | 'warn' | 'err' |
  */
 const STORAGE_KEY = 'joe-browser:v3';
 const LEGACY_KEYS = ['joe-browser:v2'];
-export const APP_VERSION = '3.1.0';
+export const APP_VERSION = '3.1.1';
 
 const DEFAULT_SETTINGS: Settings = {
   theme: 'light',
@@ -302,6 +302,62 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }, 200);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
   }, [data]);
+
+  /**
+   * Mirror the workspace into the desktop shell.
+   *
+   * The shell keeps its own copy in userData so profiles can be launched from
+   * its REST API and from synced commands. v3.1.0 never pushed anything, so the
+   * UI could show a profile the shell had never heard of and every launch failed
+   * with "Unknown profile" while the row flipped to "running".
+   *
+   * Skipped while a profile is mid-transition so a launch cannot be undone by a
+   * write that lands a moment earlier.
+   */
+  useEffect(() => {
+    if (!isDesktopShell()) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      void syncWorkspaceToDesktop({ profiles: data.profiles, proxies: data.proxies, groups: data.groups });
+    }, 150);
+    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
+  }, [data.profiles, data.proxies, data.groups]);
+
+  // Adopt launches the shell performed on its own (REST API, synced command).
+  useEffect(() => {
+    if (!isDesktopShell()) return;
+    let cancelled = false;
+    const pull = async () => {
+      const fromShell = await pullDesktopWorkspace();
+      if (cancelled || !fromShell) return;
+      setData((d) => {
+        const byId = new Map(fromShell.profiles.map((p) => [p.id, p]));
+        // Only reconcile status/device: everything else is the UI's to own.
+        let changed = false;
+        const profiles = d.profiles.map((p) => {
+          const live = byId.get(p.id);
+          if (!live) return p;
+          const status = live.status ?? p.status;
+          const device = live.device ?? p.device;
+          if (status === p.status && device === p.device) return p;
+          changed = true;
+          return { ...p, status, device };
+        });
+        return changed ? { ...d, profiles } : d;
+      });
+    };
+    const timer = setInterval(() => { void pull(); }, 4000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, []);
+
+  // Push any already-saved credentials once, so a configured install starts
+  // syncing immediately after an update instead of needing the field re-saved.
+  useEffect(() => {
+    if (nativeKind() === 'web') return;
+    pushSyncConfig(data.settings.supabaseUrl, data.settings.anonKey);
+    // Intentionally once per mount: later changes go through setSetting.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = data.settings.theme;
@@ -525,8 +581,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }));
       log(status === 'running' ? 'launch' : 'stop', `${ids.length} profiles ${status === 'running' ? 'launched' : 'stopped'}`, device ?? undefined);
       if (nativeKind() !== 'web') {
+        // A failed launch must be visible: it previously sat in a floating
+        // promise while the row still showed "running".
         data.profiles.filter((p) => set.has(p.id)).forEach((p) => {
-          if (status === 'running') nativeLaunch(p); else nativeStop(p);
+          const run = status === 'running' ? nativeLaunch(p) : nativeStop(p);
+          void run.then((problem) => {
+            if (problem) toast(`${p.name}: ${problem}`, 'warn');
+          });
         });
       }
       if (status === 'running') void desktop.send('command:launch', { profileIds: ids }, 'android-apk');
@@ -567,10 +628,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     exportData: () => { log('export', 'Workspace exported'); return makeExport(data.profiles, data.proxies, data.groups); },
     reset: () => { setData(seed()); setGroupFilter(null); toast('Demo workspace restored', 'info'); },
-    setSetting: (k, v) => setData((d) => ({ ...d, settings: { ...d.settings, [k]: v } })),
+    setSetting: (k, v) => {
+      setData((d) => {
+        const settings = { ...d.settings, [k]: v };
+        // The APK keeps its Supabase credentials in SharedPreferences for the
+        // Java poller; the UI stores them in localStorage. Push on change so
+        // sync starts working without an app restart.
+        if (k === 'supabaseUrl' || k === 'anonKey') {
+          pushSyncConfig(settings.supabaseUrl, settings.anonKey);
+        }
+        return { ...d, settings };
+      });
+    },
     log, toast,
     dismissToast: (id) => setToasts((t) => t.filter((x) => x.id !== id)),
-    send: async (topic, payload, to) => { await desktop.send(topic, payload, to); },
+    send: async (topic, payload, to) => {
+      // The desktop shell owns a real Supabase channel; the phone's Java bridge
+      // posts to PostgREST. Only fall back to the in-process bus when neither
+      // exists (web preview), where it is a no-op demo.
+      if (isDesktopShell() || nativeKind() === 'android') {
+        const problem = await sendSyncCommand(topic, payload, to);
+        if (problem) toast(problem, 'warn');
+      }
+      await desktop.send(topic, payload, to);
+    },
     setDeviceOnline: (kind, online) => {
       setDevices((d) => d.map((x) => x.kind === kind ? { ...x, online, lastSeen: new Date().toISOString() } : x));
       log('sync', `${kind} ${online ? 'connected' : 'disconnected'}`);

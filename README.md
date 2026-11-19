@@ -2,7 +2,7 @@
 
 <img src="assets/brand/joe-browser.svg" alt="Joe Browser logo" width="72" height="72" />
 
-# Joe Browser 3.0
+# Joe Browser 3.1
 
 **Isolated browser profiles for Windows, Android and the web — bundled engines, coherent fingerprints, per-profile history.**
 
@@ -33,8 +33,8 @@ The Windows **EXE** and Android **APK** communicate through <img src="assets/bra
 
 | Platform | File | Notes |
 |---|---|---|
-| <img src="assets/brand/marks/windows.svg" alt="Windows" width="18" height="18" /> Windows 10/11 | `JoeBrowser-Setup-3.0.0.exe` | NSIS installer |
-| <img src="assets/brand/marks/windows.svg" alt="Windows" width="18" height="18" /> Windows 10/11 | `JoeBrowser-Portable-3.0.0.exe` | Portable, no install |
+| <img src="assets/brand/marks/windows.svg" alt="Windows" width="18" height="18" /> Windows 10/11 | `JoeBrowser-Setup-3.1.1.exe` | NSIS installer |
+| <img src="assets/brand/marks/windows.svg" alt="Windows" width="18" height="18" /> Windows 10/11 | `JoeBrowser-Portable-3.1.1.exe` | Portable, no install |
 | <img src="assets/brand/marks/android.svg" alt="Android" width="18" height="18" /> Android 9+ | `JoeBrowser.apk` | Signed debug build, sideload |
 
 Get all three from the [latest GitHub Release](https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser/releases/latest), together with `SHA256SUMS.txt`. Android users should enable installation from their file manager and verify the checksum before sideloading.

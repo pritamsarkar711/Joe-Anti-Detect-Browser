@@ -164,7 +164,9 @@ describe('v2 provenance and licensing', () => {
   it('keeps the readme versioned for the current release without v1 claims', () => {
     const readme = file('README.md');
     const pkgVersion = JSON.parse(file('package.json')).version as string;
-    expect(readme).toContain(`Joe Browser ${pkgVersion.split('.')[0]}.0`);
+    // Major.minor, derived: the README heading tracks the release, and pinning
+    // "3.0" made every minor bump fail this test for no real reason.
+    expect(readme).toContain(`Joe Browser ${pkgVersion.split('.').slice(0, 2).join('.')}`);
     expect(readme).toContain('NOTICE');
     expect(readme).toContain('TRADEMARK.md');
     expect(readme).toMatch(/not undetectable/i);

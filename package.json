@@ -1,9 +1,9 @@
 {
   "name": "joe-browser",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "private": true,
   "type": "module",
-  "description": "Joe Browser \u2014 Material UI profile-isolation workspace for Windows, Android and the web, synced with Supabase and Vercel.",
+  "description": "Joe Browser — Material UI profile-isolation workspace for Windows, Android and the web, synced with Supabase and Vercel.",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
@@ -22,7 +22,13 @@
     "screenshots:v2": "node scripts/screenshots.mjs",
     "build:brands": "node scripts/generate-brand-assets.mjs",
     "build:desktop": "node scripts/build-ui.mjs desktop",
-    "build:icons": "node scripts/generate-app-icons.mjs"
+    "build:icons": "node scripts/generate-app-icons.mjs",
+    "test:desktop": "node scripts/check-desktop.mjs",
+    "test:packaged": "node scripts/check-packaged.mjs",
+    "test:icons": "node scripts/check-icons.mjs",
+    "test:main": "node scripts/smoke-desktop-main.mjs",
+    "test:ui-desktop": "node scripts/smoke-desktop-ui.mjs",
+    "check:bridges": "node scripts/check-bridges.mjs"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -36,6 +42,7 @@
     "simple-icons": "^16.38.0"
   },
   "devDependencies": {
+    "@electron/asar": "^4.3.2",
     "@sparticuz/chromium": "^131.0.1",
     "@types/node": "^22.10.2",
     "@types/react": "^18.3.12",
@@ -46,7 +53,8 @@
     "playwright-core": "^1.49.0",
     "typescript": "^5.7.3",
     "vite": "^6.0.7",
-    "vitest": "^3.0.5"
+    "vitest": "^3.0.5",
+    "yaml": "^2.9.1"
   },
   "license": "MIT"
 }

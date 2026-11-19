@@ -1,4 +1,4 @@
-# Validation report — v3.1.0
+# Validation report — v3.1.1
 
 Every number below comes from a command in this repository. Nothing here is a third-party detector score, and no result is claimed for surfaces the project does not control.
 
@@ -15,6 +15,12 @@ Environment: Debian, Node `v22.22.3`, npm `10.9.8`, Python `3.11.2`, no display 
 | `npm run test:devices` | 75/75 checks on five Android families |
 | `npm run test:java` | 4/4 Java sources parse cleanly and contain no lambda or method reference (parse only, not compilation) |
 | `npm run test:site` | 15/15 static site, version and provenance checks |
+| `npm run test:icons` | 8/8 brand-asset checks (launch icon contrast, tile colour, canonical J path) |
+| `npm run test:desktop` | 8/8 desktop packaging checks (allowlist covers every runtime require; IPC channels match) |
+| `npm run check:bridges` | 5/5 native-bridge checks (Java methods, intent extras, generated assets) |
+| `npm run test:packaged` | 4/4 packaged-app checks (stages `build.files`, boots the main process) |
+| `npm run test:main` | 14/14 main-process checks against a functional Electron stand-in |
+| `npm run test:ui-desktop` | 4/4 renderer checks against a stand-in preload bridge |
 | `npm run build` | typecheck + production bundle |
 | `npm run build:core` | `apps/desktop/core.cjs`, 58 exports |
 | `npm run build:android-ui` | Android web bundle (`dist-android/`) |
@@ -23,6 +29,70 @@ Environment: Debian, Node `v22.22.3`, npm `10.9.8`, Python `3.11.2`, no display 
 | `npm run build:site` | `dist-site/` generated for the canonical URL |
 | `npm run build:brands` | 33 official brand marks, Joe Browser mark, 12 flags |
 | `npm run screenshots` | 17 app captures + 11 cropped site captures + OG card |
+
+### The 3.1.0 launch failure
+
+The 3.1.0 installer could not start. Windows showed:
+
+```text
+Uncaught Exception:
+Error: Cannot find module './extensions.cjs'
+```
+
+`apps/desktop/main.js` requires `./extensions.cjs` at module scope, but the
+electron-builder `files` allowlist in `apps/desktop/package.json` did not list it,
+so the module was absent from `app.asar`. Electron threw before creating a
+window.
+
+Why nothing caught it: every suite ran against the source tree, where the file
+obviously exists. There was no check of the *packaging* configuration and no step
+that opened the built artifact. The release job verified the inputs
+(`core.cjs`, `web-dist/index.html`) and then trusted electron-builder.
+
+**Root cause, fixed at the source.** `extensions.cjs` is in the allowlist.
+
+**Defence in depth.** The `require` is now wrapped: a missing module disables
+extension management with a readable message instead of aborting startup.
+
+**Gates, each verified to fail when its fix is reverted.**
+
+| Gate | What it proves | Reverted-fix result |
+|---|---|---|
+| `test:desktop` | every relative `require()` is matched by `build.files`; every npm package required at runtime is a real dependency; preload and `ipcMain` expose the same 25 channels | `required by main.js but absent from the packaged app: ./extensions.cjs` |
+| `test:packaged` | copies the app using `build.files` and boots it under a stubbed Electron | `the packaged main process loads… — Cannot find module './extensions.cjs'` |
+| `test:main` | real `main.js` against a functional Electron stand-in: startup, profile CRUD, launch, proxy, REST API | `workspace:replace is not registered` |
+| `test:ui-desktop` | the built renderer, served over HTTP against a stand-in preload bridge | launch never crosses the bridge |
+| release job | lists the built `app.asar` and asserts the six runtime entries are inside | `MISSING FROM PACKAGE: extensions.cjs` |
+
+### What 3.1.0 got wrong beyond the crash
+
+An audit of the same class of defect — *code that only looks finished* — found
+three more:
+
+1. **Profile launch never worked on the desktop build.** The React UI persisted
+   profiles to `localStorage`; the main process kept its own list in `userData`
+   and only adopted the Android asset bundle. `profiles:launch(id)` therefore
+   arrived with an id the shell had never seen, threw `Unknown profile` inside a
+   floating promise (so nothing surfaced), and the row still flipped to
+   "running". Fixed with `workspace:replace` / `workspace:read`: the UI mirrors
+   its workspace on every mutation, and the shell pushes live status back.
+   `nativeLaunch` now awaits the bridge and returns the reason on failure.
+2. **Supabase credentials from Settings never reached the phone.** The UI kept
+   them in `localStorage`; `SyncPoller` reads `SharedPreferences`. Sync could not
+   start no matter what was typed. `pushSyncConfig` writes through
+   `JoeBridge.saveConfig`, saving a key now starts the poller immediately, and a
+   blank key no longer sends an unauthorised request every five seconds. The
+   desktop shell gained `sync:configure` for the same reason — it previously read
+   the credentials from the environment only.
+3. **The Android launcher icon was invisible.** The adaptive-icon background was
+   `#FFFFFF` and the glyph is `#FFFFFF`. With `minSdk 28`, only the adaptive icon
+   is ever drawn, so the app appeared to have no icon. The tile is now `#D81B60`,
+   `monochrome` is declared for themed icons, and the legacy layer-list (also
+   white-on-white) is replaced by `ic_mark.xml`, which the splash now draws
+   instead of a bare coloured square.
+
+Two bridge methods that nothing called (`isAndroid`, `toast`) were removed rather
+than left as dead API.
 
 ### Bundle weight
 

@@ -82,8 +82,24 @@ public class MainActivity extends Activity {
         web.addJavascriptInterface(new Bridge(), "JoeBridge");
         web.loadUrl("file:///android_asset/app/index.html");
 
-        poller = new SyncPoller(this, web, prefs);
-        poller.start();
+        restartPollerIfConfigured();
+    }
+
+    /**
+     * Start the Supabase poller only once a key is configured.
+     *
+     * Polling without a key sent `apikey: ` and `Authorization: Bearer ` to the
+     * project on every tick — a request that can never succeed and that some
+     * gateways treat as an attack. Saving the key now starts polling at once,
+     * instead of requiring an app restart before sync appears to work.
+     */
+    private void restartPollerIfConfigured() {
+        String key = prefs.getString("anon_key", "");
+        boolean configured = key != null && key.length() > 0;
+        if (configured && (poller == null || !poller.isAlive())) {
+            poller = new SyncPoller(this, web, prefs);
+            poller.start();
+        }
     }
 
     @Override
@@ -131,9 +147,6 @@ public class MainActivity extends Activity {
     private class Bridge {
 
         @JavascriptInterface
-        public boolean isAndroid() { return true; }
-
-        @JavascriptInterface
         public String getProfiles() { return readAsset("workspace.json"); }
 
         @JavascriptInterface
@@ -175,6 +188,7 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public String saveConfig(String url, String anonKey) {
             prefs.edit().putString("supabase_url", url).putString("anon_key", anonKey).apply();
+            restartPollerIfConfigured();
             return "{\"ok\":true}";
         }
 
@@ -194,13 +208,5 @@ public class MainActivity extends Activity {
             return "{\"ok\":" + ok + "}";
         }
 
-        @JavascriptInterface
-        public void toast(String message) {
-            runOnUiThread(new Runnable() {
-                @Override public void run() {
-                    Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show();
-                }
-            });
-        }
     }
 }

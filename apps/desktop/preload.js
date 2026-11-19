@@ -33,8 +33,17 @@ contextBridge.exposeInMainWorld('joe', {
     attach: (profileId, dir) => invoke('extensions:attach', profileId, dir),
     detach: (profileId, dir) => invoke('extensions:detach', profileId, dir),
   },
-  workspace: { export: () => invoke('workspace:export'), import: (json) => invoke('workspace:import', json) },
-  sync: { send: (topic, payload, to) => invoke('sync:send', topic, payload, to) },
+  workspace: {
+    export: () => invoke('workspace:export'),
+    import: (json) => invoke('workspace:import', json),
+    // Mirrors the UI's workspace into the main process so it can launch profiles.
+    replace: (data) => invoke('workspace:replace', data),
+    read: () => invoke('workspace:read'),
+  },
+  sync: {
+    send: (topic, payload, to) => invoke('sync:send', topic, payload, to),
+    configure: (config) => invoke('sync:configure', config),
+  },
   on: (channel, callback) => {
     const allowed = ['profiles:changed', 'sync:event'];
     if (!allowed.includes(channel)) return () => {};
