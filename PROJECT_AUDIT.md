@@ -130,6 +130,22 @@ and no Windows or Android device**. Therefore, in this session:
 
 Everything else in `TEST_REPORT.md` was executed here and passed.
 
+## Release attempt (v3.2.0)
+
+`main` is at `e6de75d`; tag `v3.2.0` triggered run 44589773737.
+
+- **Windows EXE — success.** The desktop job built the installer and the portable
+  build and uploaded them as an artifact. They have not been installed here.
+- **Android APK — failure.** The signing step exited in the same second it started,
+  on `scripts/build-apk.sh:6` (`JOE_SIGNING_STORE_B64` unset). The repository has no
+  signing secrets, and the script deliberately refuses to fabricate a keystore,
+  because a throw-away key breaks in-place updates (BUG-018).
+- **GitHub Release — skipped**, because it needs both jobs.
+
+No release was published and no unsigned APK was attached anywhere. Adding the four
+signing secrets and re-running the workflow on the tag is the only remaining step;
+the commands are in `REQUIREMENTS_TRACKER.md`.
+
 ## 6. Recommended next steps
 
 1. Apply both migrations to a staging project and run an auth round-trip
