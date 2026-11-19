@@ -1,47 +1,108 @@
-# OPEN_SOURCE_RESEARCH — Joe Browser
+# Open-source research — components considered for 3.2.0
 
-Phase 20 deliverable: candidate open-source projects evaluated before building
-or adopting components, with license, maintenance, dependency and security
-posture, and the adoption decision. Evaluation date 2026-11-19; "last update"
-refers to activity observed at evaluation time.
+`docs/RESEARCH.md` already contains the fingerprinting survey (layer model,
+patched-engine projects, measurement services) and records what this project took
+from each. This file covers the research needed for **this** release: account
+authentication, server-side authorization, and test infrastructure.
 
-## Adopted (in the dependency tree)
+Rule applied throughout: a component is only reused if its licence is compatible
+with this project's MIT source grant, it is maintained, and it can be integrated
+without handing a credential or a network layer to an untrusted party.
 
-| Project | License | Why adopted | Posture check | Decision |
-|---|---|---|---|---|
-| `mui/material` + `@mui/icons-material` v5 | MIT | The spec's Material Design requirement; mature, typed, tree-shakeable | Very active; advisory history promptly patched; 0 audit findings in tree | **Adopt** for the whole design system |
-| `@emotion/*` | MIT | Required by MUI 5 styling | Active; no findings | **Adopt** (transitively required) |
-| `@fontsource/ibm-plex-sans` | MIT (font: OFL) | Spec: IBM Plex Sans, self-hosted (no font CDN) | Static packaging of upstream IBM Plex (OFL-1.1, attribution in NOTICE pattern) | **Adopt** |
-| `flag-icons` | MIT | Circular country flags as data URIs, no runtime stylesheet | Active, no findings | **Adopt** |
-| `simple-icons` | CC0-1.6 | Official brand marks for third-party browsers/services (spec: official logos only) | Active; marks are trademarks of their owners — usage is nominative, stated in TRADEMARK.md | **Adopt** with trademark notice |
-| `react`/`react-dom` 18 | MIT | UI runtime | Active | **Adopt** |
-| `vite`/`@vitejs/plugin-react` | MIT | Build tooling | Active; esbuild transitive kept ≥0.25 via lockfile | **Adopt** |
-| `vitest` | MIT | Test runner (upgraded 3→5 to clear `@vitest/mocker`/`tinypool` advisories) | Active | **Adopt** at ≥5.1 |
-| `esbuild` | MIT | Core bundling for native shells (upgraded 0.24→0.28 for dev-server advisory) | Active | **Adopt** at ≥0.28 |
-| `java-parser` | MIT (deps: chevrotain MIT, lodash) | CI-only Java syntax gate for the Android sources | Semi-active; lodash advisory mitigated by `overrides` to 4.18.1 | **Adopt** with override, CI-only scope (never shipped, parses first-party sources only) |
-| `playwright-core` + `@sparticuz/chromium` | Apache-2.0 | Real-browser UI/device tests and screenshots in CI | Both active; Chromium binary is a build-time artifact | **Adopt** (dev-only) |
-| `@electron/asar` | MIT | Decided *against* runtime use — `scripts/check-asar.mjs` reads archive headers directly (dependency-free, per its own history) | — | **Reference only** |
-| `electron` 33 / `electron-builder` | MIT / Apache-2.0 | Desktop shell + Windows packaging | Chromium security track record; kept current in `apps/desktop` | **Adopt** |
-| `@supabase/supabase-js` | MIT | Desktop shell Realtime channel only (the web UI deliberately uses plain fetch to keep the bundle lean) | Active | **Adopt** in `apps/desktop` only |
-| Apify/BrowserForge-style observed fingerprint dataset | Apache-2.0 | 29 real-device samples behind `packages/core/src/data/realFingerprints.ts` | Static data; attribution in NOTICE and `FINGERPRINT_DATA_SOURCE` | **Adopt** with attribution (spec: do not copy without license check) |
-| `dunky11/react-saas-template` | MIT | Structural reference for the workspace layout (credited in README) | Archived-ish template; design language diverged per spec | **Structure reference only** — no code copied verbatim |
+Licences below are as declared by the upstream repository at review time. Star
+counts, commit dates and release tags drift, so they are deliberately not quoted;
+re-check before a future integration decision.
 
-## Evaluated and not adopted
+---
 
-| Project | License | Why not |
+## 1. Authentication and authorization
+
+| Component | Licence | What it provides | Decision |
+|---|---|---|---|
+| [`supabase/supabase-js`](https://github.com/supabase/supabase-js) | MIT | PostgREST + GoTrue + Realtime client | Used **inside the Electron main process only** (already a dependency there) for Realtime. For renderer authentication it was **not** added: a ~40 KB dependency for five endpoints, and the browser/WebView builds would carry it too. `src/state/cloud.ts` implements the same five calls with `fetch` and no dependency (≈300 lines including error mapping). Revisit if session management grows (OAuth providers, MFA). |
+| [`supabase/gotrue`](https://github.com/supabase/auth) | MIT | The auth service the client speaks to | Not vendored. Studied for the exact request/response shapes: `grant_type=password`, `refresh_token`, `/recover`, `error_description` vs `msg`, and the fact that signup may return a user with no session when confirmation is required. Those behaviours are encoded in the client and its tests. |
+| [`PostgREST/postgrest`](https://github.com/PostgREST/postgrest) | MIT | REST over Postgres, RPC by function name | Not vendored. Its RPC convention (`POST /rest/v1/rpc/<fn>`, JSON body, JSON result) is why `my_entitlement()` is a `STABLE SECURITY DEFINER` function rather than a view: it can be called with a user JWT and return exactly one row of computed facts. |
+| [PostgreSQL RLS documentation](https://www.postgresql.org/docs/current/ddl-rowsecurity.html) | PostgreSQL licence (permissive) | The policy semantics relied on | Read, not copied. Drove three decisions: policies must be `FOR ALL` with both `USIng` and `WITH CHECK` for writes; `SECURITY DEFINER` functions need `set search_path`; and `revoke all … from public` is required before granting execute, because functions are executable by `PUBLIC` by default. |
+| [`supabase/cli`](https://github.com/supabase/cli) | Apache-2.0 | Migration tooling (`supabase db push`) | Referenced in the README as one of two ways to apply the migrations. Not vendored. |
+
+**Rejected:** rolling our own password store (would put credentials and hashing in
+a client app); any "auth" library that keeps the identity in `localStorage` without
+a server proof (that is exactly the defect this release removes); and using a
+service-role key anywhere in a renderer to "simplify" RLS (it would hand every
+install full database access).
+
+## 2. Browser engine and profile isolation
+
+Already surveyed in `docs/RESEARCH.md`; the decision for this release is unchanged
+and worth restating because of the corrected marketing claim:
+
+| Option | Licence | Why not adopted now |
 |---|---|---|
-| CEF (Chromium Embedded Framework) | BSD-3 | Would satisfy "separately packaged engine" on Windows, but adds ~200 MB, a C++ toolchain and its own release cadence; Electron already embeds the same engine class. Revisit if a Firefox-class second engine becomes a hard requirement. |
-| GeckoView | MPL-2.0 | The only legal path to real Firefox-family engines on Android; integrating it means a GeckoView Gradle/AAR toolchain this repo's SDK-only build cannot carry. Kept as the documented upgrade path (MPL file-level copyleft is compatible with MIT distribution of separate files). |
-| Camoufox / patching approaches (Donut, ShardBrowser, etc.) | various | Engine patching is explicitly out of scope and contradicts the "no stealth automation / no deceptive spoofing" rule. Not used. |
-| Puppeteer / Playwright (runtime) | Apache-2.0 | Test-only value; `playwright-core` covers it without shipping automation APIs inside the product. |
-| adblock lists / uBlock Origin (vendored) | GPLv3 | GPL vendoring into an MIT app creates license coupling; the extension *catalog* links to official stores instead of bundling code. |
-| supabase-js in the web bundle | MIT | Works, but ~100 KB for two auth endpoints; plain fetch client is smaller and fully unit-testable. Kept for the desktop Realtime channel where the SDK earns its weight. |
-| electron-updater | MIT | Auto-update adds signing/publishing infrastructure we do not operate yet; releases are explicit downloads with SHA256SUMS. |
+| [`chromiumembedded/cef`](https://github.com/chromiumembedded/cef) | BSD-3-Clause | Would give a redistributable Chromium with more control than Electron, but adds a ~150 MB runtime per platform and a C++ build pipeline — and it is still Chromium, so it does not create a second engine. |
+| [`mozilla/geckoview`](https://github.com/mozilla/geckoview) | MPL-2.0 | The only realistic way to offer a genuine Firefox identity on Android. Not integrated: no Android toolchain here, and an untested engine path would be a claim, not a feature. Firefox is therefore **not offered** and the picker says why. |
+| [`microsoft/WebView2`](https://learn.microsoft.com/microsoft-edge/webview2/) | Proprietary (redistributable runtime) | Would remove the Electron dependency on Windows; also Chromium, so no engine gain. |
+| [`electron/electron`](https://github.com/electron/electron) | MIT | Current desktop runtime. Kept: `session.fromPartition`, `setProxy`, `webRequest` and CDP injection give everything the product needs, and the isolation model is well understood. |
 
-## Method
+## 3. Testing and verification
 
-For each candidate: official repository → license file → latest release/
-commit activity → dependency tree audit (`npm audit`, `npm ls`) → role fit →
-copyleft compatibility with MIT + CC BY-ND docs → security advisory history.
-No code with incompatible licenses (GPL/AGPL/SSPL) is vendored; trademarked
-marks are used nominatively with attribution (`TRADEMARK.md`, `NOTICE`).
+| Component | Licence | Use |
+|---|---|---|
+| [`microsoft/playwright-core`](https://github.com/microsoft/playwright) | Apache-2.0 | Already a dev dependency; drives the UI, device and screenshot suites. Kept as `-core` (no bundled browsers) and paired with `@sparticuz/chromium`. |
+| [`Sparticuz/chromium`](https://github.com/Sparticuz/chromium) | MIT | Supplies the headless Chromium binary in CI/containers. |
+| [`vitest`](https://github.com/vitest-dev/vitest) | MIT | Unit + SSR tests, including the new schema and auth-client suites. |
+| [`electron/asar`](https://github.com/electron/asar) | MIT | Packaging inspection. `scripts/check-asar.mjs` reads the archive header directly so the release job has no dependency at that step. |
+| [`taplo`](https://github.com/tamasfe/taplo) / SQL linters | MIT | **Not adopted.** There is no linter for the specific invariants this project needs (no permissive policy, definer + revoke), so `tests/schema.test.ts` asserts them directly against the migration text and runs in the normal test suite. |
+
+## 4. Explicitly not reused
+
+| Project | Licence | Why not |
+|---|---|---|
+| [`ultrafunkamsterdam/undetected-chromedriver`](https://github.com/ultrafunkamsterdam/undetected-chromedriver) | GPL-3.0 | Incompatible with this project's MIT grant; also stealth-automation functionality outside the stated scope. |
+| [`gorhill/uBlock Origin`](https://github.com/gorhill/uBlock) | GPL-3.0 | Cannot be bundled into an MIT application. The app links to the official store listing instead and installs only what the user chooses. |
+| `Donut`, `ShardBrowser`, `Camoufox`, `OVO`-class projects | mixed (MPL/GPL/proprietary) | Patch the engine at C++ level, which this project explicitly does not do; some licences are incompatible. Referenced as prior art only. |
+| [`apify/fingerprint-suite`](https://github.com/apify/fingerprint-suite) dataset | Apache-2.0 | **Already used** for the observed-device presets, with attribution in `NOTICE`. No new extraction was needed. |
+
+## 5. Brand and font assets
+
+| Asset | Licence | Handling |
+|---|---|---|
+| Platform marks (`windows`, `android`, `chrome`, `edge`, `brave`, `firefox`, …) | Trademarks; SVG paths from `simple-icons` (CC0) | Shipped locally as identification only; `TRADEMARK.md` states no ownership and no endorsement. |
+| IBM Plex Sans | SIL OFL 1.1 | Bundled through `@fontsource/ibm-plex-sans`; attribution in `NOTICE`. |
+| Country flags | MIT (`flag-icons`) | Inlined as data URIs at build time; no stylesheet dependency. |
+| Material UI / icons | MIT | Unmodified dependency. |
+
+## 6. What the research changed in this release
+
+1. **Auth was implemented directly against the documented GoTrue/PostgREST
+   contracts** instead of adding a client library — smaller surface, no new
+   dependency in three runtimes, and every failure branch is testable.
+2. **The "five engines" claim was removed.** Research confirmed that only
+   GeckoView (or a patched Gecko) can honestly back a Firefox identity, and that
+   Chromium/Edge/Brave identities are legitimately compatible with the bundled
+   engine. The product now says exactly that.
+3. **No engine-level patching was attempted**, consistent with the L3 boundary in
+   `docs/RESEARCH.md`; the release notes keep the limitation explicit.
+
+---
+
+## 7. Component evaluations (merged research thread)
+
+A parallel evaluation reached compatible conclusions and covered these
+additional candidates. Method: official repository → license file → activity →
+dependency audit (`npm audit`, `npm ls`) → role fit → copyleft compatibility
+with MIT + CC BY-ND docs → advisory history.
+
+| Project | License | Decision | Why |
+|---|---|---|---|
+| `@fontsource/ibm-plex-sans` | MIT (font: SIL OFL) | **Adopt** | Spec: IBM Plex Sans, self-hosted; no font CDN (`test:site` enforces) |
+| `flag-icons` | MIT | **Adopt** | Circular country flags as data URIs, zero runtime stylesheet |
+| `simple-icons` | CC0-1.6 | **Adopt** | Official brand marks only; nominative use stated in `TRADEMARK.md` |
+| `java-parser` | MIT (deps chevrotain, lodash) | **Adopt, CI-only, overridden** | Parses first-party Android sources in CI; never shipped; lodash lifted to 4.18.1 via `overrides` |
+| `playwright-core` + `@sparticuz/chromium` | Apache-2.0 | **Adopt, dev-only** | Real-browser UI/device tests and screenshots in CI |
+| `@electron/asar` | MIT | **Reference only** | `scripts/check-asar.mjs` reads archive headers dependency-free instead |
+| `vite-node` | MIT | **Adopt, dev-only** | Runs the fingerprint self-test script; pinned explicitly (vitest 5 no longer bundles it) |
+| CEF | BSD-3 | Not adopted | ~200 MB + C++ toolchain; Electron embeds the same engine class |
+| GeckoView | MPL-2.0 | Not adopted | The legal path to real Firefox-family engines on Android; needs a Gradle/AAR toolchain this SDK-only build cannot carry. Documented upgrade path (file-level copyleft is compatible with MIT distribution of separate files) |
+| Camoufox / patching approaches | various | Not adopted | Engine patching is out of scope and contradicts the no-spoofing rule |
+| uBlock Origin (vendored) | GPLv3 | Not adopted | GPL vendoring into an MIT app creates license coupling; the catalog links to official stores instead |
+| `electron-updater` | MIT | Not adopted | No signing/publishing infrastructure operated yet; releases are explicit downloads with `SHA256SUMS.txt` |

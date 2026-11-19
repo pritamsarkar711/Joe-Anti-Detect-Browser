@@ -8,7 +8,7 @@ import './styles.css';
 const rootEl = document.getElementById('root');
 const boot = document.getElementById('joe-boot');
 
-function fail(message: string, detail?: unknown) {
+function fail(message: string) {
   if (!rootEl) return;
   // Never leave a silent white window: show what broke, in plain language.
   rootEl.innerHTML = '';
@@ -21,12 +21,10 @@ function fail(message: string, detail?: unknown) {
     '<strong style="display:block;font-size:16px;margin-bottom:8px">Joe Browser could not start</strong>' +
     '<span style="color:#666c7a"></span>';
   wrap.querySelector('span')!.textContent = message;
-  if (detail) {
-    const pre = document.createElement('pre');
-    pre.style.cssText = 'margin-top:12px;padding:10px;overflow:auto;max-height:200px;font-size:11px;background:#f6f7f9';
-    pre.textContent = String(detail);
-    wrap.appendChild(pre);
-  }
+  const retry = document.createElement('button');
+  retry.textContent = 'Retry startup';
+  retry.onclick = () => window.location.reload();
+  wrap.appendChild(retry);
   rootEl.appendChild(wrap);
   boot?.classList.add('hidden');
 }
@@ -47,11 +45,10 @@ async function bootApp() {
     );
     // Remove the boot shell once React has painted its first frame.
     requestAnimationFrame(() => requestAnimationFrame(() => boot?.classList.add('hidden')));
-  } catch (error) {
-    console.error('[joe] boot failed', error);
+  } catch {
+    console.error('[joe] boot failed: renderer initialization');
     fail(
       'The application bundle failed to load. Reinstall the app, or run the latest installer from the releases page.',
-      error instanceof Error ? `${error.name}: ${error.message}` : error,
     );
   }
 }

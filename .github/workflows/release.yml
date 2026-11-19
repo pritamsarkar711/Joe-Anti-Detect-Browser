@@ -12,7 +12,6 @@ on:
 permissions:
   contents: write
   actions: read
-  issues: write
 
 jobs:
   web:
@@ -115,19 +114,12 @@ jobs:
       - uses: actions/download-artifact@v4
         with: { name: android-assets, path: apps/android/assets }
       - name: Compile, dex, package and sign the APK
-        id: apkbuild
-        run: |
-          set +e
-          chmod +x scripts/build-apk.sh
-          bash -x scripts/build-apk.sh 2>&1 | tee apk-build.log
-          exit ${PIPESTATUS[0]}
-      - name: Publish APK build diagnostics
-        if: failure() && steps.apkbuild.outcome == 'failure'
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          { echo "APK build failed on $(git rev-parse --short HEAD)"; echo '```text'; tail -160 apk-build.log; echo '```'; } > apk-issue.md
-          gh issue create --title "APK build diagnostics $(git rev-parse --short HEAD)" --body-file apk-issue.md || true
+          JOE_SIGNING_STORE_B64: ${{ secrets.JOE_SIGNING_STORE_B64 }}
+          JOE_SIGNING_ALIAS: ${{ secrets.JOE_SIGNING_ALIAS }}
+          JOE_STORE_PASSWORD: ${{ secrets.JOE_STORE_PASSWORD }}
+          JOE_KEY_PASSWORD: ${{ secrets.JOE_KEY_PASSWORD }}
+        run: bash scripts/build-apk.sh
       - uses: actions/upload-artifact@v4
         with: { name: android-apk, path: apps/android/JoeBrowser.apk, retention-days: 7 }
 
@@ -163,44 +155,60 @@ jobs:
             build (`JoeBrowser-Portable-3.2.0.exe`) or the Android app (`JoeBrowser.apk`).
             `SHA256SUMS.txt` contains a checksum for every binary — verify it before running.
 
+            **Accounts are real in this release.** v3.1.1 had a sign-in screen that never
+            contacted a server: any password was accepted, and typing the owner's email
+            address in the email box granted the owner plan. That is fixed.
+
             **Highlights in 3.2.0**
-            - Real per-profile browsing history. The desktop and Android shells record
-              every visit (URL, title, time, search detection) as profiles browse; the
-              History view previously showed only seeded demo rows because nothing ever
-              wrote an entry
-            - Real browser controls in every profile window on Windows and Android:
-              tabs, back, forward, reload/stop, home, address bar with search fallback,
-              find on page, zoom, per-profile bookmarks, downloads and deny-by-default
-              site permissions — plus keyboard shortcuts on Windows
-            - Real Supabase cloud accounts: sign-up with email confirmation, secure
-              login, session refresh, password reset and server-side entitlement lookup
-              when project keys are set in Settings → Sync (local-first mode is unchanged
-              and still stores no password)
-            - Plans, the admin role and the profile quota are now enforced in the
-              database (`user_entitlements`, quota trigger, ADMIN_ONLY RPCs), not only in
-              the client; each signup is provisioned with an isolated personal workspace
+            - Supabase authentication is implemented: sign-up, password login, password
+              reset, refresh-token rotation and sign-out now make real requests. Without a
+              configured project the app says so and stays on the local free tier
+            - Plans and the administrator flag come from the server. The client reads
+              `my_entitlement()`; there is no in-app upgrade button and no email-based
+              administrator check anywhere
+            - `supabase/migrations/0002_entitlements.sql` creates a personal workspace for
+              every account, adds `entitlements`/`app_admins` (read-only to users), enforces
+              the profile quota with a database trigger, and scopes primary keys per
+              workspace. **Apply it to your project before signing in** — without it the
+              app reports the missing function instead of guessing
+            - Free-tier quota is enforced on every path that adds profiles, including CSV and
+              workspace import, which previously bypassed it
+            - A service-role key pasted into Settings is refused instead of stored
+            - Real per-profile browsing history: the desktop and Android shells record every
+              visit (URL, title, time, search detection) as profiles browse; the History view
+              previously showed only seeded demo rows because nothing ever wrote an entry
+            - Real browser controls in every profile window on Windows and Android: tabs,
+              back, forward, reload/stop, home, address bar with search fallback, find on
+              page, zoom, per-profile bookmarks, downloads and deny-by-default site
+              permissions — plus keyboard shortcuts on Windows
             - Security: browsed pages no longer receive the app's IPC bridge — profile
               pages run without a preload and the management bridge is limited to bundled
-              pages (a website a profile visited could previously drive the whole
-              workspace through `window.joe`); the Android manager WebView refuses to
-              navigate anywhere but its bundled assets
-            - Version drift is dead: the shell, Android UA and site derive their version
-              from package.json, with a consistency test across every surface
+              pages (a website a profile visited could previously drive the whole workspace
+              through `window.joe`); the Android manager WebView refuses to navigate
+              anywhere but its bundled assets
             - `npm audit` is clean across the tree (vitest 5, esbuild 0.28, lodash 4.18
               overrides); a credential-shaped-string scan now gates CI and releases
+            - `npm run test:ui`, `npm run test:devices` and `npm run screenshots` now start
+              their own server and exit cleanly; the device suite no longer overwrites the
+              committed evidence report when a run fails
 
-            **Validation**: `tsc` clean; unit/SSR/backend suite 87/87, `test:fingerprint`
-            29/29, `test:site` 15/15, `test:java` 4/4, `test:icons` 8/8, `test:desktop`
-            11/11, `check:bridges` 6/6, `test:packaged` 4/4, `test:main` 15/15,
-            `test:ui-desktop` 5/5, `test:secrets` 3/3. Exact numbers and environment
-            limits are in `docs/VALIDATION.md`.
+            **Validation**: see `docs/VALIDATION.md` for the exact per-suite numbers from
+            the final run and `TEST_REPORT.md`/`SECURITY_AUDIT.md`/`PROJECT_AUDIT.md` for
+            the full evidence and for every item that remains unverified (the migration is
+            verified statically and is **not** executed in CI — it has no database).
 
-            **Honest scope**: JavaScript-visible surfaces are made coherent per profile.
-            Joe Browser does not ship a patched Chromium or Firefox kernel, so TLS/JA4,
-            HTTP/2 frame order, QUIC, font rasterisation, GPU driver behaviour and CDP
-            side channels remain engine-controlled. It is not undetectable, and no
-            third-party detector score is claimed. Intended for legitimate QA, testing,
-            ad verification, privacy research and management of your own accounts.
+            **Engine**: one bundled Chromium engine with four compatible browser
+            identities (Joe Browser, Chrome, Edge, Brave). Firefox is **not** offered —
+            no Gecko runtime is bundled, so presenting a Firefox identity would be a
+            user-agent string on a Chromium engine. The picker says so.
+
+            **Honest scope**: profile isolation, fingerprint coherence and history work as
+            described for the surfaces the app controls. Joe Browser does not ship a patched
+            Chromium or Firefox kernel, so TLS/JA4, HTTP/2 frame order, QUIC, font
+            rasterisation, GPU driver behaviour and CDP side channels remain
+            engine-controlled. It is **not undetectable**, no third-party detector score is
+            claimed, and the app was not
+            tested on physical Windows or Android devices by this build environment.
 
             Built by GitHub Actions from tagged source in this repository.
             Source: MIT · docs and brand assets: CC BY-ND 4.0 · see NOTICE and TRADEMARK.md.

@@ -5,10 +5,13 @@
  * text clipping, dialog fit, navigation and console errors one device at a time.
  */
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { launchBrowser } from './chromium.mjs';
+import { ensureServer } from './serve.mjs';
 
-const BASE = process.env.BASE_URL ?? 'http://localhost:5173';
+const server = await ensureServer();
+const BASE = server.base;
 const OUT = path.join(process.cwd(), 'assets', 'screenshots', 'devices');
 fs.mkdirSync(OUT, { recursive: true });
 
@@ -181,7 +184,26 @@ for (const device of DEVICES) {
   report.push({ device: device.label, key: device.key, viewport: `${device.width}×${device.height}`, dpr: device.dpr, checks });
 }
 
-fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify({ generatedAt: new Date().toISOString(), base: BASE, report }, null, 2));
+await server.stop();
+
 const total = report.reduce((a, d) => a + d.checks.length, 0);
-console.log(`\n${total - failed}/${total} device checks passed · report: ${path.join(OUT, 'report.json')}`);
-if (failed) process.exit(1);
+const payload = JSON.stringify({ generatedAt: new Date().toISOString(), base: BASE, report }, null, 2);
+
+/**
+ * Only a clean run replaces the committed evidence.
+ *
+ * The previous version wrote report.json unconditionally, so running the suite
+ * without a dev server replaced a verified 75/75 report with "0/5, connection
+ * refused" and left it in Git. Failures are written to a scratch file (ignored by
+ * Git) and the last successful report stays intact.
+ */
+if (failed === 0) {
+  fs.writeFileSync(path.join(OUT, 'report.json'), payload);
+  console.log(`\n${total}/${total} device checks passed · report: ${path.join(OUT, 'report.json')}`);
+} else {
+  const scratch = path.join(os.tmpdir(), `joe-devices-${Date.now()}.json`);
+  fs.writeFileSync(scratch, payload);
+  console.error(`\n${total - failed}/${total} device checks passed.`);
+  console.error(`The committed report was left untouched; this run is at ${scratch}`);
+  process.exitCode = 1;
+}

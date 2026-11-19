@@ -1,21 +1,24 @@
-import { useState } from 'react';
-import { Box, Stack, Typography, Paper, TextField, Divider, Tabs, Tab, Alert } from '@mui/material';
+import { useEffect, useState } from 'react';
+import { Box, Stack, Typography, Paper, TextField, Divider, Tabs, Tab, Alert, CircularProgress } from '@mui/material';
 import { useStore } from '@/state/store';
-import { ADMIN_EMAIL, PLANS } from '@joe/core';
+import { PLANS } from '@joe/core';
 import { JoeMark } from '../Brand';
 import { Icon } from '../Icons';
-import { Btn } from '../Primitives';
+import { Btn, Tag } from '../Primitives';
 
 type Mode = 'signin' | 'create' | 'reset';
 
 /**
  * Account screen.
  *
- * Local-first by design: signing in binds this device's workspace to an email
- * and a plan without requiring a server. When Supabase keys are configured in
- * Settings → Sync, the same form is the entry point for hosted auth (sign-up,
- * secure login, password reset); the copy states which mode is active instead
- * of pretending a cloud session exists.
+ * Two clearly separated states:
+ *
+ * - **Cloud** (a Supabase URL and publishable key are set): sign-up, password
+ *   login and password recovery are real requests, and the plan shown here is
+ *   read back from `my_entitlement()`. A password is never stored in the app.
+ * - **Local** (no project configured): the workspace belongs to this device.
+ *   No email is treated as an identity and no paid tier is granted — the screen
+ *   says that instead of showing a form that only pretends to authenticate.
  */
 export function AuthView() {
   const s = useStore();
@@ -24,46 +27,62 @@ export function AuthView() {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
-  const [sent, setSent] = useState(false);
+  const [info, setInfo] = useState('');
 
-  const cloud = Boolean(s.settings.supabaseUrl && s.settings.anonKey);
+  const cloud = s.cloudConfigured;
+  const signedIn = s.authStatus === 'cloud' || s.authStatus === 'cloud-offline';
 
-  const validEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
-  const strongEnough = password.length >= 8;
-
-  const [busy, setBusy] = useState(false);
+  useEffect(() => { setError(''); setInfo(''); }, [mode]);
 
   const submit = async () => {
     setError('');
-    if (!validEmail) { setError('Enter a valid email address.'); return; }
-    setBusy(true);
-    try {
-      if (mode === 'reset') {
-        // Cloud mode sends a real recovery email; without keys the notice
-        // below says plainly that no email can leave this device.
-        const problem = await s.resetPassword(email.trim());
-        if (problem) { setError(problem); return; }
-        setSent(true);
-        return;
-      }
-      if (!cloud) {
-        // Local mode: no password is stored, and the UI says that plainly.
-        const problem = await s.signIn(email.trim());
-        if (problem) { setError(problem); return; }
-        s.setView('profiles');
-        return;
-      }
-      if (!strongEnough) { setError('Use at least 8 characters.'); return; }
-      if (mode === 'create' && password !== confirm) { setError('Passwords do not match.'); return; }
-      const problem = mode === 'create'
-        ? await s.signUp(email.trim(), password)
-        : await s.signIn(email.trim(), password);
-      if (problem) { setError(problem); return; }
-      s.setView('profiles');
-    } finally {
-      setBusy(false);
+    setInfo('');
+    if (mode === 'reset') {
+      const outcome = await s.resetPassword(email);
+      if (outcome.error) setError(outcome.error);
+      else setInfo(outcome.info ?? 'Reset email sent.');
+      return;
     }
+    if (mode === 'create' && password !== confirm) { setError('Passwords do not match.'); return; }
+    const outcome = mode === 'create' ? await s.signUp(email, password) : await s.signIn(email, password);
+    if (outcome.error) { setError(outcome.error); return; }
+    if (outcome.info) setInfo(outcome.info);
   };
+
+  if (signedIn) {
+    return (
+      <Box sx={{ display: 'grid', placeItems: 'center', minHeight: '70dvh', px: 2 }}>
+        <Paper variant="outlined" sx={{ width: '100%', maxWidth: 460, p: { xs: 2, sm: 3 } }}>
+          <Stack spacing={2}>
+            <Stack direction="row" alignItems="center" spacing={1.25}>
+              <JoeMark size={36} />
+              <Box sx={{ minWidth: 0, flex: 1 }}>
+                <Typography noWrap sx={{ fontSize: '0.95rem', fontWeight: 600 }}>{s.cloudEmail ?? s.account.email}</Typography>
+                <Typography variant="caption" color="text.secondary">{s.planLabel}</Typography>
+              </Box>
+              {s.account.role === 'owner' && <Tag tone="primary">Owner</Tag>}
+            </Stack>
+            <Alert
+              severity={s.authStatus === 'cloud' ? 'success' : 'warning'}
+              variant="outlined"
+              icon={<Icon name={s.authStatus === 'cloud' ? 'shield' : 'alert'} size={20} />}
+            >
+              {s.planNotice}
+            </Alert>
+            <Divider />
+            <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+              <Btn icon="refresh" onClick={() => { void s.refreshEntitlement(); }}>Refresh plan</Btn>
+              <Btn icon="restart" onClick={() => s.signOut()}>Sign out</Btn>
+              <Btn variant="primary" icon="arrow" onClick={() => s.setView('profiles')}>Profiles</Btn>
+            </Stack>
+            <Typography variant="caption" color="text.secondary">
+              The plan is read from your project's `my_entitlement()` function on every refresh. This screen cannot change it.
+            </Typography>
+          </Stack>
+        </Paper>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ display: 'grid', placeItems: 'center', minHeight: '70dvh', px: 2 }}>
@@ -76,8 +95,15 @@ export function AuthView() {
           </Typography>
         </Stack>
 
+        {!cloud && (
+          <Alert severity="info" variant="outlined" sx={{ mb: 2, fontSize: '0.78rem' }}>
+            No account service is configured on this device. Add your Supabase project URL and publishable key in
+            Settings → Sync to enable sign-up, login and password reset.
+          </Alert>
+        )}
+
         <Tabs
-          value={mode} onChange={(_e, v) => { setMode(v); setError(''); setSent(false); }}
+          value={mode} onChange={(_e, v) => setMode(v)}
           variant="fullWidth" sx={{ mb: 2, minHeight: 34, '& .MuiTab-root': { minHeight: 34, fontSize: '0.76rem' } }}
         >
           <Tab value="signin" label="Sign in" />
@@ -89,46 +115,50 @@ export function AuthView() {
           <TextField
             size="small" label="Email" type="email" value={email} autoComplete="email"
             onChange={(e) => setEmail(e.target.value)} InputLabelProps={{ shrink: true }}
-            placeholder={ADMIN_EMAIL}
+            disabled={s.authBusy}
           />
           {mode !== 'reset' && (
             <TextField
               size="small" label="Password" type="password" value={password}
+              autoComplete={mode === 'create' ? 'new-password' : 'current-password'}
               onChange={(e) => setPassword(e.target.value)}
-              helperText={cloud ? 'At least 8 characters' : 'Not stored in local mode'}
-              InputLabelProps={{ shrink: true }}
+              helperText="At least 8 characters"
+              disabled={s.authBusy}
             />
           )}
           {mode === 'create' && (
             <TextField
               size="small" label="Confirm password" type="password" value={confirm}
-              onChange={(e) => setConfirm(e.target.value)} InputLabelProps={{ shrink: true }}
+              autoComplete="new-password"
+              onChange={(e) => setConfirm(e.target.value)}
+              disabled={s.authBusy}
             />
           )}
 
-          {error && <Alert severity="error" sx={{ py: 0.25 }}>{error}</Alert>}
-          {sent && (
-            <Alert severity="info" sx={{ py: 0.25 }}>
-              {cloud
-                ? `If ${email} has an account, a reset link is on its way.`
-                : 'Cloud accounts are not configured on this device, so no reset email can be sent. Add Supabase keys in Settings → Sync, or continue locally.'}
-            </Alert>
-          )}
+          {error && <Alert severity="error" sx={{ py: 0.25, fontSize: '0.78rem' }}>{error}</Alert>}
+          {info && <Alert severity="info" sx={{ py: 0.25, fontSize: '0.78rem' }}>{info}</Alert>}
 
-          <Btn variant="primary" full disabled={busy} icon={mode === 'reset' ? 'send' : 'person'} onClick={() => { void submit(); }}>
-            {mode === 'signin' ? 'Sign in' : mode === 'create' ? 'Create account' : 'Send reset link'}
+          <Btn
+            variant="primary" full
+            icon={mode === 'reset' ? 'send' : 'person'}
+            onClick={() => { void submit(); }}
+            disabled={s.authBusy || !cloud}
+          >
+            {s.authBusy
+              ? <CircularProgress size={16} color="inherit" />
+              : mode === 'signin' ? 'Sign in' : mode === 'create' ? 'Create account' : 'Send reset link'}
           </Btn>
 
           <Divider />
 
-          <Btn full icon="arrow" onClick={() => { s.setView('profiles'); }}>
+          <Btn full icon="arrow" onClick={() => s.continueLocally()}>
             Continue without an account
           </Btn>
 
           <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>
             {cloud
-              ? 'Accounts are handled by your Supabase project. Passwords are never stored by the app.'
-              : 'Local mode: your email and plan stay on this device. No password is stored or sent.'}
+              ? 'Passwords are sent only to your Supabase project and are never stored by the app.'
+              : 'Without a project, this workspace stays on this device and keeps the free tier.'}
           </Typography>
         </Stack>
       </Paper>

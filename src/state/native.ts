@@ -8,7 +8,7 @@ declare global {
       getProfiles(): string;
       getDeviceInfo(): string;
       launchProfile(profileJson: string): string;
-      saveConfig(url: string, anonKey: string): string;
+      saveConfig(url: string, anonKey: string, accessToken: string): string;
       getConfig(): string;
       sendCommand(topic: string, payloadJson: string): string;
       toast(message: string): void;
@@ -108,20 +108,22 @@ export function clearNativeHistory(profileId?: string): void {
  * settings into whichever shell exists.
  * ------------------------------------------------------------------ */
 
-export function pushSyncConfig(url: string, anonKey: string): void {
+export function pushSyncConfig(url: string, anonKey: string, accessToken = ''): void {
   if (typeof window === 'undefined') return;
   if (window.JoeBridge?.saveConfig) {
-    try { window.JoeBridge.saveConfig(url ?? '', anonKey ?? ''); } catch { /* non-fatal */ }
+    // The phone's Java client writes to PostgREST, and RLS needs the user's JWT:
+    // the anon key alone leaves auth.uid() empty and every command is refused.
+    try { window.JoeBridge.saveConfig(url ?? '', anonKey ?? '', accessToken ?? ''); } catch { /* non-fatal */ }
   } else if (window.joe?.sync?.configure) {
     void window.joe.sync.configure({ url: url ?? '', anonKey: anonKey ?? '' });
   }
 }
 
-export function readSyncConfig(): { url: string; anonKey: string } | null {
+export function readSyncConfig(): { url: string; anonKey: string; accessToken: string } | null {
   if (typeof window === 'undefined' || !window.JoeBridge?.getConfig) return null;
   try {
-    const parsed = JSON.parse(window.JoeBridge.getConfig()) as { url?: string; anonKey?: string };
-    return { url: parsed.url ?? '', anonKey: parsed.anonKey ?? '' };
+    const parsed = JSON.parse(window.JoeBridge.getConfig()) as { url?: string; anonKey?: string; accessToken?: string };
+    return { url: parsed.url ?? '', anonKey: parsed.anonKey ?? '', accessToken: parsed.accessToken ?? '' };
   } catch {
     return null;
   }

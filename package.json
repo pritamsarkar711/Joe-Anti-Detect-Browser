@@ -3,7 +3,7 @@
   "version": "3.2.0",
   "private": true,
   "type": "module",
-  "description": "Joe Browser — Material UI profile-isolation workspace for Windows, Android and the web, synced with Supabase and Vercel.",
+  "description": "Joe Browser \u2014 Material UI profile-isolation workspace for Windows, Android and the web, synced with Supabase and Vercel.",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
@@ -29,7 +29,8 @@
     "test:main": "node scripts/smoke-desktop-main.mjs",
     "test:ui-desktop": "node scripts/smoke-desktop-ui.mjs",
     "check:bridges": "node scripts/check-bridges.mjs",
-    "test:secrets": "node scripts/check-secrets.mjs"
+    "test:secrets": "node scripts/check-secrets.mjs",
+    "test:boot": "node scripts/test-boot-retry.mjs"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

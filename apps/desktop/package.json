@@ -3,7 +3,7 @@
   "version": "3.2.0",
   "private": true,
   "main": "main.js",
-  "description": "Joe Browser — Electron desktop shell (Windows EXE)",
+  "description": "Joe Browser \u2014 Electron desktop shell (Windows EXE)",
   "author": "Joe Browser",
   "license": "MIT",
   "scripts": {
@@ -20,7 +20,7 @@
   "build": {
     "appId": "com.joebrowser.desktop",
     "productName": "Joe Browser",
-    "copyright": "Copyright © 2026 Joe Browser",
+    "copyright": "Copyright \u00a9 2026 Joe Browser",
     "directories": {
       "output": "release",
       "buildResources": "../../build"

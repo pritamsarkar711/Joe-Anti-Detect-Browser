@@ -1,101 +1,199 @@
-# SECURITY_AUDIT — Joe Browser 3.2.0
+# Security audit — Joe Browser 3.2.0
 
-Audit date 2026-11-19. Scope: web control plane, Electron desktop shell,
-Android shell, Supabase schema/RLS/Edge Function, CI/CD, dependencies, secret
-hygiene. Tooling used: manual review of every auth/IPC/network surface,
-`npm audit` (full tree), the repository secret scan (`scripts/check-secrets.mjs`,
-7 pattern families), and the packaging/bridge gates that enforce security
-properties structurally.
+Scope: the whole repository at `arena/2d9e313d-joe-anti-detect-browser`, with the
+emphasis on authentication, authorization, the Supabase schema, the Electron
+shell, the Android shell and the credentials that reach a renderer.
 
-## Critical findings (fixed)
+Method: source review plus the executable checks listed at the end. Where a check
+could not run here (no Postgres, no JDK, no device), the finding is marked
+**unverified** rather than assumed safe.
+
+---
+
+## 1. Findings
+
+| ID | Severity | Finding | Status |
+|---|---|---|---|
+| S-1 | **Critical** | Administrator rights were granted by comparing a typed email with `ADMIN_EMAIL`; the owner plan required no password. | **Fixed** — authority now requires a server-verified session and a server-assigned role (`isAdmin`). Regression test in `tests/v3.test.ts`. |
+| S-2 | **Critical** | No authentication existed: sign-up, login and reset were local writes with a pre-filled success message. | **Fixed** — GoTrue client in `src/state/cloud.ts`; 21 tests. Live round-trip unverified (no project credentials). |
+| S-3 | **Critical** | Any user could set their own plan to Premium with one click. | **Fixed** — `setPlan` removed; `entitlements` is read-only to users; plan comes from `my_entitlement()`. |
+| S-4 | **High** | Free-tier limit bypassable via CSV and workspace import. | **Fixed** — allowance enforced on both paths, plus a `profiles_quota` trigger in Postgres. |
+| S-5 | **High** | A service-role key pasted into Settings was persisted in `localStorage`, `SharedPreferences` and `workspace.json`. | **Fixed** — `looksLikeServiceRoleKey()` refuses it; the value never reaches storage. |
+| S-6 | **High** | RLS was unsatisfiable: no code path created a workspace membership, so either the feature was dead or an operator would be tempted to disable RLS. | **Fixed** — bootstrap trigger + `ensure_user_workspace()` + backfill; no user-writable membership policy. |
+| S-7 | **High** | Global primary keys let two tenants' deterministic profile ids collide, and `profiles.proxy_id` could reference another tenant's proxy. | **Fixed** — `(workspace_id, id)` keys and a composite foreign key. |
+| S-8 | **High** | Cached entitlement could restore `is_admin` from `localStorage`. | **Fixed** — the role is never restored from cache. |
+| S-9 | **High** | Android writes used the anon key, so `auth.uid()` was null; the client also hard-coded a foreign workspace id and reported success on failure. | **Fixed** — session JWT handed to the native client, server-resolved workspace, honest result. Runtime unverified. |
+| S-10 | **Medium** | The owner email was displayed as the sign-in placeholder. | **Fixed** — removed. |
+| S-11 | **Medium** | A missing `profile_limit` in the entitlement payload was interpreted as "unlimited". | **Fixed** — fail-closed three-state parse, pinned by test. |
+| S-12 | **Medium** | The Realtime channel is a fixed name authorised by the anon key, so anyone holding that key could broadcast commands into it. | **Open** — see §6. |
+| S-13 | **Medium** | `npm run test:devices` overwrote committed evidence with a failed run. | **Fixed** — only a clean run promotes the report. |
+| S-15 | **Low** | If the entry script itself failed to load, the boot handler could not run, so the window had no recovery action at all. | **Fixed** (merged from `main`) — the static shell carries a plain HTML retry link that works before JavaScript starts, and the failure screen offers a Retry button. `scripts/test-boot-retry.mjs` exercises both paths in Chromium. |
+| S-14 | **Medium** | Every APK build generated a fresh keystore, so each release had a different signing identity and could not update an installed build in place. | **Fixed** — `scripts/build-apk.sh` now refuses to run without an externally managed store (`JOE_SIGNING_STORE_B64`, `JOE_SIGNING_ALIAS`, `JOE_STORE_PASSWORD`, `JOE_KEY_PASSWORD`) supplied by CI secrets, and the release job no longer fabricates one. Installs signed with an older, unavailable key are **not** upgradable in place: back up the workspace before uninstalling, because uninstalling deletes app data. |
+
+---
+
+## 2. Authentication and session handling
+
+- Identity is proven only by `POST /auth/v1/token?grant_type=password` against the
+  configured project. The client never derives a role from an email string.
+- Access tokens are refreshed 60 s before expiry (`ensureFreshSession`), on an
+  interval while the app is open, and on demand from the account screen. A revoked
+  refresh token clears the session and returns the UI to the signed-out state.
+- A rejected password and an unconfirmed email produce different, actionable
+  messages instead of a generic failure or a false success.
+- Passwords are never stored or logged. The app stores only the session tokens.
+- Password reset calls `POST /auth/v1/recover`; the response is deliberately
+  non-committal ("If … has an account…"), which matches the server's privacy
+  behaviour and avoids account enumeration by the client.
+
+## 3. Authorization and the database
+
+`supabase/migrations/0002_entitlements.sql` establishes:
+
+- **RLS on every table** (`workspaces`, `workspace_members`, `profiles`,
+  `proxies`, `devices`, `commands`, `events`, `entitlements`, `app_admins`).
+  The migration ends with a `DO` block that raises if any of the nine lacks RLS.
+- **Tenant isolation** via membership checks (`exists (select 1 from
+  workspace_members m where m.workspace_id = … and m.user_id = auth.uid())`).
+  No policy uses `using (true)` and no table is granted to `anon`.
+- **Plans are server-owned.** `entitlements` has a SELECT policy for the owner of
+  the row and no write policy at all; `app_admins` has no user policy. Both are
+  writable only through the service role, which never reaches a client.
+- **One authority function.** `my_entitlement()` (SECURITY DEFINER, `search_path`
+  pinned, `revoke all … from public`, `grant execute … to authenticated`) returns
+  `plan`, `is_admin`, `profile_limit`, `renews_at`, `verified`. An anonymous caller
+  gets `verified: false` and the free tier.
+- **Quota in the database.** `enforce_profile_quota()` is a `before insert` trigger
+  on `profiles`; a direct PostgREST insert above the limit raises
+  `check_violation`. It is skipped for the service role and for administrators.
+- **No privilege escalation through writes.** `workspace_id` defaults to
+  `my_workspace_id()`; a client cannot target a workspace it does not belong to.
+
+## 4. Desktop shell
+
+- **Context isolation on, Node integration off, `sandbox: false`** for both the
+  manager window and profile windows. The preload exposes a fixed, whitelisted
+  surface (28 IPC channels, asserted in sync by `test:desktop`); the renderer has
+  no `require`, no `process` and no filesystem access.
+- **The local REST API** binds to `127.0.0.1`, rejects requests whose `Origin` is
+  a real website, requires `application/json`, caps bodies at 1 MB, requires a
+  32-byte per-install bearer token compared with `crypto.timingSafeEqual`, answers
+  only GET/POST/OPTIONS, and returns generic errors so internals do not leak.
+  `/health` is the only unauthenticated route and returns no user data.
+- **Profile isolation** uses `session.fromPartition('persist:<id>')` — separate
+  cookies, cache, storage and IndexedDB per profile. Extensions load from the
+  app's own `userData/extensions` directory, never from an installed browser.
+- **Extension installs** sanitise the id, reject zip-slip paths and record a
+  digest (see `apps/desktop/extensions.cjs`).
+- **No secrets at rest** beyond the Supabase URL/anon key and the API token
+  (`0600`). The anon key is public by design; the service-role key is refused.
+
+## 5. Android shell
+
+- `MainActivity` loads only bundled assets (`file:///android_asset/app`), sets a
+  distinct workspace user agent, and shows a readable error page if the bundle
+  fails to load instead of a white screen.
+- The JS bridge is a fixed 6-method surface (`@JavascriptInterface`), checked
+  against the calls the UI makes by `npm run check:bridges` in both directions.
+- Each browser profile runs in `:profile` with `WebView.setDataDirectorySuffix`,
+  giving a separate WebView data directory per profile.
+- Sync credentials live in app-private `SharedPreferences`; the session JWT is
+  used as the bearer token so RLS can scope requests, and the client refuses to
+  claim a write was sent while signed out.
+- Manifest: `INTERNET` and `ACCESS_NETWORK_STATE` only, `allowBackup="false"`,
+  `usesCleartextTraffic="true"` (needed for local `file://`/proxy diagnostic
+  flows — worth narrowing to a network-security-config in a future release;
+  recorded here rather than silently changed).
+
+## 6. Accepted risks and limitations
+
+1. **Realtime channel authorization (S-12).** The desktop subscribes to
+   `channel('joe-sync')` with the anon key. Broadcast is not RLS-scoped in that
+   configuration, so a holder of the project's anon key could publish a
+   `command:launch` envelope. Real isolation needs per-workspace channel names,
+   `realtime.messages` policies and a Realtime auth token; that cannot be
+   validated in this environment, so it is documented, not half-implemented.
+   Recommendation: one project per tenant until it is closed.
+2. **Offline entitlement cache.** A verified plan is honoured for up to 7 days
+   offline. This is a product decision (a paying user on a plane should keep
+   working) and it means a tampered `localStorage` could hold a Premium claim
+   offline. The administrator flag is explicitly excluded, so the escalation
+   surface is a plan claim, not owner rights. It is not DRM.
+3. **A modified client can do anything a modified client can do.** Entitlement
+   enforcement in the app stops accidental overuse and keeps the three surfaces
+   consistent; the database trigger is what makes the limit real for API clients.
+4. **`usesCleartextTraffic="true"`** on Android, as noted in §5.
+5. **No third-party detector evidence.** No score is claimed anywhere; the app
+   links to independent detectors for the user to run inside a profile.
+6. **Engine-level fingerprint surfaces** (TLS/JA4, HTTP/2, QUIC, font
+   rasterisation, GPU behaviour, CDP) are engine-controlled. The product is
+   documented as L3-only (`docs/RESEARCH.md`).
+
+## 7. Dependency and secret scanning
+
+- `npm ci` was used (lockfile-driven). The audit was **not** able to run
+  `npm audit --omit=dev` against the registry advisory endpoint in a way that
+  produces a report to attach here; CI runs `npm ci` and the full test suite. A
+  dedicated `npm audit` job should be added once network access to the advisory
+  service is confirmed in CI.
+- `tests/schema.test.ts` performs a repository secret scan on every test run:
+  service-role JWTs, `sb_secret_*`, AWS keys, private-key blocks and hard-coded
+  passwords across `src/`, `packages/`, `apps/desktop` and
+  `apps/android/app/src`. Current result: **0 offenders**.
+- No `.env` files, keystores or tokens are committed. `.gitignore` covers
+  `.env*`, `*.keystore`, `apps/android/*.apk` and installer output.
+
+## 8. What was executed
+
+| Check | Result |
+|---|---|
+| `tests/schema.test.ts` — RLS on all tables, no permissive policy, no `anon` grant, definer + revoke/grant pairs, quota trigger, bootstrap trigger, composite keys, secret scan | 12/12 pass |
+| `tests/cloud.test.ts` — auth request shape, error mapping, refresh, revocation, RPC auth, fail-closed parse, cache binding, cached-admin refusal | 21/21 pass |
+| `tests/v3.test.ts` — plan/quota rules and the impersonation regression | 9/9 pass |
+| `npm run check:bridges` — bridge surface, extras, session-token handoff | 6/6 pass |
+| `npm run test:main` — main process incl. REST auth (no token 401, foreign origin 403, token 200) | 14/14 pass |
+| `npm run test:java` — Java sources parse | 4/4 pass |
+| `npx tsc --noEmit` | clean |
+
+**Not executed here:** applying either migration to a Postgres database; a live
+auth round-trip; an APK or EXE runtime test; any request from a physical phone.
+Those remain the reviewer's next step before a production release.
+
+---
+
+## 9. Merged audit thread — additional finding and gates
 
 ### S-1 · Management IPC bridge exposed to browsed web content — CRITICAL — FIXED
-Profile windows attached `preload.js` (exposing `window.joe` with
-`workspace:replace`, `profiles:delete`, `sync:configure`, `profiles:launch`,
-extension install, …) to the same webContents that browsed arbitrary sites.
-Any page opened in any profile could take over the workspace, redirect sync to
-an attacker-controlled Supabase project, or launch processes via profile
-commands. The Android manager WebView carried `JoeBridge` while permitted to
+
+`preload.js` was attached to profile windows whose webContents browsed the open
+web: any page could call `window.joe.workspace.replace()`, `profiles:delete`,
+`sync:configure`, extension install — full workspace control from hostile
+content. The Android manager WebView carried `JoeBridge` while permitted to
 navigate to remote URLs.
-- **Fix:** profile tabs are WebContentsViews with **no preload**;
-  `window.joe`/`window.joeChrome` are exposed only to `file:` pages and
-  localhost dev servers (remote fallback gets nothing); the Android manager
-  refuses any navigation outside `file:///android_asset/` and opens external
-  links via the system browser instead.
-- **Verification:** `test:main` asserts foreign chrome senders are rejected;
-  the trust gate is enforced in `preload.js`; code inspection recorded here.
 
-## High findings (fixed)
+**Fix** Profile tabs are WebContentsViews with **no preload**; `window.joe` /
+`window.joeChrome` are exposed only to `file:` pages and localhost dev servers
+(the remote control-plane fallback gets nothing). The Android manager refuses
+navigation outside `file:///android_asset/` and opens external links via the
+system browser. `test:main` rejects chrome commands from foreign senders.
 
-### S-2 · Client-only plan/admin enforcement — HIGH — FIXED
-Quota and admin checks lived in TypeScript; trivially bypassed. Fixed by
-migration `0002`: DB trigger enforces the profile quota on insert and
-workspace-move (free 2 / demo 6 / premium-admin unlimited, counted across all
-memberships), `user_entitlements` is readable by its owner (or admin) and
-**writable by no client role at all**, admin RPCs raise `ADMIN_ONLY`
-(errcode 42501), and signup provisioning isolates each user in their own
-workspace so 0001's RLS separates data from the first request.
+### Dependency and secret posture (this thread)
 
-### S-3 · Dependency advisories — HIGH (dev-only) — FIXED
-11 advisories (vitest `@vitest/mocker`/`tinypool` prototype-pollution RCE
-gadgets, esbuild dev-server origin bypass, lodash/lodash-es via java-parser).
-All upgraded/overridden; `npm audit` now reports **0 across the tree**. CI
-enforces `npm audit --omit=dev --audit-level=high` so shipped-code advisories
-fail builds.
+- `npm audit` is **0 across the whole tree** (vitest 5, esbuild 0.28,
+  `overrides` for lodash/lodash-es 4.18.1 via java-parser). CI runs
+  `npm audit --omit=dev --audit-level=high` so shipped-code advisories fail
+  builds.
+- `scripts/check-secrets.mjs` fails CI on credential-shaped strings (private
+  key blocks, AWS/GitHub/Slack token families, service-role JWTs, passworded
+  connection strings, hard-coded key assignments), on tracked `.env` files and
+  on key material. It runs before tests in CI and before any binary builds in
+  the release workflow. (Complements — does not replace — the schema test's
+  client-secret scan.)
 
-## Medium/low findings (fixed or accepted)
-
-- **S-4 version drift (fixed):** unidentifiable builds complicate incident
-  response; every version surface now derives from package.json and is test-
-  locked (`tests/version.test.ts`).
-- **S-5 fake premium unlock (fixed):** misleading purchase affordance replaced
-  with an explicit local preview; no payment surface exists to be abused.
-- **S-6 Android cleartext traffic (accepted, documented):**
-  `usesCleartextTraffic="true"` remains because a browser must load plain
-  `http://` sites the user chooses. Risk is confined to browsed content inside
-  the isolated profile; the manager and sync layers speak HTTPS only
-  (Supabase), and the manager WebView cannot navigate remotely at all.
-- **S-7 extension loading (accepted with controls):** unpacked extension
-  loading with `allowFileAccess` is the only engine-supported install path;
-  mitigated by zip-slip refusal, manifest validation, SHA-256 digests shown to
-  the user, opt-in attach, and installs living in the app's own directory.
-- **S-8 local REST API (inspected, sound):** loopback bind, no CORS grants,
-  origin allowlist rejects web pages, per-install 32-byte token (0600),
-  timing-safe compare, JSON-only bodies with 1 MB cap, generic 500s.
-
-## Data handling
-
-- No telemetry. No secrets in logs (reviewed `console.*` sites — messages carry
-  ids and status, never credentials). Proxy passwords appear only in the local
-  workspace file and session config, never in UI lists or logs.
-- The Supabase anon key is a publishable key by design; the security boundary
-  is RLS + server functions. The **service-role key appears nowhere** in the
-  repository (secret scan gate).
-- Admin identity: the owner-provided address is compared in `is_admin()`
-  (SQL) and `ADMIN_EMAIL` (core) with a test that fails if they diverge. Real
-  admin authority is the backend `ADMIN_ONLY` functions, not the UI badge.
-
-## Verification pending (operator steps)
-
-These require the live Supabase project or a Windows/Android device and are
-**not** claimed as done:
-
-1. Apply `0001`+`0002` (`supabase db push`), then probe: `can_create_profile`
-   as a free user (2 allowed), insert a 3rd profile (expect
-   `PROFILE_LIMIT_REACHED`), read another user's `user_entitlements` (expect
-   empty), call `admin_list_users` as non-admin (expect `ADMIN_ONLY`), as
-   admin (expect rows).
-2. Walk sign-up → confirmation email → sign-in → reset in the built app with
-   real keys.
-3. Open a hostile test page inside a profile window and confirm no
-   `window.joe`/`window.joeChrome` binding exists (expected: `undefined`).
-
-## Residual risk statement
+### Residual risk (engine level)
 
 The app runs untrusted web content in Electron/Android WebView — the same
-engine-level attack surface as any browser (renderer RCE → app process).
-Mitigations: sandboxed renderer contexts without Node, no preload on browsed
-pages, context isolation everywhere, external navigation from the manager
-blocked, single-instance lock, and rapid engine updates through Electron/WebView
-releases. Joe Browser does not claim to resist nation-state attackers or
-engine-level fingerprinting; see README "Scope, honestly".
+engine attack surface as any browser (renderer RCE → app process). Mitigated by
+no preload on browsed pages, context isolation, manager navigation lock and
+rapid engine updates via Electron/WebView releases. No resistance to
+nation-state attackers or engine-level fingerprinting is claimed.

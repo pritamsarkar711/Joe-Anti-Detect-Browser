@@ -14,7 +14,8 @@ export {
 } from './extensions';
 
 export {
-  PLANS, FREE_PROFILE_LIMIT, DEMO_PROFILE_LIMIT, ADMIN_EMAIL,
+  PLANS, FREE_PROFILE_LIMIT, DEMO_PROFILE_LIMIT, OWNER_EMAIL, isVerifiedAccount,
   planFor, isAdmin, checkProfileQuota, browserAllowed, lockedBrowsers, engineRequiresPremium,
-  type Plan, type PlanId, type Account, type Entitlement,
+  BROWSER_SUPPORT, SELECTABLE_BROWSERS, browserSupport, isBrowserAvailable,
+  type BrowserSupport, type Plan, type PlanId, type Account, type Entitlement,
 } from './plans';

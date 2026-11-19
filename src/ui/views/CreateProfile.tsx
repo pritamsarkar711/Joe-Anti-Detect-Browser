@@ -6,7 +6,7 @@ import {
 import { useStore } from '@/state/store';
 import {
   DEVICE_TEMPLATES, TEMPLATE_GROUPS as GROUPS, REAL_DEVICE_PRESETS, DEFAULT_START_PAGE,
-  generateProfiles, parseCookies,
+  generateProfiles, parseCookies, BROWSER_SUPPORT,
   type BrowserProfile, type BrowserFamily,
 } from '@joe/core';
 import { Icon } from '../Icons';
@@ -20,14 +20,18 @@ const osMark = (os: string) =>
         : os === 'iOS' || os === 'iPadOS' ? 'apple'
           : 'linux';
 
-/** Browsers the app ships itself. No host browser is ever used. */
-const FAMILIES: Array<{ id: BrowserFamily; label: string; mark: string | null }> = [
-  { id: 'joe', label: 'Joe Browser', mark: null },
-  { id: 'chrome', label: 'Chrome', mark: 'chrome' },
-  { id: 'edge', label: 'Edge', mark: 'edge' },
-  { id: 'brave', label: 'Brave', mark: 'brave' },
-  { id: 'firefox', label: 'Firefox', mark: 'firefox' },
-];
+/**
+ * Browser identities, not engines.
+ *
+ * Only Chromium is bundled (Electron on Windows, WebView on Android). Chrome,
+ * Edge and Brave are compatible identities on that engine; Firefox is a Gecko
+ * browser and is not offered, because a Firefox UA on Chromium is a contradiction
+ * rather than a feature. The list therefore comes from `BROWSER_SUPPORT`, which
+ * also carries the reason shown to the user.
+ */
+const MARKS: Record<string, string | null> = { joe: null, chrome: 'chrome', edge: 'edge', brave: 'brave', firefox: 'firefox' };
+const FAMILIES = BROWSER_SUPPORT.map((b) => ({ id: b.family, label: b.label, mark: MARKS[b.family] ?? null, available: b.available, note: b.note }));
+const UNAVAILABLE = FAMILIES.filter((f) => !f.available);
 
 export function CreateProfile() {
   const s = useStore();
@@ -109,15 +113,16 @@ export function CreateProfile() {
 
         {/* 2 — browser */}
         <Box>
-          <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 0.6 }}>Browser</Typography>
+          <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 0.6 }}>Browser identity</Typography>
           <Grid container spacing={1}>
-            {FAMILIES.map((f) => {
+            {FAMILIES.filter((f) => f.available).map((f) => {
               const locked = s.lockedBrowser(f.id);
               return (
               <Grid item xs={6} sm={4} md={2.4} key={f.id}>
                 <Paper
                   variant="outlined"
-                  onClick={() => (locked ? s.toast('Brave, Edge and Firefox are Premium engines. Free keeps Chrome and Joe Browser.', 'warn') : setFamily(f.id))}
+                  title={f.note}
+                  onClick={() => (locked ? s.toast('Edge and Brave are Premium identities. Free keeps Chrome and Joe Browser.', 'warn') : setFamily(f.id))}
                   sx={{
                     p: 1, cursor: locked ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 0.75,
                     opacity: locked ? 0.55 : 1,
@@ -133,6 +138,10 @@ export function CreateProfile() {
               );
             })}
           </Grid>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
+            All of these run on the Chromium engine bundled with the app. No browser installed on this machine is used or detected.
+            {UNAVAILABLE.length > 0 && ` ${UNAVAILABLE.map((f) => `${f.label} is not available: ${f.note.replace(/^Not offered: /, '')}`).join(' ')}`}
+          </Typography>
         </Box>
 
         {/* 3 — device */}

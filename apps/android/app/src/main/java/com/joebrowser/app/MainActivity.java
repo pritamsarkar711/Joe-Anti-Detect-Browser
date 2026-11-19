@@ -280,9 +280,21 @@ public class MainActivity extends Activity {
             }
         }
 
+        /**
+         * Persist the project configuration and the signed-in user's access token.
+         *
+         * The anon key alone cannot pass RLS: `auth.uid()` is null, so every
+         * command insert was rejected and the phone's sync was silently dead.
+         * The third argument is the JWT from the Supabase session the UI holds;
+         * SyncHttp sends it as the bearer token.
+         */
         @JavascriptInterface
-        public String saveConfig(String url, String anonKey) {
-            prefs.edit().putString("supabase_url", url).putString("anon_key", anonKey).apply();
+        public String saveConfig(String url, String anonKey, String accessToken) {
+            prefs.edit()
+                    .putString("supabase_url", url)
+                    .putString("anon_key", anonKey)
+                    .putString("access_token", accessToken == null ? "" : accessToken)
+                    .apply();
             restartPollerIfConfigured();
             return "{\"ok\":true}";
         }
@@ -293,6 +305,7 @@ public class MainActivity extends Activity {
             try {
                 o.put("url", prefs.getString("supabase_url", getString(R.string.default_supabase_url)));
                 o.put("anonKey", prefs.getString("anon_key", ""));
+                o.put("accessToken", prefs.getString("access_token", ""));
             } catch (JSONException ignored) {}
             return o.toString();
         }

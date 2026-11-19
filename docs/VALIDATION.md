@@ -9,17 +9,18 @@ Environment: Debian, Node `v22.22.3`, npm `10.9.8`, Python `3.11.2`, no display 
 | Command | Result |
 |---|---|
 | `npx tsc --noEmit` | pass, exit 0 |
-| `npm test` | 10 files, 87 tests passed (unit, SSR, history, auth, backend policy, version consistency) |
+| `npm test` | 11 files, 102 tests passed (unit, SSR, history, version, account client 23, schema invariants 12, core policy pins 4) |
 | `npm run test:secrets` | 3/3 (credential patterns, env files, key material) |
+| `npm run test:boot` | pass (missing entry and missing app chunk both allow retry) |
 | `npm audit` / `npm audit --omit=dev` | 0 vulnerabilities (whole tree) |
 | `npm run test:fingerprint` | 29/29 injection self-tests, exit 0 |
-| `npm run test:ui` | 35/35 real-browser checks, no console errors |
-| `npm run test:devices` | 75/75 checks on five Android families |
+| `npm run test:ui` | 35/35 real-browser checks, self-served |
+| `npm run test:devices` | 75/75 checks on five Android families, self-served |
 | `npm run test:java` | 4/4 Java sources parse cleanly and contain no lambda or method reference (parse only, not compilation) |
 | `npm run test:site` | 15/15 static site, version and provenance checks |
 | `npm run test:icons` | 8/8 brand-asset checks (launch icon contrast, tile colour, canonical J path) |
 | `npm run test:desktop` | 11/11 desktop packaging checks (allowlist covers every runtime require including chrome.html; IPC channels match) |
-| `npm run check:bridges` | 6/6 native-bridge checks (Java methods, intent extras, browser controls, generated assets) |
+| `npm run check:bridges` | 7/7 native-bridge checks (Java methods, intent extras, browser controls, session-token handoff, generated assets) |
 | `npm run test:packaged` | 4/4 packaged-app checks (stages `build.files`, boots the main process) |
 | `npm run test:main` | 15/15 main-process checks against a functional Electron stand-in — including profile launch, chrome toolbar routing (tabs, navigation, find, zoom, bookmarks, permissions, clear-data), history streaming and foreign-sender rejection |
 | `npm run test:ui-desktop` | 5/5 renderer checks against a stand-in preload bridge, over `http:` and `file:` |
@@ -140,7 +141,7 @@ Highlights from the 34 passing checks:
 - Six seeded profiles render on first paint; every sidebar destination resolves (16 navigation entries).
 - IBM Plex Sans is the active computed font; `no gradients or dashed borders`.
 - Command palette opens with Ctrl/⌘ + K and filters.
-- All five bundled engines are offered in the create dialog.
+- Four browser identities are offered (Joe Browser, Chrome, Edge, Brave) on the one bundled Chromium engine; Firefox is listed as unavailable because no Gecko engine is bundled.
 - A new profile persists to the table, 250 profiles can be created on Premium, and the table paginates.
 - The local JavaScript probe passes `22 of 22 checks`; six independent detector links are present.
 - Dark and light themes both render; a desktop-to-Android command is created.
@@ -222,3 +223,25 @@ Verified in a real Chromium context: the iPhone payload reports `navigator.userA
 - No claim of parity with C++-patched browsers such as ShardBrowser, Camoufox, Donut/Wayfern or OVO.
 - No claim that TLS/JA4, HTTP/2, QUIC, font rasterisation, GPU driver output or CDP side channels are spoofed.
 - No claim that the Android APK is production-signed; CI builds are debug-signed and published with checksums.
+
+
+---
+
+## v3.2.0 — what changed in this report
+
+The detailed evidence for this release lives in [`TEST_REPORT.md`](../TEST_REPORT.md),
+the defects in [`BUG_REPORT.md`](../BUG_REPORT.md) and the security review in
+[`SECURITY_AUDIT.md`](../SECURITY_AUDIT.md). Two environment limits matter when
+reading them:
+
+- **No database.** Both migrations are checked statically (`tests/schema.test.ts`);
+  neither was executed against Postgres, and no Supabase project was contacted.
+- **No native toolchain.** The Windows EXE and the Android APK are produced by
+  GitHub Actions. This environment has no JDK, Android SDK, Electron runtime or
+  Windows host, so no binary was built or installed here. `test:packaged`,
+  `test:main` and `test:ui-desktop` exercise the packaged module graph and the
+  renderer against stand-ins, not a running Electron process.
+
+The browser suites (`test:ui`, `test:devices`, `screenshots`) now start and stop
+their own Vite server; previously they required a manually started dev server and
+the device suite overwrote its committed report when that server was missing.
