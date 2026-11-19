@@ -36,14 +36,15 @@ for (const weight of [400, 500, 600, 700]) {
   fs.copyFileSync(path.join(fontSrc, file), path.join(fontOut, file));
 }
 
-// Ship real screenshots and the OG image locally for hosts that can serve them.
-const shots = path.join(root, 'assets', 'screenshots');
-const shotOut = path.join(out, 'screenshots');
-fs.mkdirSync(shotOut, { recursive: true });
-for (const file of fs.readdirSync(shots)) {
-  if (file.toLowerCase().endsWith('.png')) fs.copyFileSync(path.join(shots, file), path.join(shotOut, file));
-}
-const og = path.join(shots, 'og-image.png');
+/**
+ * Screenshots.
+ *
+ * The site only uses the cropped, chrome-free captures in `site/screens`
+ * (~1.1 MB total). Shipping every raw capture in assets/screenshots used to add
+ * ~2 MB of images that no page referenced, so it is no longer copied; the OG
+ * card is the one full-frame image that stays.
+ */
+const og = path.join(root, 'assets', 'screenshots', 'og-image.png');
 if (fs.existsSync(og)) fs.copyFileSync(og, path.join(out, 'og-image.png'));
 
 console.log(`Built SEO site → ${out} (${siteUrl}, branch ${branch})`);

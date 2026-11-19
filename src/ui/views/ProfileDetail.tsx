@@ -11,8 +11,9 @@ import { surfaces } from '@joe/fingerprint';
 import { Icon } from '../Icons';
 import { Official, CountryFlag } from '../Brand';
 import { Btn, IconBtn, Panel, Tag, ScoreRing, Empty, Field, Modal } from '../Primitives';
+import { PasteAsHuman } from './PasteAsHuman';
 
-type TabKey = 'overview' | 'fingerprint' | 'network' | 'data' | 'devices';
+type TabKey = 'overview' | 'fingerprint' | 'network' | 'data' | 'devices' | 'tools';
 
 function osMark(os: string): string {
   return os === 'Windows' ? 'windows' : os === 'macOS' ? 'apple' : os === 'Android' ? 'android' : 'linux';
@@ -37,7 +38,7 @@ export function ProfileDetail() {
   return (
     <>
       <Modal
-        open onClose={close} width={780} title={p.name} subtitle={`${p.group} · rev ${p.revision}`}
+        open onClose={close} width={780} title={p.name} subtitle={p.group}
         actions={<>
           <Btn variant="danger" icon="trash" onClick={() => setConfirmDelete(true)}>Delete</Btn>
           <Box sx={{ flex: 1 }} />
@@ -45,12 +46,17 @@ export function ProfileDetail() {
           <Btn variant="primary" icon={p.status === 'running' ? 'stop' : 'play'} onClick={() => s.setStatus([p.id], p.status === 'running' ? 'stopped' : 'running')}>{p.status === 'running' ? 'Stop' : 'Launch'}</Btn>
         </>}
       >
-        <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto" sx={{ borderBottom: '1px solid', borderColor: 'divider', mb: 2 }}>
+        <Tabs
+          value={tab} onChange={(_, v) => setTab(v)}
+          variant="scrollable" scrollButtons={false} allowScrollButtonsMobile
+          sx={{ borderBottom: '1px solid', borderColor: 'divider', mb: 2, minHeight: 38, '& .MuiTab-root': { minHeight: 38, py: 0.5, fontSize: '0.78rem' } }}
+        >
           <Tab value="overview" label="Overview" />
           <Tab value="fingerprint" label="Fingerprint" />
           <Tab value="network" label="Network" />
           <Tab value="data" label="Data" />
-          <Tab value="devices" label="Observed devices" />
+          <Tab value="devices" label="Samples" />
+          <Tab value="tools" label="Tools" />
         </Tabs>
 
         {tab === 'overview' && (
@@ -60,7 +66,17 @@ export function ProfileDetail() {
                 <ScoreRing value={report.score} size={76} />
                 <Box sx={{ flex: 1, minWidth: 0 }}>
                   <Typography variant="h3">Consistency grade {report.grade}</Typography>
-                  <Typography variant="body2" color="text.secondary">{report.checked} checks · {report.issues.filter((i) => i.severity === 'critical').length} critical · {report.issues.filter((i) => i.severity === 'warning').length} warnings</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {(() => {
+                      // Info entries are engine limits that no JavaScript
+                      // surface can fix; only criticals/warnings are problems.
+                      const problems = report.issues.filter((i) => i.severity !== 'info').length;
+                      const limits = report.issues.length - problems;
+                      if (problems === 0 && limits === 0) return `${report.checked} static checks agree`;
+                      if (problems === 0) return `${report.checked} static checks agree · ${limits} engine limit${limits === 1 ? '' : 's'} listed`;
+                      return `${problems} of ${report.checked} checks need attention${limits ? ` · ${limits} engine limit${limits === 1 ? '' : 's'}` : ''}`;
+                    })()}
+                  </Typography>
                 </Box>
                 <Box sx={{ textAlign: 'right' }}>
                   <Typography variant="overline" color="text.secondary" sx={{ display: 'block' }}>Uniqueness</Typography>
@@ -95,7 +111,9 @@ export function ProfileDetail() {
             <Box>
               <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
                 <Typography variant="h6">Checks</Typography>
-                <Typography variant="caption" color="text.secondary">{report.issues.length} results</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {report.issues.filter((i) => i.severity !== 'info').length} problem{report.issues.filter((i) => i.severity !== 'info').length === 1 ? '' : 's'} · {report.issues.filter((i) => i.severity === 'info').length} limits
+                </Typography>
               </Stack>
               {report.issues.length === 0 ? <Empty icon="verified" title="No contradictions found" /> : report.issues.map((i) => (
                 <Paper key={i.id} variant="outlined" sx={{ p: 1.3, mb: 0.9, display: 'flex', gap: 1.2, alignItems: 'flex-start' }}>
@@ -158,13 +176,26 @@ export function ProfileDetail() {
           </Stack>
         )}
 
+        {tab === 'tools' && (
+          <Stack spacing={2}>
+            <Paper variant="outlined" sx={{ p: 1.8 }}><PasteAsHuman profileName={p.name} /></Paper>
+            <Paper variant="outlined" sx={{ p: 1.5 }}>
+              <Typography sx={{ fontSize: '0.84rem', fontWeight: 600, mb: 0.4 }}>History for this profile</Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                URLs and searches captured while this profile is open. Stored on this device only.
+              </Typography>
+              <Btn size="small" icon="history" onClick={() => { close(); s.setView('history'); }}>Open history</Btn>
+            </Paper>
+          </Stack>
+        )}
+
         {tab === 'devices' && (
           <Stack spacing={1}>
             <Typography variant="body2" color="text.secondary">{FINGERPRINT_DATA_SOURCE}. Each entry is one coherent observed device.</Typography>
             {REAL_DEVICE_PRESETS.map((r) => (
               <Paper key={r.id} variant="outlined" sx={{ p: 1.2, display: 'flex', alignItems: 'center', gap: 1.2 }}>
                 <Box sx={{ width: 30, height: 30, borderRadius: '50%', display: 'grid', placeItems: 'center', bgcolor: 'rgba(216,27,96,0.10)', flex: 'none' }}><Official name={osMark(r.os)} size={17} color="#D81B60" /></Box>
-                <Box sx={{ minWidth: 0, flex: 1 }}><Typography sx={{ fontSize: '0.8rem', fontWeight: 600 }}>{r.label}</Typography><Typography variant="caption" color="text.secondary">Chrome {r.chromeMajor} · {r.screen.width}×{r.screen.height}</Typography></Box>
+                <Box sx={{ minWidth: 0, flex: 1 }}><Typography sx={{ fontSize: '0.8rem', fontWeight: 600 }}>{r.label}</Typography><Typography variant="caption" color="text.secondary">{r.mobile ? 'Mobile' : 'Desktop'} · {r.screen.width}×{r.screen.height}</Typography></Box>
                 <Tooltip title={r.gpu.renderer}><span><Chip label={`${r.cores} cores`} size="small" variant="outlined" /></span></Tooltip>
                 <Btn size="small" onClick={() => { s.applyPreset([p.id], r.id); s.toast('Observed device applied'); }}>Apply</Btn>
               </Paper>

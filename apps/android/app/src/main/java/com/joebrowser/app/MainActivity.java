@@ -51,13 +51,32 @@ public class MainActivity extends Activity {
         settings.setLoadWithOverviewMode(true);
         settings.setUseWideViewPort(true);
         settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
-        settings.setUserAgentString("JoeBrowser/2.0 (Android; ControlPlane)");
+        // The manager UI is loaded from android_asset and never browses third
+        // party pages, so it keeps the app's own agent; profiles (BrowserActivity)
+        // get the spoofed one.
+        settings.setUserAgentString("JoeBrowser/3.0 (Android; Workspace)");
         settings.setMediaPlaybackRequiresUserGesture(true);
 
         web.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 return false;
+            }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, android.webkit.WebResourceError error) {
+                // A missing or unreadable asset bundle used to leave a white
+                // screen with no way out. Say what happened instead.
+                if (request != null && request.isForMainFrame()) {
+                    String reason = error == null ? "unknown" : String.valueOf(error.getDescription());
+                    view.loadDataWithBaseURL(null,
+                            "<!doctype html><meta name=viewport content=\"width=device-width,initial-scale=1\">"
+                                    + "<body style=\"margin:0;font:15px system-ui;background:#faf9fa;color:#1c191d;display:grid;place-items:center;height:100vh;text-align:center\">"
+                                    + "<div style=\"padding:24px\"><strong>Workspace failed to load</strong>"
+                                    + "<div style=\"color:#655f66;font-size:13px;margin-top:6px\">" + reason + "</div>"
+                                    + "<div style=\"color:#655f66;font-size:12px;margin-top:10px\">Reinstall the APK to restore the bundled assets.</div></div></body>",
+                            "text/html", "utf-8", null);
+                }
             }
         });
         web.addJavascriptInterface(new Bridge(), "JoeBridge");
@@ -137,7 +156,7 @@ public class MainActivity extends Activity {
                 String id = p.optString("id", "default");
                 String ua = p.optJSONObject("fingerprint") == null
                         ? "" : p.optJSONObject("fingerprint").optString("userAgent", "");
-                String url = p.optString("startUrl", "https://example.com");
+                String url = p.optString("startUrl", "https://browserscan.net/");
                 String cookies = p.optString("cookies", "");
 
                 writeSuffix(id);

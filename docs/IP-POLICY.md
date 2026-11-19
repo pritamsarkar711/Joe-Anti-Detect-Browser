@@ -1,6 +1,6 @@
 # Copyright, licensing and protection strategy
 
-Last updated: v2.0.0. This document explains how Joe Browser protects authorship, identity and release provenance without overstating what an open-source license can do.
+Last updated: v3.0.0. This document explains how Joe Browser protects authorship, identity and release provenance without overstating what an open-source license can do.
 
 ## 1. The honest legal baseline
 

@@ -87,11 +87,25 @@ export function checkConsistency(spec: FingerprintSpec): ConsistencyReport {
   if (spec.uaClientHints.fullVersion.split('.')[0] !== String(spec.chromeMajor)) {
     add('critical', 'Client Hints', 'Sec-CH-UA-Full-Version does not match UA major', 'Derive both from the template');
   }
-  if (!new RegExp(`Chrome/${spec.chromeMajor}\\.`).test(spec.userAgent) && !new RegExp(`Edg/${spec.chromeMajor}\\.`).test(spec.userAgent)) {
-    add('critical', 'Client Hints', 'UA major does not match Client Hints major', 'Derive both from one observed device');
-  }
-  if (spec.uaClientHints.brands.length && !spec.uaClientHints.brands.some((b) => b.version === String(spec.chromeMajor))) {
-    add('critical', 'Client Hints', 'Sec-CH-UA brand versions do not match UA', 'Use the brands from the same real device');
+  /**
+   * WebKit engines (Safari on iOS/iPadOS, and the iPadOS desktop-mode UA) never
+   * send Sec-CH-UA at all. Applying the Chromium cross-check to them produced a
+   * false critical on every Apple template, so the branch is explicit: a WebKit
+   * UA must instead *not* advertise Chromium brands.
+   */
+  const isWebKit = spec.uaClientHints.brands.some((b) => /^Safari$/i.test(b.brand))
+    || (!/Chrome\//.test(spec.userAgent) && !/Edg\//.test(spec.userAgent) && !/Firefox\//.test(spec.userAgent));
+  if (isWebKit) {
+    if (spec.uaClientHints.brands.some((b) => /Chromium|Google Chrome/i.test(b.brand))) {
+      add('critical', 'Client Hints', 'WebKit profile advertises Chromium brands', 'Safari sends no Sec-CH-UA brands');
+    }
+  } else {
+    if (!new RegExp(`Chrome/${spec.chromeMajor}\\.`).test(spec.userAgent) && !new RegExp(`Edg/${spec.chromeMajor}\\.`).test(spec.userAgent)) {
+      add('critical', 'Client Hints', 'UA major does not match Client Hints major', 'Derive both from one observed device');
+    }
+    if (spec.uaClientHints.brands.length && !spec.uaClientHints.brands.some((b) => b.version === String(spec.chromeMajor))) {
+      add('critical', 'Client Hints', 'Sec-CH-UA brand versions do not match UA', 'Use the brands from the same real device');
+    }
   }
   if (spec.timezoneOffset === 0 && /^(America|Asia|Australia)\//.test(spec.timezone)) {
     add('warning', 'Timezone', 'UTC offset does not match the declared timezone', 'Apply proxy geo matching');

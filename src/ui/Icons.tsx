@@ -13,6 +13,8 @@ import {
   VpnKeyRounded, LockRounded, ScheduleRounded, BarChartRounded, AutoAwesomeRounded, BuildRounded,
   CodeRounded, MemoryRounded, MonitorRounded, WebRounded, EmojiFlagsRounded, RestartAltRounded,
   SaveRounded, VisibilityRounded, VisibilityOffRounded, LaunchRounded, CircleRounded,
+  HistoryRounded, KeyboardRounded, PublicOffRounded, SwapHorizRounded, NotificationsActiveRounded,
+  ContentPasteGoRounded, ShieldMoonRounded, BookmarkRounded,
 } from '@mui/icons-material';
 import type { SvgIconComponent } from '@mui/icons-material';
 
@@ -41,6 +43,9 @@ const MAP: Record<string, SvgIconComponent> = {
   cpu: MemoryRounded, monitor: MonitorRounded, web: WebRounded, flag: EmojiFlagsRounded,
   restart: RestartAltRounded, save: SaveRounded, visible: VisibilityRounded, hidden: VisibilityOffRounded,
   launch: LaunchRounded, circle: CircleRounded,
+  history: HistoryRounded, keyboard: KeyboardRounded, globeOff: PublicOffRounded,
+  swap: SwapHorizRounded, notify: NotificationsActiveRounded, paste: ContentPasteGoRounded,
+  stealth: ShieldMoonRounded, bookmark: BookmarkRounded,
 };
 
 export type IconName = keyof typeof MAP | string;

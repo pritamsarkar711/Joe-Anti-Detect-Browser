@@ -1,10 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="AppTheme" parent="@android:style/Theme.Material.NoActionBar.Fullscreen">
+    <!-- Light theme: the React workspace is light by default, so a black or
+         white window background causes a visible flash / "blank" impression. -->
+    <style name="AppTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowNoTitle">true</item>
-        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:windowBackground">@drawable/splash_background</item>
+        <item name="android:statusBarColor">#FFFFFF</item>
+        <item name="android:navigationBarColor">#FFFFFF</item>
+        <item name="android:windowLightStatusBar">true</item>
     </style>
     <style name="BrowserTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowNoTitle">true</item>
+        <item name="android:windowBackground">#FFFFFF</item>
     </style>
 </resources>

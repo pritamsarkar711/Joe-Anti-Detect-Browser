@@ -5,7 +5,7 @@
  * Runs against the built dist-site/ when it exists, otherwise against site/
  * with the template placeholders left in place. It never claims a live
  * detector score; it only proves that metadata, local assets and required
- * provenance files are present and consistent for v2.0.0.
+ * provenance files are present and consistent for the current major version.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -36,8 +36,8 @@ const robots = fs.readFileSync(path.join(siteDir, 'robots.txt'), 'utf8');
 const sitemap = fs.readFileSync(path.join(siteDir, 'sitemap.xml'), 'utf8');
 const read = (relative) => fs.readFileSync(path.join(siteDir, relative), 'utf8');
 
-check('page declares a v2 title and description', () => {
-  must(/<title>[^<]*Joe Browser 2\.0[^<]*<\/title>/.test(html), 'title is not v2 branded');
+check('page declares a v3 title and description', () => {
+  must(/<title>[^<]*Joe Browser 3\.0[^<]*<\/title>/.test(html), 'title is not v3 branded');
   must(/<meta name="description" content="[^"]{80,}"/.test(html), 'meta description missing or too short');
   return 'title + description present';
 });
@@ -51,7 +51,7 @@ check('canonical, Open Graph and Twitter metadata are consistent', () => {
   return 'canonical + OG + Twitter resolved';
 });
 
-check('structured data declares software version 2.0.0', () => {
+check('structured data declares the current software version', () => {
   const blocks = [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)];
   must(blocks.length >= 2, 'expected SoftwareApplication and FAQPage JSON-LD');
   const parsed = blocks.map((b) => JSON.parse(b[1]));
@@ -59,7 +59,8 @@ check('structured data declares software version 2.0.0', () => {
   const faq = parsed.find((j) => j['@type'] === 'FAQPage');
   must(app, 'SoftwareApplication JSON-LD missing');
   must(faq && Array.isArray(faq.mainEntity) && faq.mainEntity.length >= 3, 'FAQPage JSON-LD missing entries');
-  must(String(app.softwareVersion) === '2.0.0', `softwareVersion is ${app.softwareVersion}`);
+  const pkgVersion = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
+  must(String(app.softwareVersion) === pkgVersion, `softwareVersion ${app.softwareVersion} != package ${pkgVersion}`);
   must(app.offers && app.offers.price === '0', 'expected zero-price offer');
   must(app.license === `${REPO}/blob/main/LICENSE`, 'license URL is not canonical');
   return `version ${app.softwareVersion}, ${faq.mainEntity.length} FAQ entries`;
@@ -125,16 +126,20 @@ check('flags cover the documented country set', () => {
 });
 
 check('screenshots are real local captures', () => {
-  const dir = path.join(siteDir, 'screenshots');
+  // The site ships cropped, chrome-free captures in site/screens (copied to
+  // dist-site/screens); the uncropped originals stay in assets/screenshots.
+  const dir = path.join(siteDir, 'screens');
   const pngs = fs.readdirSync(dir).filter((f) => f.endsWith('.png'));
-  must(pngs.length >= 12, `only ${pngs.length} screenshots`);
-  for (const name of ['01-profiles-light.png', '07-fingerprints.png', '11-profiles-dark.png']) {
+  must(pngs.length >= 6, `only ${pngs.length} screenshots`);
+  for (const name of ['01-profiles-light.png', '07-fingerprints.png', '12-profiles-dark.png']) {
     must(pngs.includes(name), `missing ${name}`);
   }
   const size = fs.statSync(path.join(dir, '01-profiles-light.png')).size;
-  must(size > 20000, `screenshot suspiciously small (${size} bytes)`);
+  must(size > 15000, `screenshot suspiciously small (${size} bytes)`);
   must(fs.existsSync(path.join(siteDir, 'og-image.png')), 'og-image.png missing');
-  return `${pngs.length} PNGs + OG image`;
+  // No page may still point at the old bulk screenshots folder.
+  must(!/screenshots\/[0-9]/.test(html), 'page still references the old screenshots folder');
+  return `${pngs.length} cropped captures + OG image`;
 });
 
 check('robots and sitemap use the canonical URL', () => {
@@ -146,14 +151,15 @@ check('robots and sitemap use the canonical URL', () => {
   return 'canonical robots + sitemap';
 });
 
-check('releases page is linked and versioned for 2.0.0', () => {
-  must(/2\.0\.0/.test(html), 'page does not mention version 2.0.0');
+check('releases page is linked and versioned consistently', () => {
   must(fs.existsSync(path.join(root, 'package.json')), 'package.json missing');
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-  must(pkg.version === '2.0.0', `package version is ${pkg.version}`);
   const desktop = JSON.parse(fs.readFileSync(path.join(root, 'apps', 'desktop', 'package.json'), 'utf8'));
-  must(desktop.version === '2.0.0', `desktop version is ${desktop.version}`);
-  return 'site + package + desktop all 2.0.0';
+  must(pkg.version === desktop.version, `package ${pkg.version} != desktop ${desktop.version}`);
+  must(new RegExp(pkg.version.replace(/\./g, '\\.')).test(html), `page does not mention version ${pkg.version}`);
+  const manifest = fs.readFileSync(path.join(root, 'apps', 'android', 'app', 'src', 'main', 'AndroidManifest.xml'), 'utf8');
+  must(manifest.includes(`android:versionName="${pkg.version}"`), 'Android versionName is out of sync');
+  return `site + package + desktop + Android all ${pkg.version}`;
 });
 
 check('provenance files exist and keep the MIT grant honest', () => {
@@ -172,15 +178,15 @@ check('provenance files exist and keep the MIT grant honest', () => {
   return 'license, notice, trademark and IP policy present and candid';
 });
 
-check('README documents v2 truthfully', () => {
+check('README documents the current release truthfully', () => {
   const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
-  for (const needle of ['Joe Browser 2.0', 'npm run test:devices', 'docs/VALIDATION.md', 'MIT', 'Pritam Sarkar', '29 observed']) {
+  for (const needle of ['Joe Browser 3.0', 'npm run test:devices', 'docs/VALIDATION.md', 'MIT', 'Pritam Sarkar', '29 observed']) {
     must(readme.includes(needle), `README missing "${needle}"`);
   }
   must(/not undetectable/i.test(readme), 'README hides the detection boundary');
   must(!/8 coherent device templates/.test(readme), 'README still carries the v1 template count');
   must(!/v1\.0\.0\.exe/.test(readme), 'README still links v1 binaries');
-  return 'v2 README with honest scope';
+  return 'README matches the current release with honest scope';
 });
 
 const failed = results.filter((r) => !r.ok);

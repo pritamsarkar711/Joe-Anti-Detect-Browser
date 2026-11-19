@@ -27,7 +27,13 @@ describe('v2 observed-device fingerprint data', () => {
     expect(DEVICE_TEMPLATES.length).toBeGreaterThanOrEqual(8);
     expect(TEMPLATE_GROUPS.every((g) => g.items.length > 0)).toBe(true);
     for (const t of DEVICE_TEMPLATES) {
-      expect(t.realId).toMatch(/^real-/);
+      // Apple/WebKit classes are curated (no observed sample yet); everything
+      // else must be traceable to one real traffic sample.
+      if (t.source === 'curated') {
+        expect(t.os === 'iOS' || t.os === 'iPadOS').toBe(true);
+      } else {
+        expect(t.realId).toMatch(/^real-/);
+      }
       expect(t.brands.length).toBeGreaterThan(0);
       expect(t.gpus.length).toBeGreaterThan(0);
     }
@@ -155,9 +161,10 @@ describe('v2 provenance and licensing', () => {
     }
   });
 
-  it('keeps the readme versioned for v2 without v1 claims', () => {
+  it('keeps the readme versioned for the current release without v1 claims', () => {
     const readme = file('README.md');
-    expect(readme).toContain('Joe Browser 2.0');
+    const pkgVersion = JSON.parse(file('package.json')).version as string;
+    expect(readme).toContain(`Joe Browser ${pkgVersion.split('.')[0]}.0`);
     expect(readme).toContain('NOTICE');
     expect(readme).toContain('TRADEMARK.md');
     expect(readme).toMatch(/not undetectable/i);
@@ -165,13 +172,14 @@ describe('v2 provenance and licensing', () => {
     expect(readme).not.toMatch(/v1\.0\.0-beta/);
   });
 
-  it('keeps the release workflow on v2 and publishing checksums', () => {
+  it('keeps the release workflow current and publishing checksums', () => {
     const workflow = file('.github/workflows/release.yml');
-    expect(workflow).toContain("default: 'v2.0.0'");
+    expect(workflow).toContain("default: 'v3.0.0'");
     expect(workflow).toContain('SHA256SUMS.txt');
     expect(workflow).toContain('npm run test:site');
     expect(workflow).toMatch(/not undetectable/i);
     expect(workflow).not.toContain("default: 'v1.0.0'");
+    expect(workflow).not.toContain("default: 'v2.0.0'");
     expect(workflow).not.toContain('8 coherent device templates');
   });
 });

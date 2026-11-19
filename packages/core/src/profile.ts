@@ -1,6 +1,10 @@
 import { getTemplate, getRealPreset, templateFromReal, DEVICE_TEMPLATES, type DeviceTemplate, type ScreenSpec, type GpuSpec, type OSType } from './devices';
 import type { RealFingerprint } from './data/realFingerprints';
 import { offsetForZone } from './geo';
+import type { BrowserFamily } from './extensions';
+
+/** Every new profile lands on an independent fingerprint check first. */
+export const DEFAULT_START_PAGE = 'https://browserscan.net/';
 
 export type ProfileStatus = 'ready' | 'running' | 'stopped' | 'error';
 
@@ -64,6 +68,11 @@ export interface BrowserProfile {
   updatedAt: string;
   lastLaunchedAt: string | null;
   device: 'desktop-exe' | 'android-apk' | 'web-dashboard' | null;
+  /**
+   * Which built-in browser this profile targets. The shells bundle their own
+   * engines; nothing is borrowed from the host machine.
+   */
+  browserFamily: BrowserFamily;
   /** per-profile launch URL, cookie jar and unpacked extension paths */
   startUrl: string;
   cookies: string;
@@ -124,6 +133,7 @@ export interface CreateProfileInput {
   startUrl?: string;
   cookies?: string;
   extensions?: string[];
+  browserFamily?: BrowserFamily;
   /** explicit overrides for advanced users */
   overrides?: Partial<Pick<FingerprintSpec, 'timezone' | 'locale' | 'screen' | 'cores' | 'memoryGb' | 'webrtcMode' | 'doNotTrack'>>;
 }
@@ -134,8 +144,14 @@ function buildSpec(template: DeviceTemplate, input: CreateProfileInput, h: numbe
   const timezone = input.overrides?.timezone ?? pick(template.timezones);
   const locale = input.overrides?.locale ?? localeForZone(timezone, template.locales, rnd);
   const gpu = pick(template.gpus);
-  const cores = input.overrides?.cores ?? pick(template.cores);
-  const memoryGb = input.overrides?.memoryGb ?? pick(template.memoryGb);
+  /**
+   * CPU and RAM are drawn as one pair. An override of either field keeps the
+   * other from the same coherent pair when possible, so a user who raises RAM
+   * does not silently keep a 4-core count that never shipped with 32 GB.
+   */
+  const pair = pick(template.hardware);
+  const cores = input.overrides?.cores ?? pair.cores;
+  const memoryGb = input.overrides?.memoryGb ?? pair.memoryGb;
   const chromeMajor = template.chromeMajor;
   const mobile = template.mobile;
 
@@ -194,7 +210,10 @@ export function createProfile(input: CreateProfileInput, index = 0): BrowserProf
   const rnd = seeded(h);
   const real = input.realPresetId ? getRealPreset(input.realPresetId) : undefined;
   const template = real ? templateFromReal(real) : getTemplate(input.templateId ?? DEVICE_TEMPLATES[h % DEVICE_TEMPLATES.length].id);
-  const now = new Date().toISOString();
+  // Stagger creation times by one second per seed index. Without this every
+  // seeded profile shares a timestamp and "newest first" falls back to array
+  // order, which hides the intended ordering.
+  const now = new Date(Date.now() - index * 1000).toISOString();
   return {
     id: `prf_${h.toString(36)}${index.toString(36)}`,
     name: input.name,
@@ -212,7 +231,10 @@ export function createProfile(input: CreateProfileInput, index = 0): BrowserProf
     updatedAt: now,
     lastLaunchedAt: null,
     device: null,
-    startUrl: input.startUrl ?? '',
+    browserFamily: input.browserFamily ?? 'joe',
+    // Every new profile opens on BrowserScan: the first thing a user should see
+    // is an independent read of the fingerprint they just created.
+    startUrl: input.startUrl ?? DEFAULT_START_PAGE,
     cookies: input.cookies ?? '',
     extensions: input.extensions ?? [],
   };

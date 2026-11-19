@@ -1,13 +1,13 @@
 import { useRef, useState } from 'react';
 import {
   Box, Stack, Grid, Typography, Paper, Switch, ToggleButton, ToggleButtonGroup,
-  Select, MenuItem, Divider, Alert,
+  Select, MenuItem, Divider, Alert, Avatar,
 } from '@mui/material';
 import { useStore } from '@/state/store';
-import { downloadFile } from '@joe/core';
+import { downloadFile, planFor, PLANS } from '@joe/core';
 import { Icon } from '../Icons';
 import { Official } from '../Brand';
-import { Btn, Field, SectionHead, Panel, StatCard, Tag } from '../Primitives';
+import { Btn, Field, MetricStrip, PageHead, Panel, Tag } from '../Primitives';
 
 export function SettingsView() {
   const s = useStore();
@@ -22,15 +22,71 @@ export function SettingsView() {
 
   return (
     <Box>
-      <SectionHead kicker="PREFERENCES" title="Settings" hint="Appearance, sync, data and scope." />
+      <PageHead title="Settings" hint="Appearance, sync, data and scope." />
 
-      <Grid container spacing={2} sx={{ mb: 2.5 }}>
-        {[
-          { icon: 'layers' as const, label: 'Profiles', value: s.profiles.length },
-          { icon: 'shield' as const, label: 'Storage', value: 'Local' },
-          { icon: 'sync' as const, label: 'Sync', value: s.settings.autoSync ? 'On' : 'Off' },
-          { icon: 'cpu' as const, label: 'Build', value: `v${s.appVersion}` },
-        ].map((c) => <Grid item xs={6} md={3} key={c.label}><StatCard icon={c.icon} label={c.label} value={c.value} /></Grid>)}
+      <MetricStrip
+        items={[
+          { label: 'Profiles', value: s.profiles.length },
+          { label: 'Storage', value: 'Local' },
+          { label: 'Sync', value: s.settings.autoSync ? 'On' : 'Off' },
+          { label: 'Build', value: `v${s.appVersion}` },
+        ]}
+      />
+
+      <Grid container spacing={2} sx={{ mb: 2 }}>
+        <Grid item xs={12} md={6}>
+          <Panel title="Account and plan">
+            <Stack spacing={1.25}>
+              <Stack direction="row" alignItems="center" spacing={1.25}>
+                <Avatar sx={{ width: 34, height: 34, bgcolor: 'rgba(216,27,96,0.12)', color: 'primary.main', fontSize: 14, fontWeight: 700 }}>
+                  {s.account.email[0]?.toUpperCase() ?? 'J'}
+                </Avatar>
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Typography noWrap sx={{ fontSize: '0.84rem', fontWeight: 600 }}>{s.account.email}</Typography>
+                  <Typography variant="caption" color="text.secondary">{s.planLabel}</Typography>
+                </Box>
+                {s.account.role === 'owner' && <Tag tone="primary">Owner</Tag>}
+              </Stack>
+              <Divider />
+              <Typography variant="caption" color="text.secondary">{s.entitlement.reason}</Typography>
+              <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', gap: 0.75 }}>
+                {s.account.role === 'owner' ? (
+                  <Btn size="small" icon="restart" onClick={() => s.signOut()}>Sign out</Btn>
+                ) : (
+                  <>
+                    <Btn size="small" variant="primary" icon="spark" onClick={() => s.setPlan('premium')}>Unlock Premium</Btn>
+                    <Btn size="small" icon="person" onClick={() => s.setView('settings')}>Change account</Btn>
+                  </>
+                )}
+              </Stack>
+              <Typography variant="caption" color="text.secondary">
+                Sign-in runs locally today. Cloud accounts (email sign-up, secure login and password reset) activate as soon as
+                Supabase credentials are set in Sync.
+              </Typography>
+            </Stack>
+          </Panel>
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <Panel title="Plan comparison">
+            <Stack spacing={0.6}>
+              {(['free', 'premium'] as const).map((id) => {
+                const p = PLANS[id];
+                const active = planFor(s.account).id === id;
+                return (
+                  <Paper key={id} variant="outlined" sx={{ p: 1.1, borderColor: active ? 'primary.main' : 'divider', bgcolor: active ? 'rgba(216,27,96,0.04)' : 'transparent' }}>
+                    <Stack direction="row" alignItems="center" spacing={1}>
+                      <Typography sx={{ fontSize: '0.82rem', fontWeight: 600 }}>{p.name}</Typography>
+                      <Typography variant="caption" color="text.secondary">{p.price}</Typography>
+                      <Box sx={{ flex: 1 }} />
+                      {active && <Tag tone="primary">Current</Tag>}
+                    </Stack>
+                    <Typography variant="caption" color="text.secondary">{p.summary}</Typography>
+                  </Paper>
+                );
+              })}
+            </Stack>
+          </Panel>
+        </Grid>
       </Grid>
 
       <Grid container spacing={2}>
@@ -55,12 +111,41 @@ export function SettingsView() {
               <Divider />
               <Box>
                 <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 0.6 }}>Default device</Typography>
-                <Select fullWidth size="small" value={s.settings.defaultDevice} onChange={(e) => s.setSetting('defaultDevice', e.target.value as 'desktop-exe' | 'android-apk')}>
-                  <MenuItem value="desktop-exe"><Stack direction="row" alignItems="center" spacing={1}><Official name="electron" size={17} color="#D81B60" />Desktop EXE</Stack></MenuItem>
-                  <MenuItem value="android-apk"><Stack direction="row" alignItems="center" spacing={1}><Official name="android" size={17} color="#D81B60" />Android APK</Stack></MenuItem>
+                {/* Plain labels, not icon+text stacks: MUI renders the selected
+                    MenuItem's children inside the input, and an inline SVG
+                    there overlaps the value at small sizes. */}
+                <Select
+                  fullWidth size="small" value={s.settings.defaultDevice}
+                  onChange={(e) => s.setSetting('defaultDevice', e.target.value as 'desktop-exe' | 'android-apk')}
+                  renderValue={(v) => (v === 'android-apk' ? 'Android app (APK)' : 'Windows desktop (EXE)')}
+                >
+                  <MenuItem value="desktop-exe">Windows desktop (EXE)</MenuItem>
+                  <MenuItem value="android-apk">Android app (APK)</MenuItem>
                 </Select>
               </Box>
               <Field label="Start page" value={s.settings.startPage} onChange={(v) => s.setSetting('startPage', v)} placeholder="https://example.com" />
+            </Stack>
+          </Panel>
+        </Grid>
+
+        <Grid item xs={12} md={6}>
+          <Panel title="Notifications">
+            <Stack spacing={1.1}>
+              {([
+                ['proxyAlerts', 'Proxy offline alerts', 'One notification when a proxy drops, one when it recovers'],
+                ['rotationAlerts', 'Rotation alerts', 'Confirm when profiles move to a new exit'],
+              ] as const).map(([key, label, help]) => (
+                <Stack key={key} direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography sx={{ fontSize: '0.84rem', fontWeight: 600 }}>{label}</Typography>
+                    <Typography variant="caption" color="text.secondary">{help}</Typography>
+                  </Box>
+                  <Switch checked={s.settings[key]} onChange={(e) => s.setSetting(key, e.target.checked)} inputProps={{ 'aria-label': label }} />
+                </Stack>
+              ))}
+              <Typography variant="caption" color="text.secondary">
+                Alerts appear in-app and in activity. Nothing leaves the device.
+              </Typography>
             </Stack>
           </Panel>
         </Grid>

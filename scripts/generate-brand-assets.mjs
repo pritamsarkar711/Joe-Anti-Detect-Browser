@@ -16,10 +16,14 @@ const root = process.cwd();
 const NAMES = {
   github: 'siGithub', supabase: 'siSupabase', vercel: 'siVercel', electron: 'siElectron',
   android: 'siAndroid', chrome: 'siGooglechrome', firefox: 'siFirefox', react: 'siReact',
+  brave: 'siBrave',
   typescript: 'siTypescript', mui: 'siMui', google: 'siGoogle', node: 'siNodedotjs',
   vite: 'siVite', postgres: 'siPostgresql', linux: 'siLinux', apple: 'siApple',
   puppeteer: 'siPuppeteer', html5: 'siHtml5', javascript: 'siJavascript', docker: 'siDocker', git: 'siGit',
   xiaomi: 'siXiaomi', samsung: 'siSamsung', oppo: 'siOppo', vivo: 'siVivo',
+  // extension publishers whose mark identifies the card at a glance
+  ublock: 'siUblockorigin', bitwarden: 'siBitwarden', json: 'siJson',
+  lighthouse: 'siLighthouse', darkreader: 'siDarkreader', wappalyzer: 'siWappalyzer',
 };
 
 const out = {};

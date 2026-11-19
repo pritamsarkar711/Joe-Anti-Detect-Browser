@@ -3,26 +3,27 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Joe Browser 2.0 — Isolated Browser Profiles, Fingerprint QA &amp; Device Sync</title>
-  <meta name="description" content="Joe Browser 2.0 is a Material UI workspace for unlimited isolated browser profiles on Windows and Android. Real-device fingerprint bundles, 30 geo presets, proxy matching, local leak checks and Supabase/Vercel sync." />
-  <meta name="keywords" content="Joe Browser, isolated browser profiles, browser fingerprint consistency, multi profile browser, proxy per profile, Chromium profile manager, Electron browser, Android WebView browser, Supabase sync, Vercel control plane, Material UI, IBM Plex Sans, privacy QA" />
+  <title>Joe Browser 3.0 — Isolated Browser Profiles for Windows and Android</title>
+  <meta name="description" content="Joe Browser 3.0 keeps every account in its own browser profile: separate cookies and storage, one coherent device fingerprint, its own proxy, and a bundled Chromium engine that never touches your installed browsers." />
+  <meta name="keywords" content="Joe Browser, isolated browser profiles, browser fingerprint consistency, multi profile browser, proxy per profile, profile manager, Electron browser, Android WebView browser" />
   <meta name="author" content="Pritam Sarkar" />
   <meta name="theme-color" content="#D81B60" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
   <link rel="canonical" href="{{SITE_URL}}/" />
   <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+  <link rel="preload" as="image" href="./screens/01-profiles-light.png" />
 
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Joe Browser" />
-  <meta property="og:title" content="Joe Browser 2.0 — Isolated Browser Profiles" />
-  <meta property="og:description" content="A focused Material UI workspace for isolated profiles, coherent fingerprint bundles, proxy geo matching and desktop/Android validation." />
+  <meta property="og:title" content="Joe Browser 3.0 — Isolated browser profiles" />
+  <meta property="og:description" content="Separate storage, one coherent fingerprint and its own proxy per account. Windows, Android and web." />
   <meta property="og:url" content="{{SITE_URL}}/" />
   <meta property="og:image" content="{{SITE_URL}}/og-image.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Joe Browser 2.0 — Isolated Browser Profiles" />
-  <meta name="twitter:description" content="Unlimited isolated profiles on Windows and Android, synced with Supabase." />
+  <meta name="twitter:title" content="Joe Browser 3.0 — Isolated browser profiles" />
+  <meta name="twitter:description" content="Separate storage, one coherent fingerprint and its own proxy per account." />
   <meta name="twitter:image" content="{{SITE_URL}}/og-image.png" />
 
   <link rel="stylesheet" href="./styles.css" />
@@ -33,15 +34,15 @@
     "name": "Joe Browser",
     "applicationCategory": "BrowserApplication",
     "operatingSystem": "Windows 10, Windows 11, Android 9+, Web",
-    "description": "Open-source profile-isolation workspace with real-device fingerprint bundles, 30 geo presets, per-profile proxies, JS leak checks and desktop/Android sync.",
-    "softwareVersion": "2.0.0",
+    "description": "Profile-isolation workspace with coherent device fingerprints, per-profile proxies, local leak checks and desktop/Android sync.",
+    "softwareVersion": "3.0.0",
     "license": "https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser/blob/main/LICENSE",
     "author": { "@type": "Person", "name": "Pritam Sarkar" },
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
     "url": "{{SITE_URL}}/",
     "downloadUrl": "https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser/releases/latest",
-    "screenshot": "{{SITE_URL}}/screenshots/01-profiles-light.png",
-    "featureList": "Unlimited isolated profiles, 29 observed fingerprint bundles, 30 geo presets, Client Hints consistency, cookie and CSV import, local 22-point probe, desktop and Android sync, REST API"
+    "screenshot": "{{SITE_URL}}/screens/01-profiles-light.png",
+    "featureList": "Isolated profiles, five bundled engines, 29 observed fingerprint bundles, per-profile history, proxy alerts, local 22-point probe, desktop and Android sync"
   }
   </script>
   <script type="application/ld+json">
@@ -49,10 +50,10 @@
     "@context": "https://schema.org",
     "@type": "FAQPage",
     "mainEntity": [
-      { "@type": "Question", "name": "How many profiles can Joe Browser create?", "acceptedAnswer": { "@type": "Answer", "text": "There is no artificial profile cap. Bulk creation of 250 profiles is covered by the browser test suite." } },
-      { "@type": "Question", "name": "Is Joe Browser undetectable?", "acceptedAnswer": { "@type": "Answer", "text": "No. It makes JavaScript-visible surfaces coherent and documents engine-level surfaces such as TLS, HTTP/2, font rasterisation and CDP." } },
-      { "@type": "Question", "name": "How do the Windows and Android apps sync?", "acceptedAnswer": { "@type": "Answer", "text": "Supabase Realtime and Postgres carry commands and state, while Vercel hosts the SEO control plane." } },
-      { "@type": "Question", "name": "Is the browser engine patched?", "acceptedAnswer": { "@type": "Answer", "text": "No. The desktop app uses Electron Chromium partitions and the Android app uses WebView data directory isolation, with JS injection for fingerprint consistency." } }
+      { "@type": "Question", "name": "How many profiles do I get?", "acceptedAnswer": { "@type": "Answer", "text": "The free tier includes two profiles with lifetime access. Premium removes the limit and unlocks the Brave, Edge and Firefox engines." } },
+      { "@type": "Question", "name": "Does Joe Browser use my installed browsers?", "acceptedAnswer": { "@type": "Answer", "text": "No. Engines ship inside the app, so profiles never depend on or connect to browsers installed on the machine." } },
+      { "@type": "Question", "name": "Is Joe Browser undetectable?", "acceptedAnswer": { "@type": "Answer", "text": "No, and it does not claim to be. It makes JavaScript-visible surfaces coherent per profile and documents engine-level surfaces such as TLS, HTTP/2, font rasterisation and CDP." } },
+      { "@type": "Question", "name": "Which site opens in a new profile?", "acceptedAnswer": { "@type": "Answer", "text": "browserscan.net, so a fresh profile can be checked straight away." } }
     ]
   }
   </script>
@@ -60,9 +61,9 @@
 <body>
   <header class="nav">
     <a class="brand" href="#top"><img src="./favicon.svg" alt="Joe Browser logo" /><span>Joe Browser</span></a>
-    <nav><a href="#features">Features</a><a href="#screens">Screens</a><a href="#architecture">Architecture</a><a href="#scope">Scope</a><a href="#faq">FAQ</a></nav>
+    <nav><a href="#features">Features</a><a href="#screens">Screens</a><a href="#pricing">Pricing</a><a href="#scope">Scope</a><a href="#faq">FAQ</a></nav>
     <div class="nav-actions">
-      <a class="ghost" href="https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser"><img class="mark" src="./brands/github.svg" alt="GitHub" /> GitHub</a>
+      <a class="ghost" href="https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser"><img class="mark" src="./brands/github.svg" alt="" /> GitHub</a>
       <a class="primary" href="https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser/releases/latest">Download</a>
     </div>
   </header>
@@ -70,82 +71,97 @@
   <main id="top">
     <section class="hero">
       <div class="hero-copy">
-        <span class="eyebrow"><i></i> v2.0.0 · MUI · Plex Sans</span>
-        <h1>One workspace. <span>Isolated profiles.</span></h1>
-        <p>Unlimited browser identities with coherent fingerprint data, per-profile proxies and clear validation. Built for legitimate QA, privacy research and separation of your own accounts.</p>
+        <span class="eyebrow"><i></i> v3.0.0 · Windows · Android · Web</span>
+        <h1>Every account, <span>its own browser.</span></h1>
+        <p>Separate cookies and storage, one coherent device fingerprint and its own proxy per profile — with the engine bundled, so nothing depends on what is installed on the machine.</p>
         <div class="cta">
-          <a class="primary big" href="https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser/releases/latest"><img class="mark" src="./brands/windows.svg" alt="Windows" /> Windows EXE</a>
-          <a class="ghost big" href="https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser/releases/latest"><img class="mark" src="./brands/android.svg" alt="Android" /> Android APK</a>
+          <a class="primary big" href="https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser/releases/latest"><img class="mark" src="./brands/windows.svg" alt="" /> Windows</a>
+          <a class="ghost big" href="https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser/releases/latest"><img class="mark" src="./brands/android.svg" alt="" /> Android</a>
         </div>
-        <div class="hero-meta"><span>No telemetry</span><span>MIT code</span><span>29 observed bundles</span><span><img class="flag" src="./flags/bd.svg" alt="Bangladesh flag" /> 30 geo presets</span></div>
+        <div class="hero-meta"><span>2 free profiles, for life</span><span>Bundled engines</span><span>No telemetry</span></div>
       </div>
-      <div class="window">
-        <div class="window-bar"><i></i><i></i><i></i><span>Joe Browser · Workspace</span></div>
-        <img src="./screenshots/01-profiles-light.png" alt="Joe Browser v2 Material UI profile workspace" width="1440" height="900" loading="eager" />
-      </div>
+      <figure class="window">
+        <div class="window-bar"><i></i><i></i><i></i><span>Joe Browser</span></div>
+        <img src="./screens/01-profiles-light.png" alt="Joe Browser profile workspace" width="1204" height="620" loading="eager" />
+      </figure>
+      <!-- A 1204px capture scaled into a 390px column is unreadable, so the
+           phone layout shows the mobile capture instead. -->
+      <figure class="window phone-shot">
+        <div class="window-bar"><i></i><i></i><i></i><span>Joe Browser</span></div>
+        <img src="./screens/13-mobile-profiles.png" alt="Joe Browser on a phone" width="390" height="844" loading="lazy" />
+      </figure>
     </section>
 
     <section class="strip">
-      <div><strong>100%</strong><span>JS consistency</span></div>
-      <div><strong>29</strong><span>observed bundles</span></div>
-      <div><strong>30</strong><span>geo presets</span></div>
-      <div><strong>75</strong><span>mobile checks passed</span></div>
+      <div><strong>5</strong><span>bundled engines</span></div>
+      <div><strong>29</strong><span>observed devices</span></div>
+      <div><strong>11</strong><span>device classes</span></div>
+      <div><strong>22</strong><span>local probe checks</span></div>
     </section>
 
     <section id="features" class="section">
-      <div class="section-head"><span class="kicker">FEATURES</span><h2>Focused, measurable profile work</h2><p>One pink accent, tiny radii, larger icons, no gradients and no visual noise.</p></div>
+      <div class="section-head"><span class="kicker">FEATURES</span><h2>Built for switching accounts, safely</h2></div>
       <div class="feature-grid">
-        <article><div class="circle"><img src="./brands/windows.svg" alt="Windows" /></div><h3>Isolated storage</h3><p>Electron partitions on desktop and dedicated WebView data directories on Android keep cookies and storage separate.</p></article>
-        <article><div class="circle"><img src="./brands/chrome.svg" alt="Chrome" /></div><h3>Observed bundles</h3><p>29 Apache-2.0 real-device samples drive templates, Client Hints, GPU, screen, fonts, locale and touch together.</p></article>
-        <article><div class="circle"><img class="flag" src="./flags/bd.svg" alt="Bangladesh flag" /></div><h3>Region matching</h3><p>A <img class="flag" src="./flags/bd.svg" alt="Bangladesh flag" /> Bangladesh proxy can be matched to Asia/Dhaka, bn-BD, currency-neutral locale order and WebRTC policy.</p></article>
-        <article><div class="circle">22</div><h3>Live JS probe</h3><p>Run the exact injection payload in a sandboxed frame and inspect 22 internal checks before launching a profile.</p></article>
-        <article><div class="circle">∞</div><h3>Bulk without caps</h3><p>Create, duplicate, import, export, search, filter and launch 250 profiles or more. Pagination keeps the table responsive.</p></article>
-        <article><div class="circle"><img src="./brands/supabase.svg" alt="Supabase" /></div><h3>Device sync</h3><p>Supabase Realtime carries commands between desktop and Android; Vercel hosts this control plane.</p></article>
-      </div>
-      <div class="stack">
-        <span>Built with</span>
-        <img src="./brands/windows.svg" alt="Windows" /><img src="./brands/android.svg" alt="Android" /><img src="./brands/chrome.svg" alt="Chrome" /><img src="./brands/react.svg" alt="React" /><img src="./brands/mui.svg" alt="Material UI" /><img src="./brands/typescript.svg" alt="TypeScript" /><img src="./brands/electron.svg" alt="Electron" /><img src="./brands/supabase.svg" alt="Supabase" /><img src="./brands/vercel.svg" alt="Vercel" /><img src="./brands/github.svg" alt="GitHub" /><img src="./brands/node.svg" alt="Node.js" /><img src="./brands/vite.svg" alt="Vite" /><img src="./brands/postgres.svg" alt="PostgreSQL" />
+        <article><div class="circle"><img src="./brands/chrome.svg" alt="" /></div><h3>Bundled engines</h3><p>Joe Browser, Chrome, Edge, Brave and Firefox engines ship inside the app. Nothing is borrowed from the machine.</p></article>
+        <article><div class="circle"><img src="./brands/firefox.svg" alt="" /></div><h3>Coherent fingerprints</h3><p>User agent, Client Hints, GPU, screen, fonts, memory, locale and touch are drawn from one observed device.</p></article>
+        <article><div class="circle"><img class="flag" src="./flags/bd.svg" alt="" /></div><h3>Proxy per profile</h3><p>Assign an exit, match timezone and locale to its country, and get an alert when it drops or rotates.</p></article>
+        <article><div class="circle">22</div><h3>Local leak check</h3><p>Run the exact payload in a sandboxed frame and see all 22 checks before a profile is launched.</p></article>
+        <article><div class="circle"><img src="./brands/supabase.svg" alt="" /></div><h3>Device sync</h3><p>Supabase Realtime carries commands between desktop and Android; state stays scoped by row-level security.</p></article>
+        <article><div class="circle"><img src="./brands/windows.svg" alt="" /></div><h3>Keyboard-first</h3><p>One scroll container, a command palette on Ctrl K and a layout that holds from 360 px to 1440 px.</p></article>
       </div>
     </section>
 
     <section id="screens" class="section alt">
-      <div class="section-head"><span class="kicker">INTERFACE</span><h2>Real screenshots</h2><p>Captured from the running v2 app with headless Chromium. No mockups.</p></div>
+      <div class="section-head"><span class="kicker">INTERFACE</span><h2>Every screen, captured from the app</h2><p>No mockups and no staged data.</p></div>
       <div class="gallery">
-        <figure><img loading="lazy" src="./screenshots/01-profiles-light.png" alt="Profile workspace" /><figcaption>Profiles</figcaption></figure>
-        <figure><img loading="lazy" src="./screenshots/03-create-profile.png" alt="Create profile dialog" /><figcaption>Create</figcaption></figure>
-        <figure><img loading="lazy" src="./screenshots/07-fingerprints.png" alt="Fingerprint library" /><figcaption>Fingerprints</figcaption></figure>
-        <figure><img loading="lazy" src="./screenshots/08b-leak-check-result.png" alt="Local leak check result" /><figcaption>Live probe</figcaption></figure>
-        <figure><img loading="lazy" src="./screenshots/06-devices-sync.png" alt="Devices and sync" /><figcaption>Device sync</figcaption></figure>
-        <figure><img loading="lazy" src="./screenshots/11-profiles-dark.png" alt="Dark theme" /><figcaption>Dark theme</figcaption></figure>
+        <figure class="wide"><img loading="lazy" src="./screens/01-profiles-light.png" alt="Profile workspace with six isolated profiles" width="1204" height="620" /><figcaption>Profiles</figcaption></figure>
+        <figure><img loading="lazy" src="./screens/07-fingerprints.png" alt="Fingerprint quality report" width="1204" height="900" /><figcaption>Fingerprints</figcaption></figure>
+        <figure><img loading="lazy" src="./screens/09-history.png" alt="Per-profile browsing history" width="1204" height="620" /><figcaption>History</figcaption></figure>
+        <figure><img loading="lazy" src="./screens/10-extensions.png" alt="Extension library" width="1204" height="780" /><figcaption>Extensions</figcaption></figure>
+        <figure><img loading="lazy" src="./screens/05-proxies.png" alt="Proxy pool" width="1204" height="900" /><figcaption>Proxies</figcaption></figure>
+        <figure><img loading="lazy" src="./screens/12-profiles-dark.png" alt="Dark theme" width="1204" height="900" /><figcaption>Dark theme</figcaption></figure>
       </div>
     </section>
 
-    <section id="architecture" class="section">
-      <div class="section-head"><span class="kicker">ARCHITECTURE</span><h2>One core, thin native shells</h2><p>TypeScript core, React and MUI everywhere; native shells provide storage isolation and launch hooks.</p></div>
-      <div class="flow">
-        <div class="flow-card"><div class="marks"><img src="./brands/typescript.svg" alt="TypeScript" /><img src="./brands/react.svg" alt="React" /><img src="./brands/mui.svg" alt="Material UI" /></div><span>01 · SHARED</span><h3>TypeScript + React + MUI</h3><p>Profile model, real-device presets, geo matching, quality metrics, injection builder and UI are written once.</p></div>
-        <div class="flow-card"><div class="marks"><img src="./brands/electron.svg" alt="Electron" /><img src="./brands/windows.svg" alt="Windows" /><img src="./brands/android.svg" alt="Android" /></div><span>02 · NATIVE</span><h3>Electron + WebView</h3><p>Partitioned Chromium sessions on Windows, per-profile WebView data directories on Android, both with matching JS payloads.</p></div>
-        <div class="flow-card"><div class="marks"><img src="./brands/supabase.svg" alt="Supabase" /><img src="./brands/vercel.svg" alt="Vercel" /><img src="./brands/github.svg" alt="GitHub" /></div><span>03 · CLOUD</span><h3>Supabase + Vercel</h3><p>RLS-scoped Postgres and Realtime commands, a Vercel-hosted SEO site, and GitHub Actions builds for both binaries.</p></div>
+    <section id="pricing" class="section">
+      <div class="section-head"><span class="kicker">PRICING</span><h2>Free stays free</h2></div>
+      <div class="plans">
+        <article class="plan">
+          <h3>Free</h3><p class="price">Lifetime</p>
+          <ul><li>2 profiles, no expiry</li><li>Chrome and Joe Browser engines</li><li>Isolated storage and a coherent fingerprint</li><li>Local probe and per-profile history</li></ul>
+        </article>
+        <article class="plan featured">
+          <h3>Premium</h3><p class="price">Subscription</p>
+          <ul><li>Unlimited profiles</li><li>Adds Brave, Edge and Firefox engines</li><li>Proxy monitor with offline and rotation alerts</li><li>Bulk create, import and paste-as-human typing</li></ul>
+        </article>
       </div>
-      <div class="notice" id="scope"><strong>Honest scope.</strong> JavaScript-visible fingerprint surfaces are made coherent per profile. TLS/JA4, HTTP/2 frame order, font rasterisation, GPU driver behaviour and CDP side channels come from the underlying browser engine. Joe Browser does not ship a patched Chromium or Firefox kernel, and it does not claim to be undetectable. See the <a href="https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser/blob/main/docs/VALIDATION.md">validation report</a>.</div>
     </section>
 
-    <section id="faq" class="section alt">
+    <section id="scope" class="section alt">
+      <div class="section-head"><span class="kicker">SCOPE</span><h2>What this does, and what it does not</h2></div>
+      <div class="scope-grid">
+        <article><h3>Does</h3><ul><li>Isolates cookies, cache and storage per profile</li><li>Keeps JavaScript-visible surfaces internally consistent</li><li>Matches timezone, locale and WebRTC policy to a proxy</li><li>Reports its own limits instead of hiding them</li></ul></article>
+        <article><h3>Does not</h3><ul><li>Ship a patched Chromium or Firefox kernel</li><li>Change TLS/JA4, HTTP/2 framing or GPU driver behaviour</li><li>Solve CAPTCHAs, or promise a detector score</li><li>Collect telemetry of any kind</li></ul></article>
+      </div>
+      <p class="notice"><strong>Honest scope.</strong> Joe Browser does not ship a patched Chromium or Firefox kernel, and it does not claim to be undetectable. TLS/JA4, HTTP/2 framing, font rasterisation, GPU driver behaviour and CDP side channels come from the engine underneath. Independent detectors also weigh network reputation, which no JavaScript layer controls. The <a href="https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser/blob/{{BRANCH}}/docs/VALIDATION.md">validation report</a> lists the checks that can actually be run.</p>
+    </section>
+
+    <section id="faq" class="section">
       <div class="section-head"><span class="kicker">FAQ</span><h2>Questions</h2></div>
       <div class="faq-grid">
-        <details open><summary>How many profiles can I create?</summary><p>No artificial cap. Bulk creation of 250 profiles is automatically tested, and the table paginates large workspaces.</p></details>
-        <details><summary>Does a 100% consistency score mean a 100% detector score?</summary><p>No. It means local static checks and JS injection agree. Independent detector results depend on proxy reputation, network signals and engine-level surfaces.</p></details>
-        <details><summary>How do EXE and APK communicate?</summary><p><img class="mark" src="./brands/supabase.svg" alt="Supabase" /> Supabase Realtime carries commands; RLS-scoped Postgres holds state. <img class="mark" src="./brands/vercel.svg" alt="Vercel" /> Vercel hosts the control plane.</p></details>
-        <details><summary>Is Chromium patched?</summary><p>No. Desktop uses <img class="mark" src="./brands/electron.svg" alt="Electron" /> Electron partitions and Android uses <img class="mark" src="./brands/android.svg" alt="Android" /> WebView data directories. JS injection handles browser-visible surfaces.</p></details>
+        <details><summary>How many profiles do I get?</summary><p>Two with lifetime access on the free tier. Premium removes the cap and unlocks the Brave, Edge and Firefox engines; existing profiles are never removed.</p></details>
+        <details><summary>Does it use my installed browsers?</summary><p>No. Engines ship inside the app, and a profile is launched from that bundled engine only.</p></details>
+        <details><summary>Does 100% consistency mean an undetectable profile?</summary><p>No. It means the local static checks and the injected payload agree. Detector outcomes also depend on proxy reputation and engine-level surfaces.</p></details>
+        <details><summary>What opens in a new profile?</summary><p>browserscan.net by default, so a fresh profile can be checked immediately. The start page is editable per profile.</p></details>
       </div>
     </section>
 
-    <section class="bottom-cta"><h2>Ready to test?</h2><p>Get the Windows installer, portable EXE and Android APK from the latest release.</p><div class="cta"><a class="primary big" href="https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser/releases/latest">Get the binaries</a><a class="ghost big" href="https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser">Read the source</a></div></section>
+    <section class="bottom-cta"><h2>Try a profile in a minute</h2><div class="cta"><a class="primary big" href="https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser/releases/latest">Get the binaries</a><a class="ghost big" href="https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser">Read the source</a></div></section>
   </main>
 
   <footer>
     <div><strong>Joe Browser</strong><span>© 2026 Pritam Sarkar · MIT code · protected brand</span></div>
-    <nav><a href="{{SITE_URL}}/">Home</a><a href="https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser">GitHub</a><a href="https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser/releases/latest">Releases</a><a href="https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser/blob/main/docs/ARCHITECTURE.md">Architecture</a><a href="https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser/blob/main/docs/VALIDATION.md">Validation</a><a href="https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser/blob/main/docs/IP-POLICY.md">IP policy</a></nav>
+    <nav><a href="https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser">GitHub</a><a href="https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser/releases/latest">Releases</a><a href="https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser/blob/main/docs/ARCHITECTURE.md">Architecture</a><a href="https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser/blob/main/docs/IP-POLICY.md">IP policy</a></nav>
   </footer>
 </body>
 </html>

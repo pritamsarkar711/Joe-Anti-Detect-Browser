@@ -19,3 +19,7 @@ coverage/
 .DS_Store
 /probe/
 image-search/
+
+# Generated installer/app icons (regenerate with `npm run build:icons`)
+/build/icons/
+/build/icon.png

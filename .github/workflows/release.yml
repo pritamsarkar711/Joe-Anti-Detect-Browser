@@ -5,7 +5,7 @@ on:
       tag:
         description: 'Release tag (e.g. v2.0.0)'
         required: true
-        default: 'v2.0.0'
+        default: 'v3.0.0'
   push:
     tags: ['v*']
 
@@ -141,8 +141,8 @@ jobs:
           body: |
             ## Joe Browser 2.0 — Windows + Android
 
-            Download the Windows installer (`JoeBrowser-Setup-2.0.0.exe`), the portable
-            build (`JoeBrowser-Portable-2.0.0.exe`) or the Android app (`JoeBrowser.apk`).
+            Download the Windows installer (`JoeBrowser-Setup-3.0.0.exe`), the portable
+            build (`JoeBrowser-Portable-3.0.0.exe`) or the Android app (`JoeBrowser.apk`).
             `SHA256SUMS.txt` contains a checksum for every binary — verify it before running.
 
             **Highlights in 2.0**

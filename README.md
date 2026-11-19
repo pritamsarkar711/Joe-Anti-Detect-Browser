@@ -2,9 +2,9 @@
 
 <img src="assets/brand/joe-browser.svg" alt="Joe Browser logo" width="72" height="72" />
 
-# Joe Browser 2.0
+# Joe Browser 3.0
 
-**A focused Material UI workspace for isolated browser profiles on Windows, Android and the web.**
+**Isolated browser profiles for Windows, Android and the web — bundled engines, coherent fingerprints, per-profile history.**
 
 [![CI](https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser/actions/workflows/ci.yml/badge.svg)](https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/pritamsarkar711/Joe-Anti-Detect-Browser?label=release)](https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser/releases/latest)
@@ -15,7 +15,7 @@
 
 <br/>
 
-<img src="assets/screenshots/01-profiles-light.png" alt="Joe Browser v2 Material UI profile workspace" width="880" />
+<img src="assets/screenshots/01-profiles-light.png" alt="Joe Browser profile workspace" width="880" />
 
 </div>
 
@@ -25,30 +25,46 @@
 
 Joe Browser is a source-available **profile isolation manager**. Each profile keeps its own cookies, cache, localStorage, IndexedDB, proxy and coherent fingerprint specification. The same React and Material UI workspace runs inside the Windows app, inside the Android WebView shell and on Vercel.
 
+Engines ship **inside** the app: Joe Browser, Chrome, Edge, Brave and Firefox builds are launched from the bundled engine, so a profile never depends on, or connects to, a browser installed on the machine. A new profile opens `https://browserscan.net/` so it can be checked immediately.
+
 The Windows **EXE** and Android **APK** communicate through <img src="assets/brand/marks/supabase.svg" alt="Supabase" width="16" height="16" /> **Supabase** Realtime and Postgres. <img src="assets/brand/marks/vercel.svg" alt="Vercel" width="16" height="16" /> **Vercel** hosts this SEO site and control plane. <img src="assets/brand/marks/github.svg" alt="GitHub" width="16" height="16" /> **GitHub Actions** builds and publishes both binaries.
 
 ### Download
 
 | Platform | File | Notes |
 |---|---|---|
-| <img src="assets/brand/marks/windows.svg" alt="Windows" width="18" height="18" /> Windows 10/11 | `JoeBrowser-Setup-2.0.0.exe` | NSIS installer |
-| <img src="assets/brand/marks/windows.svg" alt="Windows" width="18" height="18" /> Windows 10/11 | `JoeBrowser-Portable-2.0.0.exe` | Portable, no install |
+| <img src="assets/brand/marks/windows.svg" alt="Windows" width="18" height="18" /> Windows 10/11 | `JoeBrowser-Setup-3.0.0.exe` | NSIS installer |
+| <img src="assets/brand/marks/windows.svg" alt="Windows" width="18" height="18" /> Windows 10/11 | `JoeBrowser-Portable-3.0.0.exe` | Portable, no install |
 | <img src="assets/brand/marks/android.svg" alt="Android" width="18" height="18" /> Android 9+ | `JoeBrowser.apk` | Signed debug build, sideload |
 
 Get all three from the [latest GitHub Release](https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser/releases/latest), together with `SHA256SUMS.txt`. Android users should enable installation from their file manager and verify the checksum before sideloading.
 
 ---
 
+## Plans
+
+| | Free (lifetime) | Premium |
+|---|---|---|
+| Profiles | **2**, no expiry | Unlimited |
+| Engines | Chrome, Joe Browser | Adds **Edge, Brave, Firefox** |
+| Fingerprints | Coherent per profile | Advanced classes + observed-device rotation |
+| Proxies | Assign + geo match | Plus offline and rotation alerts |
+| Extras | History per profile, local probe | Bulk create, import, extension library, paste-as-human typing |
+
+The free limit is enforced in the shared core (`packages/core/src/plans.ts`) and is the same in the web UI, the desktop shell and the Android app. Existing profiles are never removed when a plan changes.
+
+---
+
 ## Design system
 
-The v2 interface follows the structure of `dunky11/react-saas-template` while adopting a stricter visual language requested for this project:
+The interface follows the structure of `dunky11/react-saas-template` while adopting a stricter visual language requested for this project:
 
 - **One primary color:** pink `#D81B60`. No secondary accent, no gradients and no dashed borders.
 - **Material UI v5:** <img src="assets/brand/marks/mui.svg" alt="Material UI" width="16" height="16" /> MUI components, `responsiveFontSizes`, 8px spacing and a 2px global radius.
 - **Typography:** IBM Plex Sans throughout, loaded locally from `@fontsource/ibm-plex-sans`.
 - **Icons:** larger MUI Rounded icons at a 22px default, with <img src="assets/brand/marks/google.svg" alt="Google" width="16" height="16" /> style geometric clarity and circular containers where useful.
 - **Official marks:** <img src="assets/brand/marks/windows.svg" alt="Windows" width="16" height="16" /> Windows, <img src="assets/brand/marks/android.svg" alt="Android" width="16" height="16" /> Android, <img src="assets/brand/marks/chrome.svg" alt="Chrome" width="16" height="16" /> Chrome, <img src="assets/brand/marks/apple.svg" alt="Apple" width="16" height="16" /> Apple, <img src="assets/brand/marks/linux.svg" alt="Linux" width="16" height="16" /> Linux, <img src="assets/brand/marks/github.svg" alt="GitHub" width="16" height="16" /> GitHub, <img src="assets/brand/marks/supabase.svg" alt="Supabase" width="16" height="16" /> Supabase and <img src="assets/brand/marks/vercel.svg" alt="Vercel" width="16" height="16" /> Vercel are shipped as local official SVG marks. All names and marks belong to their owners.
-- **Circular flags:** country references use circular national flags from `flag-icons`. For example, <img src="assets/brand/flags/bd.svg" alt="Bangladesh flag" width="16" height="16" /> Bangladesh is matched to `Asia/Dhaka`, `bn-BD` and local language order.
+- **Circular flags:** country references use circular national flags inlined as data URIs from `flag-icons` (no stylesheet dependency, no blank placeholders). For example, <img src="assets/brand/flags/bd.svg" alt="Bangladesh flag" width="16" height="16" /> Bangladesh is matched to `Asia/Dhaka`, `bn-BD` and local language order.
 - **HD responsive:** verified at high device pixel ratios on five Android families. No horizontal overflow, clipped controls or overlapping tap targets were left unfixed.
 - **Less text:** duplicate headings, repeated buttons, unused copy and decorative clutter were removed. The interface uses short labels, clear hierarchy and generous spacing.
 
@@ -56,20 +72,23 @@ The v2 interface follows the structure of `dunky11/react-saas-template` while ad
 
 ## Features
 
-- **Unlimited isolated profiles** with deterministic IDs, groups, tags, status, notes, start URL, cookies, extensions and per-profile launch data.
-- **29 observed-device bundles** derived from Apache-2.0 Apify/BrowserForge data. Samples with HeadlessChrome brands, stale Client Hints, desktop touch points or mobile profiles without touch are rejected.
-- **Coherent fingerprint specs**: User-Agent, Client Hints, platform, GPU, screen, DPR, CPU, RAM, fonts, timezone, locale, languages, WebRTC mode and touch points are derived together.
+- **Five bundled engines.** Joe Browser, Chrome, Edge, Brave and Firefox launch from the app's own runtimes with independent fingerprint configuration. No host browser is used or detected.
+- **Isolated profiles** with deterministic IDs, groups, tags, status, notes, start URL, cookies, extensions and per-profile launch data.
+- **29 observed-device bundles** derived from Apache-2.0 Apify/BrowserForge data, plus 11 curated device classes (Windows 11 Intel/NVIDIA, Windows 10 AMD, macOS Apple-silicon and Intel, Pixel, Galaxy S23, Galaxy Tab S9, iPhone, iPad Pro, Ubuntu). CPU and RAM are drawn as one ordered pair, so a sample is never reported with hardware it never had.
+- **Coherent fingerprint specs**: User-Agent, Client Hints, platform, GPU, screen, DPR, CPU, RAM, fonts, timezone, locale, languages, WebRTC mode and touch points are derived together. WebKit (iPhone/iPad) templates keep Safari-shaped UA and brands instead of inheriting Chromium hints.
 - **30 region presets** with DST-correct timezone offsets and proxy-to-locale matching. Example: <img src="assets/brand/flags/bd.svg" alt="Bangladesh flag" width="16" height="16" /> Bangladesh, <img src="assets/brand/flags/us.svg" alt="United States flag" width="16" height="16" /> United States, <img src="assets/brand/flags/gb.svg" alt="United Kingdom flag" width="16" height="16" /> United Kingdom, <img src="assets/brand/flags/de.svg" alt="Germany flag" width="16" height="16" /> Germany and <img src="assets/brand/flags/jp.svg" alt="Japan flag" width="16" height="16" /> Japan.
-- **Quality metrics**: per-profile consistency, uniqueness, entropy, grade, real-backed status and distinct-bundle accounting. Current measured workspace consistency is 100%; measured uniqueness is 77% with grade B. No perfect external score is claimed.
-- **Local JavaScript probe**: `22 of 22` internal checks pass for the bundled payload. The app links to independent detectors including IP Fighter, Pixelscan, IPHey, AmIUnique, CreepJS and BrowserLeaks for testing inside a launched native profile.
-- **Import and transfer**: JSON workspace import/export, CSV profile import/export, cookie JSON or `name=value` import, and per-profile proxy parsing.
-- **Proxy manager**: HTTP, HTTPS, SOCKS4 and SOCKS5, bulk paste, country tags, assignment and simulated health checks.
-- **Bulk operations**: create, duplicate, launch, stop, export and delete without an artificial cap; 250-profile creation is covered by the browser smoke suite.
-- **Desktop and Android sync**: Supabase Realtime commands, RLS-scoped Postgres state, event log, device presence and a desktop-to-Android command action.
-- **Local REST API**: the Windows app serves loopback endpoints for health, profiles, launch, quality, surfaces and injection script inspection.
+- **Browsing history per profile**: every URL and search, filterable by profile, copyable and openable.
+- **Extension library**: 12 real extensions with per-family store deep links (Chrome, Edge, Firefox), recommended entries and opt-in auto-install.
+- **Paste as human**: a reviewed keystroke plan with per-character jitter, word-boundary beats and optional corrections, generated deterministically per seed. It does not solve CAPTCHAs — a person still completes any challenge.
+- **Proxy manager**: HTTP, HTTPS, SOCKS4 and SOCKS5, bulk paste, country tags, assignment, health checks, offline/recovery notifications and one-click exit rotation.
+- **Quality metrics**: per-profile consistency, uniqueness, entropy, grade, real-backed status and distinct-bundle accounting. Informational engine limits are counted separately from real contradictions. Measured workspace consistency is 100%; measured uniqueness is 77% with grade B. No external score is claimed.
+- **Local JavaScript probe**: `22 of 22` internal checks pass for the bundled payload. The app links to independent detectors (IP Fighter, Pixelscan, BrowserScan, AmIUnique, CreepJS, BrowserLeaks) for testing inside a launched profile.
+- **Import and transfer**: JSON workspace import/export, CSV profile import/export, cookie JSON or `name=value` import.
+- **Bulk operations**: create, duplicate, launch, stop, export and delete above the free limit on Premium; 250-profile creation is covered by the browser smoke suite.
+- **Desktop and Android sync**: Supabase Realtime commands, RLS-scoped Postgres state, event log and device presence.
+- **Local REST API**: the Windows app serves loopback endpoints for health, profiles, launch, quality, surfaces and injection script inspection — bound to loopback, token- and origin-gated.
 - **Validation views**: quality, observed data, JS surfaces, geo presets and explicit engine-level limits are visible in the app rather than hidden.
-
----
+- **Accounts**: local sign-in with an email and plan today; Supabase auth (sign-up, login, password reset) activates when project keys are set in Settings → Sync.
 
 ## Screenshots
 
@@ -81,13 +100,13 @@ The v2 interface follows the structure of `dunky11/react-saas-template` while ad
 |---|---|---|
 | ![Fingerprints](assets/screenshots/07-fingerprints.png) | ![Live probe](assets/screenshots/08b-leak-check-result.png) | ![Devices](assets/screenshots/06-devices-sync.png) |
 
-| Proxies | Activity | Settings |
+| Proxies | History | Settings |
 |---|---|---|
-| ![Proxies](assets/screenshots/05-proxies.png) | ![Activity](assets/screenshots/09-activity.png) | ![Settings](assets/screenshots/10-settings.png) |
+| ![Proxies](assets/screenshots/05-proxies.png) | ![History](assets/screenshots/09-history.png) | ![Settings](assets/screenshots/11-settings.png) |
 
-| Light theme | Dark theme | Command palette |
+| Extensions | Dark theme | Command palette |
 |---|---|---|
-| ![Light](assets/screenshots/01-profiles-light.png) | ![Dark](assets/screenshots/11-profiles-dark.png) | ![Palette](assets/screenshots/04-command-palette.png) |
+| ![Extensions](assets/screenshots/10-extensions.png) | ![Dark](assets/screenshots/12-profiles-dark.png) | ![Palette](assets/screenshots/04-command-palette.png) |
 
 ### Mobile matrix
 
@@ -115,7 +134,7 @@ All screenshots are captured from the running app by `npm run screenshots` and `
 packages/core          profile model, 29 observed samples, 30 geo presets, quality
 packages/fingerprint   JS consistency payload and local self-test hooks
 packages/sync          transport-agnostic EXE ↔ APK sync + Supabase adapter
-src/                   MUI workspace: seven views, shell, command palette, toasts
+src/                   MUI workspace: nine views, grouped shell, command palette, toasts
 apps/desktop           Electron main, preload, REST API and builder config
 apps/android           Java sources, manifest, resources and APK build script
 supabase/              SQL migration

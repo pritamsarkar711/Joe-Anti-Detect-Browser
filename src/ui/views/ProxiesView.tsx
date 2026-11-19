@@ -7,7 +7,7 @@ import { useStore } from '@/state/store';
 import { parseProxy, proxyUrl, countryCode, GEO_COUNTRIES, geoForCountry, type ProxyConfig, type ProxyProtocol } from '@joe/core';
 import { Official, CountryFlag } from '../Brand';
 import { Icon } from '../Icons';
-import { Btn, IconBtn, Empty, StatCard, SectionHead, Panel, Tag, Field, Modal } from '../Primitives';
+import { Btn, IconBtn, Empty, MetricStrip, PageHead, Panel, Tag, Field, Modal } from '../Primitives';
 
 const PROTOCOLS: ProxyProtocol[] = ['http', 'https', 'socks4', 'socks5', 'direct'];
 
@@ -59,19 +59,26 @@ export function ProxiesView() {
 
   return (
     <Box>
-      <SectionHead kicker="NETWORK" title="Proxies" hint="One exit point per profile."
-        action={<Stack direction="row" spacing={1}><Btn icon="upload" onClick={() => setBulkOpen(true)}>Bulk import</Btn><Btn variant="primary" icon="plus" onClick={() => setAddOpen(true)}>Add proxy</Btn></Stack>} />
+      <PageHead
+        title="Proxies" hint="One exit point per profile, checked against its region."
+        action={
+          <>
+            <Btn icon="upload" onClick={() => setBulkOpen(true)}>Bulk import</Btn>
+            <Btn variant="primary" icon="plus" onClick={() => setAddOpen(true)}>Add proxy</Btn>
+          </>
+        }
+      />
 
-      <Grid container spacing={2} sx={{ mb: 2.5 }}>
-        {[
-          { icon: 'globe' as const, label: 'Proxies', value: s.proxies.length },
-          { icon: 'verified' as const, label: 'Healthy', value: healthy },
-          { icon: 'speed' as const, label: 'Avg. latency', value: `${avgLatency} ms` },
-          { icon: 'link' as const, label: 'Assigned', value: assigned },
-        ].map((c) => <Grid item xs={6} md={3} key={c.label}><StatCard icon={c.icon} label={c.label} value={c.value} /></Grid>)}
-      </Grid>
+      <MetricStrip
+        items={[
+          { label: 'Proxies', value: s.proxies.length },
+          { label: 'Healthy', value: healthy },
+          { label: 'Avg. latency', value: `${avgLatency} ms` },
+          { label: 'Assigned', value: assigned },
+        ]}
+      />
 
-      <Panel pad={0} sx={{ overflow: 'hidden' }}>
+      <Panel pad={0} sx={{ mt: 1.75, overflow: 'hidden' }}>
         {selected.size > 0 && <Stack direction="row" spacing={1} sx={{ p: 1.4, flexWrap: 'wrap', gap: 0.8 }}>
           <Chip label={`${selected.size} selected`} size="small" color="primary" />
           <Btn size="small" icon="refresh" onClick={() => { s.checkProxies(ids); setSelected(new Set()); }}>Check</Btn>
@@ -81,19 +88,19 @@ export function ProxiesView() {
         {s.proxies.length === 0 ? <Empty icon="globe" title="No proxies" hint="Add one endpoint or paste a list." action={<Btn variant="primary" icon="plus" onClick={() => setAddOpen(true)}>Add proxy</Btn>} /> : mobile ? (
           <Box sx={{ p: 1.4 }}>{s.proxies.map((p) => <ProxyCard key={p.id} p={p} selected={selected.has(p.id)} onSelect={() => toggle(p.id)} />)}</Box>
         ) : (
-          <Box sx={{ overflowX: 'auto' }}>
-            <Table size="small">
+          <Box>
+            <Table size="small" className="data-table" sx={{ tableLayout: 'fixed' }}>
               <TableHead><TableRow>
-                <TableCell padding="checkbox"><Checkbox size="small" checked={selected.size === s.proxies.length && s.proxies.length > 0} onChange={() => setSelected(selected.size === s.proxies.length ? new Set() : new Set(s.proxies.map((p) => p.id)))} /></TableCell>
-                <TableCell>Name</TableCell><TableCell>Endpoint</TableCell><TableCell>Country</TableCell><TableCell>Latency</TableCell><TableCell>Status</TableCell><TableCell>Used by</TableCell><TableCell align="right"> </TableCell>
+                <TableCell padding="checkbox" sx={{ width: 40 }}><Checkbox size="small" checked={selected.size === s.proxies.length && s.proxies.length > 0} onChange={() => setSelected(selected.size === s.proxies.length ? new Set() : new Set(s.proxies.map((p) => p.id)))} /></TableCell>
+                <TableCell sx={{ width: '24%' }}>Name</TableCell><TableCell sx={{ width: '28%' }}>Endpoint</TableCell><TableCell sx={{ width: '16%' }}>Country</TableCell><TableCell sx={{ width: 84 }}>Latency</TableCell><TableCell sx={{ width: 84 }}>Status</TableCell><TableCell sx={{ width: 70 }}>Used</TableCell><TableCell align="right" sx={{ width: 48 }} />
               </TableRow></TableHead>
               <TableBody>{s.proxies.map((p) => (
                 <TableRow key={p.id} hover>
                   <TableCell padding="checkbox"><Checkbox size="small" checked={selected.has(p.id)} onChange={() => toggle(p.id)} /></TableCell>
                   <TableCell><Typography sx={{ fontWeight: 600, fontSize: '0.82rem' }}>{p.name}</Typography></TableCell>
-                  <TableCell><Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{proxyUrl(p)}</Typography></TableCell>
+                  <TableCell><Typography noWrap variant="caption" sx={{ fontFamily: 'monospace' }} title={proxyUrl(p)}>{proxyUrl(p)}</Typography></TableCell>
                   <TableCell><Stack direction="row" alignItems="center" spacing={0.8}><CountryFlag code={p.country} size={18} title={geoForCountry(p.country)?.name} /><Typography variant="caption">{geoForCountry(p.country)?.name ?? p.country}</Typography></Stack></TableCell>
-                  <TableCell><Typography variant="caption">{p.latencyMs ? `${p.latencyMs} ms` : 'None'}</Typography></TableCell>
+                  <TableCell><Typography variant="caption">{p.latencyMs ? `${p.latencyMs} ms` : '—'}</Typography></TableCell>
                   <TableCell><Tag tone={p.status === 'failed' ? 'err' : p.status === 'ok' ? 'primary' : 'neutral'}>{p.status}</Tag></TableCell>
                   <TableCell>{s.profiles.filter((x) => x.proxyId === p.id).length}</TableCell>
                   <TableCell align="right"><IconBtn icon="refresh" label="Check" onClick={() => s.checkProxies([p.id])} size={19} /></TableCell>
@@ -102,11 +109,6 @@ export function ProxiesView() {
             </Table>
           </Box>
         )}
-        <Divider />
-        <Stack direction="row" alignItems="center" spacing={0.8} sx={{ p: 1.4 }}>
-          <Official name="supabase" size={17} />
-          <Typography variant="caption" color="text.secondary">Proxy state syncs with the desktop and Android apps.</Typography>
-        </Stack>
       </Panel>
 
       <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add proxy" subtitle="HTTP, HTTPS, SOCKS4 or SOCKS5."

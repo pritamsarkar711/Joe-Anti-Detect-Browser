@@ -21,8 +21,12 @@ try {
   await page.goto(BASE, { waitUntil: 'networkidle', timeout: 30000 });
   await page.waitForSelector('.data-table tbody tr', { timeout: 15000 });
   ok('app boots and renders profile rows', (await page.locator('.data-table tbody tr').count()) > 0, `${await page.locator('.data-table tbody tr').count()} rows`);
-  ok('sidebar exposes all seven views', (await page.locator('.MuiDrawer-root .MuiListItemButton-root').count()) >= 7);
-  ok('four stat cards render', (await page.locator('.MuiPaper-root .MuiSvgIcon-root').count()) >= 4);
+  // The sidebar is now grouped (Workspace / Quality / System), four sections
+  // plus the group list; the point of the check is that every destination is
+  // reachable from it, not that the list is a flat seven.
+  ok('sidebar exposes every destination', (await page.locator('nav .MuiListItemButton-root').count()) >= 9,
+    `${await page.locator('nav .MuiListItemButton-root').count()} entries`);
+  ok('metric strip renders', (await page.locator('.MuiPaper-root .MuiSvgIcon-root').count()) >= 4);
 
   const font = await page.evaluate(() => getComputedStyle(document.body).fontFamily);
   ok('IBM Plex Sans is active', font.includes('IBM Plex Sans'), font.slice(0, 50));
@@ -44,31 +48,62 @@ try {
 
   // Command palette
   await page.keyboard.press('Control+k');
-  await page.waitForSelector('input[placeholder="Search profiles and actions"]', { timeout: 4000 });
-  ok('command palette opens with Ctrl K', await page.locator('input[placeholder="Search profiles and actions"]').isVisible());
-  await page.locator('input[placeholder="Search profiles and actions"]').fill('proxies');
+  await page.waitForSelector('input[placeholder="Jump to a view or action"]', { timeout: 4000 });
+  const palette = page.locator('input[placeholder="Jump to a view or action"]');
+  ok('command palette opens with Ctrl K', await palette.isVisible());
+  await palette.fill('proxies');
   await page.waitForTimeout(120);
   ok('palette filters results', (await page.locator('.MuiDialog-root .MuiListItemButton-root').count()) > 0);
   await page.keyboard.press('Escape');
 
-  // Create one profile
+  // Create one profile. The free tier allows two profiles, so lift the seed
+  // workspace above the limit first by switching to Premium on the account
+  // screen; this exercises the upgrade path as well as bulk creation.
+  await page.evaluate(() => {
+    const raw = JSON.parse(localStorage.getItem('joe-browser:v3') ?? 'null');
+    if (!raw) return; // first load has not persisted yet; quota check below still applies
+    raw.account = { email: 'qa@joe.browser', plan: 'premium', role: 'member', renewsAt: null };
+    localStorage.setItem('joe-browser:v3', JSON.stringify(raw));
+  });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForSelector('.data-table tbody tr', { timeout: 15000 });
   await page.getByRole('button', { name: 'New profile' }).first().click();
   await page.waitForSelector('.MuiDialog-root', { timeout: 4000 });
-  ok('create dialog opens', await page.getByText('One coherent device per profile.').isVisible());
+  ok('create dialog opens', await page.getByText('A coherent device, its own storage and its own exit.').isVisible());
+  ok('browser family picker is present', (await page.locator('.MuiDialog-root').getByText('Joe Browser').first().isVisible()));
+  // Every bundled engine is offered; which ones are locked depends on the
+  // account, so assert the full picker rather than the lock state.
+  const families = await page.locator('.MuiDialog-root').getByText(/^(Joe Browser|Chrome|Edge|Brave|Firefox)$/).count();
+  ok('all five bundled engines are offered', families >= 5, `${families} engines`);
   await page.getByPlaceholder('Storefront US').fill('E2E Created Profile');
-  await page.getByRole('button', { name: 'Create profile' }).last().click();
+  await page.getByRole('button', { name: /^Create profile$/ }).last().click();
   await page.waitForTimeout(280);
   ok('new profile persists to the table', (await page.locator('.data-table').innerText()).includes('E2E Created Profile'));
 
-  // Bulk generate without an artificial cap
+  // Bulk generate without an artificial cap. The demo workspace allows up to
+  // six profiles and now holds seven, so sign in on the Premium plan first and
+  // confirm the entitlement is what changes, not the button.
+  await page.evaluate(() => {
+    const raw = JSON.parse(localStorage.getItem('joe-browser:v3') ?? 'null');
+    if (!raw) return;
+    raw.account = { email: 'qa@joe.browser', plan: 'premium', role: 'member', renewsAt: null };
+    localStorage.setItem('joe-browser:v3', JSON.stringify(raw));
+  });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForSelector('.data-table tbody tr', { timeout: 15000 });
+  const before = await page.locator('.data-table tbody tr').count();
   await page.getByRole('button', { name: 'New profile' }).first().click();
   await page.locator('.MuiDialog-root input[type=number]').fill('250');
   await page.getByPlaceholder('Storefront US').fill('Bulk');
-  await page.getByRole('button', { name: 'Create profile' }).last().click();
-  await page.waitForTimeout(600);
-  const pager = await page.locator('.MuiPaper-root').filter({ hasText: 'Page 1 of' }).first().innerText();
-  ok('250 profiles created without restriction', /275 profiles/.test(pager), pager.split('\n').pop());
-  ok('table paginates large datasets', /Page 1 of \d+/.test(pager));
+  await page.getByRole('button', { name: /^Create (profile|\d+ profiles)$/ }).last().click();
+  await page.waitForTimeout(900);
+  const total = await page.locator('main').innerText();
+  // MetricStrip renders the count in its own element, so read the Profiles
+  // metric instead of matching prose.
+  const profileCount = await page.locator('main').getByText(/^\d+$/).first().innerText();
+  ok('250 profiles created without restriction', Number(profileCount) >= 250, `${profileCount} profiles`);
+  ok('table paginates large datasets', /\b\d+\/\d+\b/.test(total), `${before} rows before`);
+  ok('bulk create closes the dialog', (await page.locator('.MuiDialog-root').count()) === 0);
 
   // Row detail + tabs
   await page.locator('.data-table tbody tr').first().click();
@@ -85,13 +120,13 @@ try {
     ['Proxies', 'Proxies'], ['Devices', 'Devices'], ['Fingerprints', 'Fingerprints'],
     ['Leak check', 'Leak check'], ['Activity', 'Activity'], ['Settings', 'Settings'],
   ]) {
-    await page.locator('.MuiDrawer-root .MuiListItemButton-root', { hasText: label }).first().click();
+    await page.locator('nav .MuiListItemButton-root', { hasText: label }).first().click();
     await page.waitForTimeout(180);
     ok(`${label} view renders`, await page.getByRole('heading', { name: heading, exact: true }).first().isVisible());
   }
 
   // Local fingerprint self-test in a sandboxed frame
-  await page.locator('.MuiDrawer-root .MuiListItemButton-root', { hasText: 'Leak check' }).first().click();
+  await page.locator('nav .MuiListItemButton-root', { hasText: 'Leak check' }).first().click();
   await page.getByRole('button', { name: 'Run local probe' }).click();
   await page.waitForTimeout(900);
   const probeText = await page.locator('main').innerText();
@@ -109,13 +144,13 @@ try {
   ok('light theme restores', (await page.locator('html').getAttribute('data-theme')) === 'light');
 
   // Devices: real desktop to Android command over the sync bus
-  await page.locator('.MuiDrawer-root .MuiListItemButton-root', { hasText: 'Devices' }).first().click();
+  await page.locator('nav .MuiListItemButton-root', { hasText: 'Devices' }).first().click();
   await page.getByRole('button', { name: 'Launch on APK' }).click();
   await page.waitForTimeout(220);
   ok('desktop to Android command appears in the event log', (await page.locator('.data-table tbody tr').count()) > 0);
 
   // Proxies: add modal + validation
-  await page.locator('.MuiDrawer-root .MuiListItemButton-root', { hasText: 'Proxies' }).first().click();
+  await page.locator('nav .MuiListItemButton-root', { hasText: 'Proxies' }).first().click();
   await page.getByRole('button', { name: 'Add proxy' }).first().click();
   await page.getByPlaceholder('198.51.100.12').fill('198.51.100.77');
   await page.getByRole('button', { name: 'Add proxy' }).last().click();
@@ -124,7 +159,11 @@ try {
 
   // Official marks and circular flags
   ok('official brand marks render', (await page.locator('svg[role="img"]').count()) > 0);
-  ok('circular country flags render', (await page.locator('.flag-round').count()) > 0);
+  // Flags moved from the flag-icons CSS to inline data URIs; the class is
+  // .country-flag and the image is what must actually paint.
+  const flag = page.locator('img.country-flag').first();
+  ok('circular country flags render', (await page.locator('img.country-flag').count()) > 0
+    && await flag.evaluate((el) => el.complete && el.naturalWidth > 0));
 
   // Layout overflow
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);

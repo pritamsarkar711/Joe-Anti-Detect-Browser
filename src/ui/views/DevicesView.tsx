@@ -5,7 +5,7 @@ import { useStore } from '@/state/store';
 import { DEVICE_LABEL } from './labels';
 import { Icon } from '../Icons';
 import { Official } from '../Brand';
-import { Btn, SectionHead, Panel, StatCard, Tag } from '../Primitives';
+import { Btn, MetricStrip, PageHead, Panel, Tag } from '../Primitives';
 
 export function DevicesView() {
   const s = useStore();
@@ -15,16 +15,15 @@ export function DevicesView() {
 
   return (
     <Box>
-      <SectionHead kicker="SYNC" title="Devices" hint="Desktop, Android and control plane." />
+      <PageHead title="Devices" hint="Desktop, Android and the web workspace stay in sync." />
 
-      <Grid container spacing={2} sx={{ mb: 2.5 }}>
-        {[
-          { icon: 'devices' as const, label: 'Connected', value: s.devices.filter((d) => d.online).length },
-          { icon: 'play' as const, label: 'Running profiles', value: running },
-          { icon: 'sync' as const, label: 'Messages', value: s.syncEvents.length },
-          { icon: 'cloud' as const, label: 'Channel', value: 'Joe sync' },
-        ].map((c) => <Grid item xs={6} md={3} key={c.label}><StatCard icon={c.icon} label={c.label} value={c.value} /></Grid>)}
-      </Grid>
+      <MetricStrip
+        items={[
+          { label: 'Connected', value: s.devices.filter((d) => d.online).length },
+          { label: 'Running', value: running },
+          { label: 'Messages', value: s.syncEvents.length },
+        ]}
+      />
 
       <Grid container spacing={2} sx={{ mb: 2.5 }}>
         {s.devices.map((d) => (
