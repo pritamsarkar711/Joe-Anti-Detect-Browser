@@ -53,14 +53,28 @@ public class MainActivity extends Activity {
         settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
         // The manager UI is loaded from android_asset and never browses third
         // party pages, so it keeps the app's own agent; profiles (BrowserActivity)
-        // get the spoofed one.
-        settings.setUserAgentString("JoeBrowser/3.0 (Android; Workspace)");
+        // get the spoofed one. The version comes from the manifest so the UA
+        // cannot drift from the release version again.
+        settings.setUserAgentString("JoeBrowser/" + appVersion() + " (Android; Workspace)");
         settings.setMediaPlaybackRequiresUserGesture(true);
 
         web.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                return false;
+                // The management UI is a bundled asset and must never browse:
+                // the JoeBridge is injected here, so a remote page would inherit
+                // workspace control. Anything that is not a bundled asset is
+                // refused and opened outside instead.
+                String target = request == null || request.getUrl() == null ? "" : request.getUrl().toString();
+                if (target.startsWith("file:///android_asset/")) return false;
+                try {
+                    Intent external = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(target));
+                    external.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(external);
+                } catch (Exception ignored) {
+                    // No browser available; staying put is safer than loading it here.
+                }
+                return true;
             }
 
             @Override
@@ -129,6 +143,15 @@ public class MainActivity extends Activity {
             if (reader != null) try { reader.close(); } catch (Exception ignored) {}
         }
         return sb.toString();
+    }
+
+    /** Version for the management user agent, from the manifest — never hard-coded. */
+    private String appVersion() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Exception e) {
+            return "0";
+        }
     }
 
     /** Write the profile's process suffix before the :profile process starts. */

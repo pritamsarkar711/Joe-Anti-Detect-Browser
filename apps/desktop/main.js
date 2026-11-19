@@ -20,7 +20,12 @@ const fs = require('node:fs');
 const core = require('./core.cjs');
 const { startRestApi, readOrCreateToken } = require('./rest');
 
-const APP_VERSION = '3.1.0';
+/**
+ * The shipped version comes from package.json so the shell cannot drift from
+ * the installer again: v3.1.0's hard-coded '3.1.0' outlived the 3.1.1 bump and
+ * `app:info` reported the wrong version to the UI and the REST API.
+ */
+const APP_VERSION = require('./package.json').version;
 const DATA_FILE = () => path.join(app.getPath('userData'), 'workspace.json');
 
 /**

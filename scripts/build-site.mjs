@@ -1,12 +1,28 @@
 /** Render the static SEO site with real URLs, local fonts and local brand assets. */
 import fs from 'node:fs';
 import path from 'node:path';
+import { execSync } from 'node:child_process';
 
 const root = process.cwd();
 const src = path.join(root, 'site');
 const out = path.join(root, 'dist-site');
 const siteUrl = (process.env.SITE_URL ?? 'https://joe-browser-control.vercel.app').replace(/\/+$/, '');
-const branch = process.env.SITE_BRANCH ?? 'arena/b5fe5e24-joe-anti-detect-browser';
+
+/**
+ * Provenance: the branch that actually built the site. A hard-coded branch name
+ * once survived two branch changes and the published site pointed at a branch
+ * that no longer existed; derive it from git instead (SITE_BRANCH still wins
+ * for CI overrides).
+ */
+function currentBranch() {
+  try {
+    const b = execSync('git rev-parse --abbrev-ref HEAD', { cwd: root, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    return b || 'main';
+  } catch {
+    return 'main';
+  }
+}
+const branch = process.env.SITE_BRANCH ?? currentBranch();
 
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });
