@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive-icon background: the brand tile. The glyph in
+     ic_launcher_foreground.xml is white, so this layer must be #D81B60 — on a
+     white background the mark is invisible, and minSdk 28 means only the
+     adaptive icon is ever rendered. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="#FFFFFF" />
+    <solid android:color="#D81B60" />
 </shape>

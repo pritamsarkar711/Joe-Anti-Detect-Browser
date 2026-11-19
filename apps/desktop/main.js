@@ -13,6 +13,10 @@
 const { app, BrowserWindow, session, ipcMain, shell, Menu } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
+// The fingerprint core is not optional: without it there are no profiles to
+// open, so a missing core.cjs is a genuine build failure. scripts/check-desktop.mjs
+// fails the build if it is left out of the package, rather than shipping an app
+// that dies on launch.
 const core = require('./core.cjs');
 const { startRestApi, readOrCreateToken } = require('./rest');
 
@@ -24,11 +28,27 @@ const DATA_FILE = () => path.join(app.getPath('userData'), 'workspace.json');
  * is read from the machine's Chrome/Firefox profile directories.
  */
 const EXT_ROOT = () => path.join(app.getPath('userData'), 'extensions');
-const ext = require('./extensions.cjs');
+/**
+ * A missing module must cost one feature, never the whole app.
+ *
+ * v3.1.0 shipped without extensions.cjs in `app.asar`, so this line threw before
+ * a window could be created and Windows showed "Error: Cannot find module
+ * './extensions.cjs'" instead of Joe Browser. The packaging bug is fixed at the
+ * root (see scripts/check-desktop.mjs), and this fallback means any future gap
+ * degrades extension management instead of bricking the install.
+ */
+let ext;
+try {
+  ext = require('./extensions.cjs');
+} catch (error) {
+  console.error('[joe] extension support unavailable:', error.message);
+  const unavailable = () => { throw new Error('Extension support is unavailable in this build.'); };
+  ext = { listInstalled: () => [], installZip: unavailable, digest: unavailable };
+}
 const windows = new Map(); // profileId -> BrowserWindow
 
 let managerWindow = null;
-let workspace = { profiles: [], proxies: [], groups: ['Default'] };
+let workspace = { profiles: [], proxies: [], groups: ['Default'] }; // `sync` is optional
 let realtime = null;
 
 /** Fill v2 fields so workspaces exported by v1 still open safely. */
@@ -64,6 +84,7 @@ function loadWorkspace() {
       profiles: (Array.isArray(parsed.profiles) ? parsed.profiles : []).map(normalizeProfile),
       proxies: Array.isArray(parsed.proxies) ? parsed.proxies : [],
       groups: Array.isArray(parsed.groups) ? parsed.groups : ['Default'],
+      sync: parsed.sync && typeof parsed.sync === 'object' ? parsed.sync : undefined,
     };
   } catch {
     workspace = { profiles: [], proxies: [], groups: ['Default'] };
@@ -199,7 +220,8 @@ function attachInjection(win, spec) {
 
 async function launchProfile(id) {
   const profile = findProfile(id);
-  if (!profile) throw new Error(`Unknown profile ${id}`);
+  if (!profile) throw new Error('That profile is no longer in this workspace. Reload to refresh the list.');
+  if (!profile.fingerprint?.userAgent) throw new Error('That profile has no fingerprint yet. Recreate it to regenerate one.');
   if (windows.has(id)) { windows.get(id).focus(); return { ok: true, alreadyRunning: true }; }
 
   const partition = `persist:${id}`;
@@ -209,9 +231,15 @@ async function launchProfile(id) {
   await loadExtensions(ses, profile);
   applyHeaders(ses, profile.fingerprint);
 
+  // A profile can arrive from an older export or a hand-edited workspace. A
+  // missing `screen` used to throw "Cannot read properties of undefined" and
+  // the window never opened; fall back to a sane desktop size instead.
+  const screen = profile.fingerprint?.screen ?? {};
+  const width = Number.isFinite(screen.width) ? screen.width : 1440;
+  const height = Number.isFinite(screen.height) ? screen.height : 900;
   const win = new BrowserWindow({
-    width: Math.min(1440, Math.max(900, profile.fingerprint.screen.width)),
-    height: Math.min(960, Math.max(640, profile.fingerprint.screen.height)),
+    width: Math.min(1440, Math.max(900, width)),
+    height: Math.min(960, Math.max(640, height)),
     show: false,
     title: `Joe Browser — ${profile.name}`,
     webPreferences: {
@@ -382,6 +410,47 @@ function registerIpc() {
     workspace.proxies = [...parsed.map((p, i) => ({ id: `px_${Date.now()}_${i}`, name: `${p.host}:${p.port}`, protocol: p.protocol, host: p.host, port: p.port, country: 'XX', status: 'unchecked', latencyMs: null })), ...workspace.proxies];
     saveWorkspace(); return parsed.length;
   });
+  /**
+   * Adopt the management UI's workspace wholesale.
+   *
+   * The UI owns the user's intent (it is where profiles are created, edited and
+   * deleted); the main process needs the same list to launch them. Without this
+   * channel the two stores diverged and every launch from the UI failed with
+   * "Unknown profile". Idempotent: called after each UI mutation.
+   */
+  handle('workspace:replace', (next) => {
+    if (!next || !Array.isArray(next.profiles)) throw new Error('workspace:replace needs a profiles array');
+    const incoming = next.profiles.map(normalizeProfile);
+    const keep = new Map(incoming.map((p) => [p.id, p]));
+    // A profile that is currently running keeps its live status and window.
+    for (const running of windows.keys()) {
+      const known = keep.get(running);
+      if (known) { known.status = 'running'; known.device = 'desktop-exe'; }
+    }
+    workspace.profiles = incoming;
+    workspace.proxies = Array.isArray(next.proxies) ? next.proxies : [];
+    workspace.groups = Array.isArray(next.groups) && next.groups.length ? next.groups : ['Default'];
+    saveWorkspace();
+    managerWindow?.webContents.send('profiles:changed', workspace.profiles);
+    return { ok: true, profiles: workspace.profiles.length };
+  });
+  /**
+   * Accept Supabase credentials from the UI.
+   *
+   * v3.1.0 read JOE_SUPABASE_URL / JOE_SUPABASE_ANON_KEY from the environment
+   * only, so a key typed into Settings did nothing and sync never connected.
+   * The values are kept in the workspace file and applied immediately.
+   */
+  handle('sync:configure', async (config) => {
+    const url = String(config?.url ?? '').trim();
+    const anonKey = String(config?.anonKey ?? '').trim();
+    workspace.sync = { url, anonKey };
+    saveWorkspace();
+    await connectRealtime();
+    return { ok: true, connected: !!realtime };
+  });
+  /** Read the shell's copy, so the UI can adopt launches made elsewhere. */
+  handle('workspace:read', () => ({ profiles: workspace.profiles, proxies: workspace.proxies, groups: workspace.groups }));
   handle('workspace:export', () => core.exportWorkspace(workspace.profiles, workspace.proxies, workspace.groups));
   handle('workspace:import', (json) => {
     const d = core.importWorkspace(json);
@@ -399,8 +468,13 @@ function registerIpc() {
 
 /** Optional Supabase Realtime link — no credentials bundled, configured in Settings. */
 async function connectRealtime() {
-  const url = process.env.JOE_SUPABASE_URL;
-  const key = process.env.JOE_SUPABASE_ANON_KEY;
+  const url = workspace.sync?.url || process.env.JOE_SUPABASE_URL;
+  const key = workspace.sync?.anonKey || process.env.JOE_SUPABASE_ANON_KEY;
+  // Reconnecting (after a settings change) must not leak the old channel.
+  if (realtime) {
+    try { await realtime.unsubscribe?.(); } catch { /* noop */ }
+    realtime = null;
+  }
   if (!url || !key) return;
   try {
     const { createClient } = require('@supabase/supabase-js');

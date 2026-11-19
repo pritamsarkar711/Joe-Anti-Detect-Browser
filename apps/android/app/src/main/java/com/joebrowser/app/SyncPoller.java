@@ -34,6 +34,13 @@ public class SyncPoller extends Thread {
 
         while (running) {
             try {
+                // A blank key cannot authorise anything; sending it just makes
+                // one doomed request per tick.
+                String key = prefs.getString("anon_key", "");
+                if (key == null || key.length() == 0) {
+                    try { Thread.sleep(5000); } catch (InterruptedException e) { return; }
+                    continue;
+                }
                 String payload = SyncHttp.commandsSince(prefs, since);
                 final String now = fmt.format(new Date());
                 if (payload != null && !payload.equals("[]")) {

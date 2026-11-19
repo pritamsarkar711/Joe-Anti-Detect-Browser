@@ -36,10 +36,24 @@ const robots = fs.readFileSync(path.join(siteDir, 'robots.txt'), 'utf8');
 const sitemap = fs.readFileSync(path.join(siteDir, 'sitemap.xml'), 'utf8');
 const read = (relative) => fs.readFileSync(path.join(siteDir, relative), 'utf8');
 
-check('page declares a v3 title and description', () => {
-  must(/<title>[^<]*Joe Browser 3\.0[^<]*<\/title>/.test(html), 'title is not v3 branded');
+check('page names the current release in its title and description', () => {
+  // Derive from package.json: a hard-coded minor version fails on every bump
+  // and tempts a "fix" that pins a stale number.
+  const { version } = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+  const minor = version.split('.').slice(0, 2).join('.');
+  const title = (html.match(/<title>([^<]*)<\/title>/) || [])[1] || '';
+  // Marketing copy says "3.1"; metadata says "3.1.1". Accept either.
+  must(
+    title.includes(`Joe Browser ${version}`) || title.includes(`Joe Browser ${minor}`),
+    `title "${title}" does not name version ${minor}`,
+  );
   must(/<meta name="description" content="[^"]{80,}"/.test(html), 'meta description missing or too short');
-  return 'title + description present';
+  const description = (html.match(/<meta name="description" content="([^"]*)"/) || [])[1] || '';
+  must(
+    description.includes(version) || description.includes(minor),
+    `description does not name version ${minor}`,
+  );
+  return `title and description name v${minor}`;
 });
 
 check('canonical, Open Graph and Twitter metadata are consistent', () => {
@@ -180,7 +194,11 @@ check('provenance files exist and keep the MIT grant honest', () => {
 
 check('README documents the current release truthfully', () => {
   const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
-  for (const needle of ['Joe Browser 3.0', 'npm run test:devices', 'docs/VALIDATION.md', 'MIT', 'Pritam Sarkar', '29 observed']) {
+  // Derive the heading from package.json so a version bump cannot fail the gate.
+  const { version } = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+  const minor = version.split('.').slice(0, 2).join('.');
+  const needles = [`Joe Browser ${minor}`, 'npm run test:devices', 'docs/VALIDATION.md', 'MIT', 'Pritam Sarkar', '29 observed'];
+  for (const needle of needles) {
     must(readme.includes(needle), `README missing "${needle}"`);
   }
   must(/not undetectable/i.test(readme), 'README hides the detection boundary');

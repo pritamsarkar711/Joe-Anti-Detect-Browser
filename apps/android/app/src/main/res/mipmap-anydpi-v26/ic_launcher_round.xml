@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Round variant: identical layers; the launcher applies the circle mask. -->
+<!-- Adaptive icon. The foreground glyph is inset by the 108dp safe zone, so a
+     launcher may mask the background to any shape without clipping the mark. -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@drawable/ic_launcher_background" />
     <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_foreground" />
 </adaptive-icon>

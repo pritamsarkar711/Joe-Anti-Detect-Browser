@@ -17,6 +17,12 @@ jobs:
         run: npm test
       - name: Java syntax check
         run: npm run test:java
+      - name: Brand assets match the canonical mark
+        run: npm run test:icons
+      - name: Desktop packaging is complete
+        run: npm run test:desktop
+      - name: Native bridges agree with the UI
+        run: npm run check:bridges
       - name: Typecheck + production bundle
         run: npm run build
       - name: Bundle shared core for native shells
@@ -31,6 +37,14 @@ jobs:
         run: npm run test:site
       - name: Verify fingerprint payload self-tests
         run: npm run test:fingerprint
+      - name: Verify assets match the generated profiles
+        run: npm run check:bridges
+      - name: Verify the packaged desktop app boots
+        run: npm run test:packaged
+      - name: Exercise the desktop main process
+        run: npm run test:main
+      - name: Exercise the desktop renderer against its bridge
+        run: npm run test:ui-desktop
       - name: Verify generated assets
         run: |
           test -f apps/android/assets/workspace.json

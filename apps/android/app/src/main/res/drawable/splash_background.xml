@@ -1,17 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Painted while the WebView starts, so the app never shows a bare white frame.
-     The mark itself is drawn over this in the launch theme; the tile here is
-     the same #D81B60 squircle geometry used by the launcher icon. -->
+<!-- Painted while the WebView starts, so the app never flashes a bare frame.
+     The logo is drawn at its intrinsic 88dp, centred. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <shape android:shape="rectangle">
             <solid android:color="#F6F7F9" />
         </shape>
     </item>
-    <item android:gravity="center" android:width="88dp" android:height="88dp">
-        <shape android:shape="rectangle">
-            <corners android:radius="21dp" />
-            <solid android:color="#D81B60" />
-        </shape>
-    </item>
+    <item android:gravity="center" android:drawable="@drawable/ic_mark" />
 </layer-list>
