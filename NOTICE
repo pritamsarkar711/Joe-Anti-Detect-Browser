@@ -1,0 +1,47 @@
+Joe Browser 2.0
+Copyright (c) 2026 Pritam Sarkar and Joe Browser contributors
+
+SOURCE CODE
+The source code in packages/, src/, apps/, scripts/, tests/ and site/ is
+licensed under the MIT License. See LICENSE. The MIT grant permits copying and
+redistribution with the copyright and permission notice intact. It does not
+grant rights to the Joe Browser name, logo or trade dress.
+
+DOCUMENTATION AND ORIGINAL BRAND ASSETS
+Original written documentation in README.md and docs/, and original Joe Browser
+brand assets in assets/brand/ and public/favicon.svg, are licensed under
+Creative Commons Attribution-NoDerivatives 4.0 International (CC BY-ND 4.0):
+https://creativecommons.org/licenses/by-nd/4.0/legalcode
+They may be shared with attribution and this notice, but may not be adapted,
+rebranded or presented as another project's work. Source code embedded as
+examples remains under MIT. See docs/IP-POLICY.md for the enforcement strategy.
+
+OFFICIAL THIRD-PARTY MARKS
+Official platform marks in assets/brand/marks/ and site/brands/ are generated
+from simple-icons (CC0 paths) plus a hardcoded Windows four-pane path. The
+underlying trademarks and logos belong to their respective owners. Their use
+here is nominative: to identify compatible platforms, technologies and
+services. No endorsement, affiliation or ownership is claimed.
+
+FINGERPRINT DATA
+packages/core/src/data/realFingerprints.ts is generated from Apache-2.0
+BrowserForge and apify-fingerprint-datapoints data. The generator rejects
+incoherent samples and adds OS-plausible font fallbacks. BrowserForge and Apify
+are trademarks of their owners; this project is not affiliated with them.
+Apache-2.0 notices and source references are preserved in the dataset header.
+
+FONTS, FLAGS AND ICONS
+IBM Plex Sans is used under the SIL Open Font License 1.1. Flag SVGs in
+assets/brand/flags/ and site/flags/ come from flag-icons (MIT). Material UI
+icons and components come from MUI (MIT). Other package licenses are recorded
+in their respective npm packages. No external font or icon CDN is required.
+
+RELEASE PROVENANCE
+Official releases are built from tagged source by GitHub Actions and published
+with SHA256SUMS.txt. Verify binary checksums before running them. The canonical
+download location is:
+https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser/releases/latest
+
+For ownership, attribution or trademark questions, open a GitHub issue in this
+repository. False ownership claims, rebranding of official binaries, and
+implied endorsement are not permitted.

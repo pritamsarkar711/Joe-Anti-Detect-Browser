@@ -1,0 +1,50 @@
+{
+  "name": "joe-browser",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Joe Browser \u2014 Material UI profile-isolation workspace for Windows, Android and the web, synced with Supabase and Vercel.",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "build:core": "esbuild packages/desktop-entry.ts --bundle --platform=node --format=cjs --outfile=apps/desktop/core.cjs",
+    "build:android-ui": "vite build --base=./ --outDir dist-android",
+    "build:assets": "node scripts/generate-android-assets.mjs",
+    "build:site": "node scripts/build-site.mjs",
+    "test:site": "node scripts/check-site.mjs",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "vitest run",
+    "test:java": "node scripts/check-java.mjs",
+    "test:ui": "node scripts/ui-check.mjs",
+    "screenshots": "node scripts/screenshots.mjs",
+    "test:fingerprint": "vite-node scripts/fingerprint-test.ts",
+    "test:devices": "node scripts/device-matrix.mjs",
+    "screenshots:v2": "node scripts/screenshots.mjs",
+    "build:brands": "node scripts/generate-brand-assets.mjs"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@fontsource/ibm-plex-sans": "^5.3.0",
+    "@mui/icons-material": "^5.18.0",
+    "@mui/material": "^5.18.0",
+    "flag-icons": "^7.6.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "simple-icons": "^16.38.0"
+  },
+  "devDependencies": {
+    "@sparticuz/chromium": "^131.0.1",
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "esbuild": "^0.24.0",
+    "java-parser": "^2.3.2",
+    "playwright-core": "^1.49.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.7",
+    "vitest": "^3.0.5"
+  },
+  "license": "MIT"
+}

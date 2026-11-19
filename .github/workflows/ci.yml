@@ -1,0 +1,40 @@
+name: CI
+on:
+  push:
+    branches: ['arena/**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci --no-audit --no-fund
+      - name: Unit + SSR tests
+        run: npm test
+      - name: Java syntax check
+        run: npm run test:java
+      - name: Typecheck + production bundle
+        run: npm run build
+      - name: Bundle shared core for native shells
+        run: npm run build:core
+      - name: Build Android-bundled UI
+        run: npm run build:android-ui
+      - name: Generate APK assets from the shared core
+        run: npm run build:assets
+      - name: Build SEO site
+        run: npm run build:site
+      - name: Verify SEO metadata, provenance and license honesty
+        run: npm run test:site
+      - name: Verify fingerprint payload self-tests
+        run: npm run test:fingerprint
+      - name: Verify generated assets
+        run: |
+          test -f apps/android/assets/workspace.json
+          test -f apps/android/assets/app/index.html
+          test -f apps/desktop/core.cjs
+          test -f dist-site/index.html
+          node -e "const w=require('./apps/android/assets/workspace.json'); if(!w.profiles.length) throw new Error('no profiles'); console.log('workspace profiles:', w.profiles.length)"

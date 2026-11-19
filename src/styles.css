@@ -1,0 +1,126 @@
+/* Joe Browser v2 design system
+   One primary colour · flat surfaces · small radii · IBM Plex Sans · no gradients */
+
+:root {
+  color-scheme: light;
+  --pink: #d81b60;
+  --pink-dark: #ad1457;
+  --pink-soft: rgba(216, 27, 96, 0.10);
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --text: #1d1f26;
+  --muted: #666c7a;
+  --line: rgba(20, 24, 34, 0.12);
+  --line-soft: rgba(20, 24, 34, 0.08);
+  font-family: "IBM Plex Sans", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-synthesis: none;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --pink: #d81b60;
+  --pink-dark: #ad1457;
+  --pink-soft: rgba(216, 27, 96, 0.14);
+  --bg: #0e1015;
+  --surface: #161920;
+  --text: #f2f3f7;
+  --muted: #9aa1b0;
+  --line: rgba(255, 255, 255, 0.10);
+  --line-soft: rgba(255, 255, 255, 0.07);
+}
+
+* { box-sizing: border-box; }
+html, body, #root { min-height: 100%; }
+html { overflow-x: hidden; }
+body {
+  margin: 0;
+  background: var(--bg);
+  background-image: none;
+  color: var(--text);
+  font-family: "IBM Plex Sans", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+button, input, select, textarea { font: inherit; }
+a { color: var(--pink); text-decoration: none; }
+a:hover { color: var(--pink-dark); }
+code, pre, .mono { font-family: "IBM Plex Sans", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+::selection { background: var(--pink-soft); }
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--line); border: 2px solid transparent; background-clip: padding-box; }
+
+/* Material UI flat surface enforcement */
+.MuiPaper-root,
+.MuiAppBar-root,
+.MuiDrawer-paper,
+.MuiDialog-paper,
+.MuiButton-containedPrimary,
+.MuiChip-colorPrimary { background-image: none !important; }
+.MuiPaper-root { border-radius: 2px !important; }
+.MuiButton-root,
+.MuiIconButton-root,
+.MuiChip-root,
+.MuiOutlinedInput-root,
+.MuiDialog-paper,
+.MuiAlert-root { border-radius: 2px !important; }
+.MuiOutlinedInput-notchedOutline { border-style: solid !important; }
+.MuiTableCell-root { border-bottom-style: solid !important; }
+.MuiDivider-root { border-style: solid !important; }
+.MuiTooltip-tooltip { border-radius: 2px !important; }
+.MuiTabs-indicator { background-color: var(--pink) !important; }
+.MuiBottomNavigationAction-root.Mui-selected { color: var(--pink) !important; }
+
+:root[data-density="compact"] .MuiTableCell-root { padding-top: 6px !important; padding-bottom: 6px !important; }
+:root[data-density="compact"] .MuiListItemButton-root { padding-top: 4px !important; padding-bottom: 4px !important; }
+
+/* Circular national flags from flag-icons */
+.fi.fis.flag-round {
+  border-radius: 50% !important;
+  background-size: cover !important;
+  background-position: center !important;
+  box-shadow: inset 0 0 0 1px var(--line-soft);
+  line-height: 1;
+}
+
+/* Compact data tables used across views */
+.data-table th,
+.data-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  text-align: left;
+  font-size: 0.75rem;
+  vertical-align: middle;
+}
+.data-table th {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: transparent;
+}
+.data-table tbody tr:hover { background: var(--pink-soft); }
+.data-table code { word-break: break-all; }
+
+/* HD responsive guards */
+img, svg, video, canvas, iframe { max-width: 100%; }
+.MuiDialog-paper { max-height: calc(100vh - 32px); }
+.MuiDialogContent-root { overflow-x: hidden; }
+.MuiSelect-select { min-width: 0; }
+
+@media (max-width: 599px) {
+  body { font-size: 13px; }
+  .MuiToolbar-root { padding-left: 8px !important; padding-right: 8px !important; }
+  .MuiDialogTitle-root { padding: 18px 16px 6px !important; }
+  .MuiDialogContent-root { padding: 8px 16px 14px !important; }
+  .MuiDialogActions-root { padding: 10px 16px 16px !important; flex-wrap: wrap; gap: 8px; }
+  .MuiDialogActions-root > * { margin-left: 0 !important; }
+  .data-table th,
+  .data-table td { padding: 8px 9px; }
+}
+
+@media (min-width: 1920px) {
+  .MuiContainer-root { max-width: 1680px !important; }
+}
