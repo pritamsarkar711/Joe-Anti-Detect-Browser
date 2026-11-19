@@ -2,7 +2,7 @@
 
 <img src="assets/brand/joe-browser.svg" alt="Joe Browser logo" width="72" height="72" />
 
-# Joe Browser 3.1
+# Joe Browser 3.2
 
 **Isolated browser profiles for Windows, Android and the web — bundled engines, coherent fingerprints, per-profile history.**
 
@@ -33,8 +33,8 @@ The Windows **EXE** and Android **APK** communicate through <img src="assets/bra
 
 | Platform | File | Notes |
 |---|---|---|
-| <img src="assets/brand/marks/windows.svg" alt="Windows" width="18" height="18" /> Windows 10/11 | `JoeBrowser-Setup-3.1.1.exe` | NSIS installer |
-| <img src="assets/brand/marks/windows.svg" alt="Windows" width="18" height="18" /> Windows 10/11 | `JoeBrowser-Portable-3.1.1.exe` | Portable, no install |
+| <img src="assets/brand/marks/windows.svg" alt="Windows" width="18" height="18" /> Windows 10/11 | `JoeBrowser-Setup-3.2.0.exe` | NSIS installer |
+| <img src="assets/brand/marks/windows.svg" alt="Windows" width="18" height="18" /> Windows 10/11 | `JoeBrowser-Portable-3.2.0.exe` | Portable, no install |
 | <img src="assets/brand/marks/android.svg" alt="Android" width="18" height="18" /> Android 9+ | `JoeBrowser.apk` | Signed debug build, sideload |
 
 Get all three from the [latest GitHub Release](https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser/releases/latest), together with `SHA256SUMS.txt`. Android users should enable installation from their file manager and verify the checksum before sideloading.
@@ -51,7 +51,7 @@ Get all three from the [latest GitHub Release](https://github.com/pritamsarkar71
 | Proxies | Assign + geo match | Plus offline and rotation alerts |
 | Extras | History per profile, local probe | Bulk create, import, extension library, paste-as-human typing |
 
-The free limit is enforced in the shared core (`packages/core/src/plans.ts`) and is the same in the web UI, the desktop shell and the Android app. Existing profiles are never removed when a plan changes.
+The free limit is enforced in the shared core (`packages/core/src/plans.ts`) — the same in the web UI, the desktop shell and the Android app — and enforced again in the database (`supabase/migrations/0002_auth_plans_admin.sql`), where a modified client cannot raise it. Existing profiles are never removed when a plan changes.
 
 ---
 
@@ -77,7 +77,8 @@ The interface follows the structure of `dunky11/react-saas-template` while adopt
 - **29 observed-device bundles** derived from Apache-2.0 Apify/BrowserForge data, plus 11 curated device classes (Windows 11 Intel/NVIDIA, Windows 10 AMD, macOS Apple-silicon and Intel, Pixel, Galaxy S23, Galaxy Tab S9, iPhone, iPad Pro, Ubuntu). CPU and RAM are drawn as one ordered pair, so a sample is never reported with hardware it never had.
 - **Coherent fingerprint specs**: User-Agent, Client Hints, platform, GPU, screen, DPR, CPU, RAM, fonts, timezone, locale, languages, WebRTC mode and touch points are derived together. WebKit (iPhone/iPad) templates keep Safari-shaped UA and brands instead of inheriting Chromium hints.
 - **30 region presets** with DST-correct timezone offsets and proxy-to-locale matching. Example: <img src="assets/brand/flags/bd.svg" alt="Bangladesh flag" width="16" height="16" /> Bangladesh, <img src="assets/brand/flags/us.svg" alt="United States flag" width="16" height="16" /> United States, <img src="assets/brand/flags/gb.svg" alt="United Kingdom flag" width="16" height="16" /> United Kingdom, <img src="assets/brand/flags/de.svg" alt="Germany flag" width="16" height="16" /> Germany and <img src="assets/brand/flags/jp.svg" alt="Japan flag" width="16" height="16" /> Japan.
-- **Browsing history per profile**: every URL and search, filterable by profile, copyable and openable.
+- **Browsing history per profile**: every URL and search, recorded by the desktop and Android shells as they browse, filterable by profile, copyable and openable.
+- **Real browser controls** in every profile window: tabs, back, forward, reload/stop, home, address bar with search fallback, find on page, zoom, per-profile bookmarks, downloads and deny-by-default site permissions — on Windows and Android alike. Keyboard shortcuts map to the same commands.
 - **Extension library**: 12 real extensions with per-family store deep links (Chrome, Edge, Firefox), recommended entries and opt-in auto-install.
 - **Paste as human**: a reviewed keystroke plan with per-character jitter, word-boundary beats and optional corrections, generated deterministically per seed. It does not solve CAPTCHAs — a person still completes any challenge.
 - **Proxy manager**: HTTP, HTTPS, SOCKS4 and SOCKS5, bulk paste, country tags, assignment, health checks, offline/recovery notifications and one-click exit rotation.
@@ -88,7 +89,7 @@ The interface follows the structure of `dunky11/react-saas-template` while adopt
 - **Desktop and Android sync**: Supabase Realtime commands, RLS-scoped Postgres state, event log and device presence.
 - **Local REST API**: the Windows app serves loopback endpoints for health, profiles, launch, quality, surfaces and injection script inspection — bound to loopback, token- and origin-gated.
 - **Validation views**: quality, observed data, JS surfaces, geo presets and explicit engine-level limits are visible in the app rather than hidden.
-- **Accounts**: local sign-in with an email and plan today; Supabase auth (sign-up, login, password reset) activates when project keys are set in Settings → Sync.
+- **Accounts**: local-first sign-in that stores no password, plus real Supabase cloud accounts — sign-up with email confirmation, secure login, session refresh, password reset and server-side entitlements — when project keys are set in Settings → Sync.
 
 ## Screenshots
 
@@ -150,9 +151,10 @@ docs/                  architecture, validation and IP protection policy
 ```bash
 npm install
 npm run dev                 # live control plane on http://localhost:5173
-npm test                    # 29 unit and SSR tests
+npm test                    # unit, SSR and backend-policy tests
+npm run test:secrets        # credential and key-material scan
 npm run test:fingerprint    # 29/29 injection self-tests + workspace quality
-npm run test:ui             # 31 real-browser checks, needs the dev server
+npm run test:ui             # real-browser UI checks, needs the dev server
 npm run test:devices        # 75 checks across five mobile devices, needs dev server
 npm run test:java           # Java source parser check
 npm run test:site           # static SEO site checks

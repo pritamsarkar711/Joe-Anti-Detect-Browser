@@ -1,34 +1,44 @@
-# Validation report — v3.1.1
+# Validation report — v3.2.0
 
 Every number below comes from a command in this repository. Nothing here is a third-party detector score, and no result is claimed for surfaces the project does not control.
 
-Environment: Debian, Node `v22.22.3`, npm `10.9.8`, Python `3.11.2`, no display server, no JDK/Android SDK, no Electron runtime. Native EXE/APK binaries are therefore built only in GitHub Actions.
+Environment: Debian, Node `v22.22.3`, npm `10.9.8`, Python `3.11.2`, no display server, no JDK/Android SDK, no Electron runtime. Native EXE/APK binaries are therefore built only in GitHub Actions. Where a check runs against a functional stand-in (mocked Electron) rather than the real runtime, the table says so.
 
 ## Automated suites
 
 | Command | Result |
 |---|---|
 | `npx tsc --noEmit` | pass, exit 0 |
-| `npm test` | 6 files, 51 tests passed |
+| `npm test` | 10 files, 87 tests passed (unit, SSR, history, auth, backend policy, version consistency) |
+| `npm run test:secrets` | 3/3 (credential patterns, env files, key material) |
+| `npm audit` / `npm audit --omit=dev` | 0 vulnerabilities (whole tree) |
 | `npm run test:fingerprint` | 29/29 injection self-tests, exit 0 |
 | `npm run test:ui` | 35/35 real-browser checks, no console errors |
 | `npm run test:devices` | 75/75 checks on five Android families |
 | `npm run test:java` | 4/4 Java sources parse cleanly and contain no lambda or method reference (parse only, not compilation) |
 | `npm run test:site` | 15/15 static site, version and provenance checks |
 | `npm run test:icons` | 8/8 brand-asset checks (launch icon contrast, tile colour, canonical J path) |
-| `npm run test:desktop` | 8/8 desktop packaging checks (allowlist covers every runtime require; IPC channels match) |
-| `npm run check:bridges` | 5/5 native-bridge checks (Java methods, intent extras, generated assets) |
+| `npm run test:desktop` | 11/11 desktop packaging checks (allowlist covers every runtime require including chrome.html; IPC channels match) |
+| `npm run check:bridges` | 6/6 native-bridge checks (Java methods, intent extras, browser controls, generated assets) |
 | `npm run test:packaged` | 4/4 packaged-app checks (stages `build.files`, boots the main process) |
-| `npm run test:main` | 14/14 main-process checks against a functional Electron stand-in |
+| `npm run test:main` | 15/15 main-process checks against a functional Electron stand-in — including profile launch, chrome toolbar routing (tabs, navigation, find, zoom, bookmarks, permissions, clear-data), history streaming and foreign-sender rejection |
 | `npm run test:ui-desktop` | 5/5 renderer checks against a stand-in preload bridge, over `http:` and `file:` |
 | `npm run build` | typecheck + production bundle |
-| `npm run build:core` | `apps/desktop/core.cjs`, 58 exports |
+| `npm run build:core` | `apps/desktop/core.cjs` |
 | `npm run build:android-ui` | Android web bundle (`dist-android/`) |
 | `npm run build:desktop` | Desktop web bundle (`apps/desktop/web-dist/`) |
 | `npm run build:assets` | 16 profiles, 17 self-testing injection scripts, bundled UI |
 | `npm run build:site` | `dist-site/` generated for the canonical URL |
 | `npm run build:brands` | 33 official brand marks, Joe Browser mark, 12 flags |
 | `npm run screenshots` | 17 app captures + 11 cropped site captures + OG card |
+
+### What 3.2.0 verified, and where the limits are
+
+- **Browsing history** is exercised end to end at the code level: the main-process suite navigates a profile tab and asserts classified, titled, deduplicated entries reach the manager; the Android JSONL recorder/reader is parsed by `test:java` and the bridge contract by `check:bridges`. No display server exists here, so a human watching a window record history is only possible in the built binaries.
+- **Profile-window chrome** (tabs, navigation, find, zoom, bookmarks, downloads, permissions, clear-data) is driven command-by-command against the real main-process handlers in `test:main`. The WebContentsView APIs used are stable since Electron 30; the packaged app is booted in `test:packaged`, but rendering the actual window requires Windows — the release build is where that last mile lives.
+- **Supabase auth** flows are tested against a stubbed fetch server (sign-up with/without confirmation, sign-in, refresh-once, refresh rejection, logout, recovery, password change, entitlement mapping). Against the live project, the flows were not exercised from this sandbox — open the app with real keys and walk `REQUIREMENTS_TRACKER.md` T-10.x to record a live pass.
+- **Server-side quota/RLS** (migration 0002) is pinned by static policy assertions in `tests/backend.test.ts`. Applying the migration to the Supabase project and probing the RPCs live is an operator step (`supabase db push` / SQL editor), recorded in `SECURITY_AUDIT.md` under "verification pending".
+- **Third-party detector scores** remain unclaimed: independent detector hosts are unreachable from the build sandbox.
 
 ### The 3.1.0 launch failure
 

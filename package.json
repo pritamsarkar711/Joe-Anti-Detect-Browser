@@ -1,6 +1,6 @@
 {
   "name": "joe-browser",
-  "version": "3.1.1",
+  "version": "3.2.0",
   "private": true,
   "type": "module",
   "description": "Joe Browser — Material UI profile-isolation workspace for Windows, Android and the web, synced with Supabase and Vercel.",
@@ -54,6 +54,7 @@
     "playwright-core": "^1.49.0",
     "typescript": "^5.7.3",
     "vite": "^6.0.7",
+    "vite-node": "^6.0.0",
     "vitest": "^5.1.1",
     "yaml": "^2.9.1"
   },
