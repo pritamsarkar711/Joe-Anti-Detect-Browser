@@ -50,18 +50,21 @@ export function SettingsView() {
               <Divider />
               <Typography variant="caption" color="text.secondary">{s.entitlement.reason}</Typography>
               <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', gap: 0.75 }}>
-                {s.account.role === 'owner' ? (
-                  <Btn size="small" icon="restart" onClick={() => s.signOut()}>Sign out</Btn>
-                ) : (
+                {s.cloudEmail ? (
                   <>
-                    <Btn size="small" variant="primary" icon="spark" onClick={() => s.setPlan('premium')}>Unlock Premium</Btn>
-                    <Btn size="small" icon="person" onClick={() => s.setView('settings')}>Change account</Btn>
+                    <Btn size="small" icon="refresh" onClick={() => { void s.refreshEntitlement(); }}>Refresh plan</Btn>
+                    <Btn size="small" icon="restart" onClick={() => s.signOut()}>Sign out</Btn>
                   </>
+                ) : (
+                  <Btn size="small" variant="primary" icon="person" onClick={() => s.setView('account')}>Sign in</Btn>
                 )}
               </Stack>
+              <Alert severity={s.entitlementSource === 'server' ? 'success' : 'info'} variant="outlined" sx={{ py: 0.5, fontSize: '0.76rem' }}>
+                {s.planNotice}
+              </Alert>
               <Typography variant="caption" color="text.secondary">
-                Sign-in runs locally today. Cloud accounts (email sign-up, secure login and password reset) activate as soon as
-                Supabase credentials are set in Sync.
+                Premium is assigned by your account service administrators or a payment provider — there is no
+                in-app upgrade switch. Ask for your account to be flagged premium, then press Refresh plan.
               </Typography>
             </Stack>
           </Panel>

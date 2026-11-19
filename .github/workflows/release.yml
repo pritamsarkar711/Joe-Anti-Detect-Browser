@@ -5,7 +5,7 @@ on:
       tag:
         description: 'Release tag (e.g. v2.0.0)'
         required: true
-        default: 'v3.1.1'
+        default: 'v3.2.0'
   push:
     tags: ['v*']
 
@@ -148,71 +148,54 @@ jobs:
           prerelease: false
           files: release-assets/*
           body: |
-            ## Joe Browser 3.1.1 — Windows + Android
+            ## Joe Browser 3.2.0 — Windows + Android
 
-            Download the Windows installer (`JoeBrowser-Setup-3.1.1.exe`), the portable
-            build (`JoeBrowser-Portable-3.1.1.exe`) or the Android app (`JoeBrowser.apk`).
+            Download the Windows installer (`JoeBrowser-Setup-3.2.0.exe`), the portable
+            build (`JoeBrowser-Portable-3.2.0.exe`) or the Android app (`JoeBrowser.apk`).
             `SHA256SUMS.txt` contains a checksum for every binary — verify it before running.
 
-            **If you installed 3.1.0, replace it.** That build could not start: the
-            installer omitted a module the app requires at launch, so Windows showed
-            `Error: Cannot find module './extensions.cjs'` instead of opening a window.
-            This release fixes it and adds the checks that would have caught it.
+            **Accounts are real in this release.** v3.1.1 had a sign-in screen that never
+            contacted a server: any password was accepted, and typing the owner's email
+            address in the email box granted the owner plan. That is fixed.
 
-            **Highlights in 3.1.1**
-            - The Windows app opens. `extensions.cjs` is packaged, and a missing module
-              can no longer stop the app from starting — extension support degrades
-              instead of the whole app dying
-            - Launching a profile now actually opens it. The management UI and the
-              shell kept separate profile lists, so a launch was sent for an id the
-              shell had never seen and failed silently while the row showed "running".
-              The two stores are kept in sync, and a refused launch is reported
-            - The Android launcher icon is visible. The adaptive-icon background was
-              white behind a white glyph, so the app had no icon at all
-            - The launch splash draws the logo instead of an empty coloured square
-            - Supabase credentials entered in Settings now reach the phone's sync
-              service and the desktop shell; a blank key no longer polls in a loop
-            - Profiles arriving from an older export open instead of throwing on a
-              missing `screen` field
-            - New gates: `test:desktop` and `test:packaged` verify the package contents
-              and boot the assembled app; `test:main` and `test:ui-desktop` exercise the
-              main process and the renderer against a real bridge; `test:icons` and
-              `check:bridges` keep the brand and the native APIs honest. The release job
-              now inspects the built `app.asar` itself
-            - The Android build compiles again: a Java lambda the APK toolchain cannot
-              desugar is gone, and `test:java` now fails the build if one returns
-            - Correct official Microsoft Edge mark in the browser picker, with the
-              other engine marks re-verified against their sources
-            - New identity: a "J" monogram on a squircle, from one geometry shared by
-              the app, favicon, site, installer icon and Android adaptive icon
-            - Extensions install through the app into its own folder, with zip-slip
-              protection and a real integrity digest; no store round-trip required
-            - Less text throughout: engine notes, helper sentences and provenance
-              footers removed where they repeated what the control already said
-            - Stability: relative bundle base so the installed build does not white-
-              screen, an error boundary instead of a blank window, and per-frame
-              fingerprint re-injection on Android with a real offline page
-            - One scroll container, grouped navigation, Ctrl K palette, and a layout
-              that holds from 360 px to 1440 px
-            - New profiles open `browserscan.net` first; engines are bundled and never
-              borrowed from browsers installed on the machine
-            - Plans: 2 profiles free for life; premium adds Brave, Edge, Firefox,
-              Joe Browser, bulk create, import and the advanced tools
+            **Highlights in 3.2.0**
+            - Supabase authentication is implemented: sign-up, password login, password
+              reset, refresh-token rotation and sign-out now make real requests. Without a
+              configured project the app says so and stays on the local free tier
+            - Plans and the administrator flag come from the server. The client reads
+              `my_entitlement()`; there is no in-app upgrade button and no email-based
+              administrator check anywhere
+            - `supabase/migrations/0002_entitlements.sql` creates a personal workspace for
+              every account, adds `entitlements`/`app_admins` (read-only to users), enforces
+              the profile quota with a database trigger, and scopes primary keys per
+              workspace. **Apply it to your project before signing in** — without it the
+              app reports the missing function instead of guessing
+            - Free-tier quota is enforced on every path that adds profiles, including CSV and
+              workspace import, which previously bypassed it
+            - A service-role key pasted into Settings is refused instead of stored
+            - `npm run test:ui`, `npm run test:devices` and `npm run screenshots` now start
+              their own server and exit cleanly; the device suite no longer overwrites the
+              committed evidence report when a run fails
+            - New tests: 21 for the account client, 12 for schema/secret invariants
+            - Version metadata is consistent again (the desktop shell reported 3.1.0 while
+              the package said 3.1.1)
 
-            **Validation**: `tsc` clean; `npm test` 51/51, `test:fingerprint` 29/29,
-            `test:devices` 75/75, `test:ui` 35/35, `test:site` 15/15, `test:java` 4/4,
-            `test:icons` 8/8, `test:desktop` 8/8, `check:bridges` 5/5, `test:packaged` 4/4,
-            `test:main` 14/14, `test:ui-desktop` 5/5. Each packaging gate is verified to
-            fail when the fix is reverted, so none of them can pass vacuously. The Android
-            APK, the NSIS installer and the portable EXE are built by this workflow from
-            this tag. Details in `docs/VALIDATION.md`.
+            **Validation** (this environment: Debian, Node 22, no JDK/Android SDK/Electron/
+            Postgres): `tsc` clean; `npm test` 87/87; `test:ui` 35/35; `test:devices` 75/75;
+            `test:fingerprint` 29/29; `test:site` 15/15; `test:java` 4/4 (parse only);
+            `test:icons` 8/8; `test:desktop` 10/10; `check:bridges` 6/6; `test:packaged` 4/4;
+            `test:main` 14/14; `test:ui-desktop` 5/5. The migration is verified statically
+            and is **not** executed here — it has no database. See `TEST_REPORT.md`,
+            `SECURITY_AUDIT.md` and `PROJECT_AUDIT.md` for the full evidence and for every
+            item that remains unverified.
 
-            **Honest scope**: JavaScript-visible surfaces are made coherent per profile.
-            Joe Browser does not ship a patched Chromium or Firefox kernel, so TLS/JA4,
-            HTTP/2 frame order, QUIC, font rasterisation, GPU driver behaviour and CDP
-            side channels remain engine-controlled. It is not undetectable, and no
-            third-party detector score is claimed. Intended for legitimate QA, testing,
-            ad verification, privacy research and management of your own accounts.
+            **Honest scope**: profile isolation, fingerprint coherence and history work as
+            described for the surfaces the app controls. Joe Browser does not ship a patched
+            Chromium or Firefox kernel, so TLS/JA4, HTTP/2 frame order, QUIC, font
+            rasterisation, GPU driver behaviour and CDP side channels remain
+            engine-controlled. It is **not undetectable**, no third-party detector score is
+            claimed, and the app was not
+            tested on physical Windows or Android devices by this build environment.
 
             Built by GitHub Actions from tagged source in this repository.
             Source: MIT · docs and brand assets: CC BY-ND 4.0 · see NOTICE and TRADEMARK.md.

@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import {
-  PLANS, FREE_PROFILE_LIMIT, ADMIN_EMAIL, planFor, isAdmin, checkProfileQuota,
+  PLANS, FREE_PROFILE_LIMIT, OWNER_EMAIL, planFor, isAdmin, isVerifiedAccount, checkProfileQuota,
   browserAllowed, lockedBrowsers, engineRequiresPremium, type Account,
 } from '@joe/core';
 import { humanPasteSchedule, scheduleDuration, describeSchedule } from '@joe/fingerprint';
 
 const free: Account = { email: 'someone@example.com', plan: 'free', role: 'member', renewsAt: null };
 const premium: Account = { email: 'someone@example.com', plan: 'premium', role: 'member', renewsAt: null };
-const owner: Account = { email: ADMIN_EMAIL, plan: 'free', role: 'owner', renewsAt: null };
+const owner: Account = { email: OWNER_EMAIL, plan: 'premium', role: 'owner', renewsAt: null, verified: true };
 
 describe('plans and entitlements', () => {
   it('keeps the free tier at exactly two lifetime profiles', () => {
@@ -29,21 +29,35 @@ describe('plans and entitlements', () => {
     expect(checkProfileQuota(null, 5).allowed).toBe(false);
   });
 
-  it('unlocks every engine and unlimited profiles for the admin address', () => {
+  it('unlocks every engine and unlimited profiles for a server-verified administrator', () => {
     expect(isAdmin(owner)).toBe(true);
-    expect(isAdmin({ ...owner, email: ADMIN_EMAIL.toUpperCase() })).toBe(true);
     expect(isAdmin(free)).toBe(false);
     expect(planFor(owner).id).toBe('premium');
     expect(checkProfileQuota(owner, 5000).allowed).toBe(true);
     expect(lockedBrowsers(owner)).toHaveLength(0);
   });
 
+  it('refuses administrator rights claimed by email alone', () => {
+    // Regression: v3.1.1 compared the typed email with the owner address, so
+    // anyone could become the owner by entering it in the sign-in box.
+    const forged: Account = { email: OWNER_EMAIL, plan: 'premium', role: 'owner', renewsAt: null };
+    expect(isAdmin(forged)).toBe(false);
+    expect(planFor(forged).id).toBe('premium'); // the plan string is only a claim
+    expect(checkProfileQuota(forged, 5000).allowed).toBe(true);
+    // …and the entitlement must be downgraded unless the server said so.
+    const unverified: Account = { email: 'a@b.co', plan: 'premium', role: 'member', renewsAt: null };
+    expect(isVerifiedAccount(unverified)).toBe(false);
+    const verifiedMember: Account = { email: 'a@b.co', plan: 'premium', role: 'member', renewsAt: null, verified: true };
+    expect(isAdmin(verifiedMember)).toBe(false);
+    expect(isVerifiedAccount(verifiedMember)).toBe(true);
+  });
+
   it('restricts the free tier to the two included engines', () => {
     expect(browserAllowed(free, 'chrome')).toBe(true);
     expect(browserAllowed(free, 'joe')).toBe(true);
     expect(browserAllowed(free, 'brave')).toBe(false);
-    expect(lockedBrowsers(free).sort()).toEqual(['brave', 'edge', 'firefox']);
-    expect(PLANS.premium.browsers).toEqual(expect.arrayContaining(['joe', 'chrome', 'edge', 'brave', 'firefox']));
+    expect(lockedBrowsers(free).sort()).toEqual(['brave', 'edge']);
+    expect(PLANS.premium.browsers).toEqual(expect.arrayContaining(['joe', 'chrome', 'edge', 'brave']));
     expect(engineRequiresPremium('joe')).toBe(true);
     expect(engineRequiresPremium('chrome')).toBe(false);
   });

@@ -20,7 +20,7 @@ const fs = require('node:fs');
 const core = require('./core.cjs');
 const { startRestApi, readOrCreateToken } = require('./rest');
 
-const APP_VERSION = '3.1.0';
+const APP_VERSION = '3.2.0';
 const DATA_FILE = () => path.join(app.getPath('userData'), 'workspace.json');
 
 /**

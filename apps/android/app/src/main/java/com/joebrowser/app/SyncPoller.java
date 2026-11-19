@@ -36,7 +36,8 @@ public class SyncPoller extends Thread {
             try {
                 // A blank key cannot authorise anything; sending it just makes
                 // one doomed request per tick.
-                String key = prefs.getString("anon_key", "");
+                // No session token means no identity, and RLS answers nothing.
+                String key = prefs.getString("access_token", "");
                 if (key == null || key.length() == 0) {
                     try { Thread.sleep(5000); } catch (InterruptedException e) { return; }
                     continue;
