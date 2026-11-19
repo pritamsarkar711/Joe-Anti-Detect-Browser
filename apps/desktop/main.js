@@ -198,6 +198,44 @@ function startUrlFor(profile) {
   } catch { return 'https://browserscan.net/'; }
 }
 
+/**
+ * Record real browsing history per profile.
+ *
+ * The History view could always list and filter entries, but nothing ever wrote
+ * one — `addHistory` had no callers, so the page showed three seeded rows
+ * forever while the README promised "every URL and search". Each main-frame
+ * navigation is classified and forwarded to the manager window, which merges it
+ * into the workspace history. A follow-up on `did-finish-load` re-sends the
+ * entry with the real page title (same deterministic id, so the merge updates
+ * rather than duplicates).
+ */
+function attachHistory(profileId, profileName, wc) {
+  let last = null;
+  const sendEntry = (url, title, at) => {
+    if (!managerWindow || managerWindow.isDestroyed()) return;
+    const info = core.classifyNavigation(url, title);
+    managerWindow.webContents.send('history:entry', {
+      id: core.historyEntryId(profileId, url, at),
+      profileId, profileName, url,
+      title: info.title, search: info.search, at,
+    });
+  };
+  const record = (url) => {
+    if (!url || !/^https?:/i.test(url)) return;
+    if (last && last.url === url) return; // in-page repeat; title refresh covers it
+    last = { url, at: new Date().toISOString() };
+    sendEntry(url, '', last.at);
+  };
+  wc.on('did-navigate', (_e, url) => record(url));
+  wc.on('did-navigate-in-page', (_e, url, isMainFrame) => { if (isMainFrame !== false) record(url); });
+  wc.on('did-finish-load', () => {
+    if (!last) return;
+    let title = '';
+    try { title = wc.getTitle() || ''; } catch { /* window can be closing */ }
+    if (title) sendEntry(last.url, title, last.at);
+  });
+}
+
 function attachInjection(win, spec) {
   // CDP injection runs in the main world *before* any page script executes.
   try {
@@ -268,6 +306,7 @@ async function launchProfile(id) {
   });
 
   attachInjection(win, profile.fingerprint);
+  attachHistory(profile.id, profile.name, win.webContents);
   win.webContents.setUserAgent(profile.fingerprint.userAgent);
   // dom-ready fires as soon as the document exists; loading the target URL here
   // keeps a collapsed or slow window from appearing frozen.

@@ -17,6 +17,7 @@ import org.json.JSONObject;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 
@@ -32,6 +33,8 @@ public class BrowserActivity extends Activity {
 
     private WebView web;
     private String injection = "";
+    /** Profile owning this window; also the history file key. */
+    private String profileId = "default";
     /**
      * The Cloudflare / hCaptcha / reCAPTCHA challenge iframe is a child frame,
      * and `evaluateJavascript` only reaches the main frame. Re-injecting on
@@ -75,12 +78,13 @@ public class BrowserActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        final String profileId = getIntent().getStringExtra("profileId");
         final String ua = getIntent().getStringExtra("userAgent");
         final String url = getIntent().getStringExtra("url");
         final String cookies = getIntent().getStringExtra("cookies");
         final String pageUrl = url == null || url.isEmpty() ? "https://browserscan.net/" : url;
-        injection = readAsset("injection/" + (profileId == null ? "default" : profileId) + ".js");
+        profileId = getIntent().getStringExtra("profileId");
+        if (profileId == null || profileId.isEmpty()) profileId = "default";
+        injection = readAsset("injection/" + profileId + ".js");
 
         web = new WebView(this);
         setContentView(web);
@@ -107,6 +111,7 @@ public class BrowserActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String pageUrl) {
                 inject(view, pageUrl);
+                recordHistory(view, pageUrl);
             }
 
             @Override
@@ -212,6 +217,124 @@ public class BrowserActivity extends Activity {
             manager.flush();
         } catch (Exception ignored) {
             // Invalid cookie text must never prevent a profile from opening.
+        }
+    }
+
+    /**
+     * Append one visit to this profile's history log.
+     *
+     * The manager UI runs in the main process and polls the log through the
+     * bridge (JoeBridge.getHistory). Ids are deterministic — FNV-1a over
+     * profile, url and timestamp — so a re-read of the same line can never
+     * create a duplicate entry. Files are trimmed well before they can grow
+     * without bound.
+     */
+    private void recordHistory(WebView view, String pageUrl) {
+        String target = pageUrl;
+        if (target == null || target.isEmpty()) target = view.getUrl();
+        if (target == null || !target.startsWith("http")) return;
+        String title = view.getTitle();
+        if (title == null) title = "";
+
+        // Stamp in UTC so entries sort consistently with the desktop shell's ISO times.
+        java.text.SimpleDateFormat iso = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US);
+        iso.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+        String at = iso.format(new java.util.Date());
+
+        try {
+            File dir = new File(getFilesDir(), "history");
+            if (!dir.exists()) dir.mkdirs();
+            String safe = profileId.replaceAll("[^a-zA-Z0-9_-]", "_");
+            File file = new File(dir, safe + ".jsonl");
+            if (file.exists() && file.length() > 256 * 1024) trimHistory(file);
+
+            JSONObject row = new JSONObject();
+            row.put("id", historyId(profileId, target, at));
+            row.put("profileId", profileId);
+            row.put("url", target);
+            row.put("title", title.isEmpty() ? titleFor(target) : title);
+            row.put("at", at);
+            row.put("search", isSearchUrl(target));
+            FileOutputStream out = new FileOutputStream(file, true);
+            try {
+                out.write((row.toString() + "\n").getBytes("UTF-8"));
+            } finally {
+                out.close();
+            }
+        } catch (Exception ignored) {
+            // History must never break browsing.
+        }
+    }
+
+    /** Same FNV-1a the shared TS core uses (packages/core/src/history.ts). */
+    private static String historyId(String profileId, String url, String at) {
+        long h = 0x811c9dc5L;
+        String key = profileId + "\u0000" + url + "\u0000" + at;
+        for (int i = 0; i < key.length(); i++) {
+            h ^= key.charAt(i);
+            h = (h * 0x01000193L) & 0xFFFFFFFFL;
+        }
+        return "h_" + Long.toString(h, 36);
+    }
+
+    /** A results page of a known engine carrying a query is a search, not a visit. */
+    private static boolean isSearchUrl(String url) {
+        try {
+            java.net.URI u = java.net.URI.create(url);
+            String host = u.getHost() == null ? "" : u.getHost().toLowerCase();
+            boolean engine = host.contains("google.") || host.contains("bing.com")
+                    || host.contains("duckduckgo.com") || host.contains("yahoo.")
+                    || host.contains("yandex.") || host.contains("baidu.com")
+                    || host.contains("ecosia.org") || host.contains("brave.com");
+            if (!engine) return false;
+            String query = u.getQuery();
+            return query != null && (query.contains("q=") || query.contains("query=")
+                    || query.contains("p=") || query.contains("text="));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static String titleFor(String url) {
+        try {
+            String query = java.net.URI.create(url).getQuery();
+            if (query != null) {
+                String[] pairs = query.split("&");
+                for (int i = 0; i < pairs.length; i++) {
+                    String[] kv = pairs[i].split("=", 2);
+                    if (kv.length == 2 && (kv[0].equals("q") || kv[0].equals("query") || kv[0].equals("text"))) {
+                        return java.net.URLDecoder.decode(kv[1], "UTF-8") + " — search";
+                    }
+                }
+            }
+            return java.net.URI.create(url).getHost();
+        } catch (Exception e) {
+            return url;
+        }
+    }
+
+    /** Keep only the most recent ~800 lines when the log grows past 256 KB. */
+    private static void trimHistory(File file) {
+        try {
+            java.util.ArrayList<String> lines = new java.util.ArrayList<String>();
+            BufferedReader reader = new BufferedReader(new InputStreamReader(new FileInputStream(file), "UTF-8"));
+            try {
+                String line;
+                while ((line = reader.readLine()) != null) lines.add(line);
+            } finally {
+                reader.close();
+            }
+            int keep = 800;
+            java.util.List<String> tail = lines.size() > keep ? lines.subList(lines.size() - keep, lines.size()) : lines;
+            FileOutputStream out = new FileOutputStream(file, false);
+            try {
+                for (int i = 0; i < tail.size(); i++) {
+                    out.write((tail.get(i) + "\n").getBytes("UTF-8"));
+                }
+            } finally {
+                out.close();
+            }
+        } catch (Exception ignored) {
         }
     }
 

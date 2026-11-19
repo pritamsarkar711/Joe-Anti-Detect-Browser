@@ -45,7 +45,7 @@ contextBridge.exposeInMainWorld('joe', {
     configure: (config) => invoke('sync:configure', config),
   },
   on: (channel, callback) => {
-    const allowed = ['profiles:changed', 'sync:event'];
+    const allowed = ['profiles:changed', 'sync:event', 'history:entry'];
     if (!allowed.includes(channel)) return () => {};
     const listener = (_e, data) => callback(data);
     ipcRenderer.on(channel, listener);

@@ -5,6 +5,7 @@ export * from './proxy';
 export * from './transfer';
 export * from './geo';
 export * from './quality';
+export * from './history';
 export * from './data/realFingerprints';
 
 export {

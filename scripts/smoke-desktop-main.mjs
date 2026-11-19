@@ -54,11 +54,19 @@ class FakeWebContents {
       sendCommand() { return Promise.resolve(); },
     };
     this.userAgent = null;
+    this.events = new Map();
+    this.title = '';
   }
   send(channel, payload) { sentToRenderer.push({ channel, payload }); }
+  on(event, fn) {
+    if (!this.events.has(event)) this.events.set(event, []);
+    this.events.get(event).push(fn);
+    return this;
+  }
+  emit(event, ...args) { for (const fn of this.events.get(event) ?? []) fn(...args); }
+  getTitle() { return this.title; }
   setUserAgent(ua) { this.userAgent = ua; }
   setWindowOpenHandler(fn) { this.windowOpenHandler = fn; }
-  on() {}
   once() {}
   reload() {}
   async loadURL() { return undefined; }
@@ -277,6 +285,24 @@ await check('profile launch applies a session, proxy and window', async () => {
   const win = FakeBrowserWindow.instances.find((w) => w.options?.title?.includes(profile.name));
   must(win, 'launch did not open a window for the profile');
   must(win.webContents.userAgent === profile.fingerprint.userAgent, 'window UA was not set from the profile');
+
+  // Navigating the profile must stream real history to the manager window:
+  // the History view used to show three seeded rows forever because nothing
+  // ever recorded a visit.
+  const before = sentToRenderer.filter((m) => m.channel === 'history:entry').length;
+  win.webContents.emit('did-navigate', {}, 'https://www.google.com/search?q=joe+browser');
+  win.webContents.title = 'joe browser - Google Search';
+  win.webContents.emit('did-finish-load', {});
+  const entries = sentToRenderer.filter((m) => m.channel === 'history:entry');
+  must(entries.length >= before + 2, 'navigation did not stream history:entry messages');
+  const first = entries[entries.length - 2].payload;
+  const titled = entries[entries.length - 1].payload;
+  must(titled.url === 'https://www.google.com/search?q=joe+browser', 'history entry lost the URL');
+  must(titled.profileId === profile.id, 'history entry is attributed to the wrong profile');
+  must(titled.profileName === profile.name, 'history entry lost the profile name');
+  must(titled.search === true, 'a search results page was not classified as a search');
+  must(titled.title === 'joe browser - Google Search', 'the title refresh did not update the entry');
+  must(first.id === titled.id, 'the title refresh created a duplicate entry id');
 
   // A second launch of a running profile must focus, not duplicate.
   const again = await invoker('profiles:launch')(profile.id);

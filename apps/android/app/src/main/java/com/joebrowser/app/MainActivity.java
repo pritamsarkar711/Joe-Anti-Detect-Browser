@@ -14,11 +14,13 @@ import android.webkit.WebViewClient;
 import android.webkit.WebResourceRequest;
 import android.widget.Toast;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -179,10 +181,80 @@ public class MainActivity extends Activity {
                 o.put("kind", "android-apk");
                 o.put("name", Build.MODEL);
                 o.put("platform", "Android " + Build.VERSION.RELEASE);
-                o.put("appVersion", "2.0.0");
+                o.put("appVersion", appVersion());
                 o.put("sdk", Build.VERSION.SDK_INT);
             } catch (JSONException ignored) {}
             return o.toString();
+        }
+
+        /**
+         * Browsing history recorded by the isolated profile WebViews.
+         *
+         * Each profile process appends visits to filesDir/history/<id>.jsonl;
+         * this reads every log back as one newest-first array for the UI.
+         */
+        @JavascriptInterface
+        public String getHistory() {
+            JSONArray rows = new JSONArray();
+            try {
+                File dir = new File(getFilesDir(), "history");
+                File[] files = dir.listFiles();
+                if (files != null) {
+                    for (int f = 0; f < files.length; f++) {
+                        if (!files[f].getName().endsWith(".jsonl")) continue;
+                        BufferedReader reader = new BufferedReader(new InputStreamReader(new FileInputStream(files[f]), "UTF-8"));
+                        try {
+                            String line;
+                            while ((line = reader.readLine()) != null) {
+                                if (line.trim().isEmpty()) continue;
+                                try {
+                                    rows.put(new JSONObject(line));
+                                } catch (JSONException ignored) {
+                                    // A torn write from a killed process: skip the line.
+                                }
+                            }
+                        } finally {
+                            reader.close();
+                        }
+                    }
+                }
+                java.util.ArrayList<JSONObject> sorted = new java.util.ArrayList<JSONObject>();
+                for (int i = 0; i < rows.length(); i++) sorted.add(rows.optJSONObject(i));
+                java.util.Collections.sort(sorted, new java.util.Comparator<JSONObject>() {
+                    @Override
+                    public int compare(JSONObject a, JSONObject b) {
+                        return b.optString("at", "").compareTo(a.optString("at", ""));
+                    }
+                });
+                JSONArray out = new JSONArray();
+                int cap = Math.min(sorted.size(), 1500);
+                for (int i = 0; i < cap; i++) out.put(sorted.get(i));
+                return out.toString();
+            } catch (Exception e) {
+                return "[]";
+            }
+        }
+
+        /** Clear one profile's history log, or every log when the id is empty. */
+        @JavascriptInterface
+        public String clearHistory(String profileId) {
+            try {
+                File dir = new File(getFilesDir(), "history");
+                File[] files = dir.listFiles();
+                if (files != null) {
+                    for (int f = 0; f < files.length; f++) {
+                        String name = files[f].getName();
+                        if (!name.endsWith(".jsonl")) continue;
+                        if (profileId == null || profileId.isEmpty()
+                                || name.equals(profileId.replaceAll("[^a-zA-Z0-9_-]", "_") + ".jsonl")) {
+                            files[f].delete();
+                        }
+                    }
+                }
+                return "{\"ok\":true}";
+            } catch (Exception e) {
+                return "{\"ok\":false}";
+            }
         }
 
         @JavascriptInterface

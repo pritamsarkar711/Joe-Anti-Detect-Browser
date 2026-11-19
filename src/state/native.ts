@@ -12,6 +12,9 @@ declare global {
       getConfig(): string;
       sendCommand(topic: string, payloadJson: string): string;
       toast(message: string): void;
+      /** Browsing history recorded by the isolated profile WebViews. */
+      getHistory?(): string;
+      clearHistory?(profileId: string): string;
     };
     joe?: {
       isDesktop: boolean;
@@ -29,6 +32,7 @@ declare global {
         replace(data: unknown): Promise<{ ok: boolean; profiles: number }>;
         read(): Promise<NativeWorkspace>;
       };
+      on?(channel: string, callback: (data: unknown) => void): () => void;
     };
     __joeOnCommand?: (commands: Array<{ id: string; topic: string; payload: Record<string, unknown> }>) => void;
   }
@@ -59,6 +63,39 @@ export function getNativeWorkspace(): NativeWorkspace | null {
     } catch { /* fall through to local seed */ }
   }
   return null;
+}
+
+/* ------------------------------------------------------------------ *
+ * Browsing history.
+ *
+ * Desktop profile windows stream visits to the manager over IPC
+ * (`history:entry`). Android profile WebViews run in their own process and
+ * append visits to a shared JSONL file, which the manager polls through the
+ * bridge. Both paths land in the same workspace history list.
+ * ------------------------------------------------------------------ */
+
+export interface NativeHistoryEntry {
+  id: string;
+  profileId: string;
+  url: string;
+  title: string;
+  at: string;
+  search?: boolean;
+}
+
+export function getNativeHistory(): NativeHistoryEntry[] {
+  if (typeof window === 'undefined' || !window.JoeBridge?.getHistory) return [];
+  try {
+    const parsed = JSON.parse(window.JoeBridge.getHistory()) as unknown;
+    return Array.isArray(parsed) ? (parsed as NativeHistoryEntry[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function clearNativeHistory(profileId?: string): void {
+  if (typeof window === 'undefined' || !window.JoeBridge?.clearHistory) return;
+  try { window.JoeBridge.clearHistory(profileId ?? ''); } catch { /* non-fatal */ }
 }
 
 /* ------------------------------------------------------------------ *

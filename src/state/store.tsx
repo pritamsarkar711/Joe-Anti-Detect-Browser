@@ -3,11 +3,12 @@ import {
   createProfile, generateProfiles, hashString, DEVICE_TEMPLATES, checkProxy, parseProxyLines, proxyUrl,
   applyRealPreset, getRealPreset, applyGeoToSpec, geoForCountry, profilesFromCsv,
   ADMIN_EMAIL, planFor, isAdmin, checkProfileQuota, browserAllowed,
+  historyEntryId, mergeHistory,
   type Account, type BrowserProfile, type ProxyConfig, type ProfileStatus, type Entitlement,
   importWorkspace as parseWorkspace, exportWorkspace as makeExport, type WorkspaceExport,
 } from '@joe/core';
 import { createLocalTransport, SyncClient, DEFAULT_PRESENCE, type DeviceKind, type DevicePresence, type SyncEnvelope, type Topic } from '@joe/sync';
-import { getNativeWorkspace, installCommandHandler, nativeKind, nativeLaunch, nativeStop, nativeDeviceName, syncWorkspaceToDesktop, pullDesktopWorkspace, isDesktopShell, pushSyncConfig, sendSyncCommand } from './native';
+import { getNativeWorkspace, installCommandHandler, nativeKind, nativeLaunch, nativeStop, nativeDeviceName, syncWorkspaceToDesktop, pullDesktopWorkspace, isDesktopShell, pushSyncConfig, sendSyncCommand, getNativeHistory, clearNativeHistory } from './native';
 
 export type View =
   | 'profiles' | 'proxies' | 'groups'
@@ -25,6 +26,13 @@ export interface HistoryEntry {
   /** true when the URL came from a search query rather than direct navigation */
   search?: boolean;
 }
+
+/** What callers of `addHistory` provide; the store fills id, time and profile name. */
+export type HistoryEntryInput = Omit<HistoryEntry, 'id' | 'at' | 'profileName'> & {
+  id?: string;
+  at?: string;
+  profileName?: string;
+};
 
 export interface ActivityEntry {
   id: string;
@@ -231,7 +239,7 @@ interface Store {
   signIn: (email: string) => void;
   signOut: () => void;
   setPlan: (plan: Account['plan']) => void;
-  addHistory: (entries: Array<Omit<HistoryEntry, 'id' | 'at'> & { at?: string }>) => void;
+  addHistory: (entries: HistoryEntryInput[]) => void;
   clearHistory: (profileId?: string) => void;
   selectedId: string | null; setSelectedId: (id: string | null) => void;
   createOpen: boolean; setCreateOpen: (v: boolean) => void;
@@ -359,6 +367,62 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /**
+   * Merge visits into the workspace history.
+   *
+   * Ids are deterministic (`historyEntryId`) so the same navigation reported
+   * twice — a desktop title refresh, or an Android poll re-reading the JSONL
+   * file — updates the entry instead of duplicating it. `mergeHistory` owns the
+   * dedupe, newest-first order and the 1500-entry cap.
+   */
+  const pushHistory = useCallback((entries: HistoryEntryInput[]) => {
+    if (!entries.length) return;
+    setData((d) => ({
+      ...d,
+      history: mergeHistory(d.history, entries.map((e) => {
+        const at = e.at ?? new Date().toISOString();
+        return {
+          id: e.id ?? historyEntryId(e.profileId, e.url, at),
+          at,
+          profileId: e.profileId,
+          profileName: e.profileName || d.profiles.find((p) => p.id === e.profileId)?.name || e.profileId,
+          url: e.url,
+          title: e.title,
+          search: e.search,
+        };
+      })),
+    }));
+  }, []);
+
+  /**
+   * Desktop: profile windows stream every visit to the manager over the
+   * `history:entry` IPC channel (see attachHistory in apps/desktop/main.js).
+   */
+  useEffect(() => {
+    const bridge = typeof window === 'undefined' ? undefined : window.joe;
+    if (!bridge?.isDesktop || !bridge.on) return;
+    return bridge.on('history:entry', (entry) => {
+      const e = entry as HistoryEntryInput & { profileId?: string; url?: string };
+      if (e && e.profileId && e.url) pushHistory([e]);
+    });
+  }, [pushHistory]);
+
+  /**
+   * Android: each profile WebView runs in its own process and appends visits
+   * to a shared JSONL file. The manager polls that file through the bridge —
+   * deterministic ids make re-polls free.
+   */
+  useEffect(() => {
+    if (nativeKind() !== 'android') return;
+    const pull = () => {
+      const entries = getNativeHistory();
+      if (entries.length) pushHistory(entries);
+    };
+    pull();
+    const timer = setInterval(pull, 6000);
+    return () => clearInterval(timer);
+  }, [pushHistory]);
+
   useEffect(() => {
     document.documentElement.dataset.theme = data.settings.theme;
     document.documentElement.dataset.density = data.settings.density;
@@ -460,22 +524,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     signOut: () => { setData((d) => ({ ...d, account: DEFAULT_ACCOUNT })); toast('Signed out', 'info'); },
     setPlan: (plan) => { setData((d) => ({ ...d, account: { ...d.account, plan } })); toast(`Switched to ${plan}`); },
-    addHistory: (entries) => setData((d) => ({
-      ...d,
-      history: [
-        ...entries.map((e, i) => ({
-          id: `h_${Date.now().toString(36)}_${i}`,
-          at: e.at ?? new Date().toISOString(),
-          profileId: e.profileId, profileName: e.profileName,
-          url: e.url, title: e.title, search: e.search,
-        })),
-        ...d.history,
-      ].slice(0, 1500),
-    })),
-    clearHistory: (profileId) => setData((d) => ({
-      ...d,
-      history: profileId ? d.history.filter((h) => h.profileId !== profileId) : [],
-    })),
+    addHistory: pushHistory,
+    clearHistory: (profileId) => {
+      clearNativeHistory(profileId);
+      setData((d) => ({
+        ...d,
+        history: profileId ? d.history.filter((h) => h.profileId !== profileId) : [],
+      }));
+    },
     selectedId, setSelectedId, createOpen, setCreateOpen, paletteOpen, setPaletteOpen, syncEvents,
     addProfiles: (ps) => {
       const quota = checkProfileQuota(data.account, data.profiles.length, ps.length);
@@ -656,7 +712,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setDevices((d) => d.map((x) => x.kind === kind ? { ...x, online, lastSeen: new Date().toISOString() } : x));
       log('sync', `${kind} ${online ? 'connected' : 'disconnected'}`);
     },
-  }), [data, devices, toasts, view, groupFilter, selectedId, createOpen, paletteOpen, syncEvents, log, toast]);
+  }), [data, devices, toasts, view, groupFilter, selectedId, createOpen, paletteOpen, syncEvents, log, toast, pushHistory]);
 
   useEffect(() => {
     setDevices((d) => d.map((x) => ({ ...x, profiles: data.profiles.filter((p) => p.device === x.kind).length })));
