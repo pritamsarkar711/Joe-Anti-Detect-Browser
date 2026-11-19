@@ -71,7 +71,7 @@ function copyIntoAllowlist(dest) {
 }
 
 /** Modules the released app must contain, from the allowlist itself. */
-const requiredModules = ['main.js', 'preload.js', 'rest.js', 'extensions.cjs', 'core.cjs'];
+const requiredModules = ['main.js', 'preload.js', 'rest.js', 'extensions.cjs', 'core.cjs', 'chrome.html'];
 
 check('staging the app with build.files produces the expected tree', () => {
   fs.mkdirSync(stage, { recursive: true });
@@ -129,6 +129,7 @@ function bootStagedMain() {
       isPackaged: false,
     },
     BrowserWindow: class {},
+    WebContentsView: class {},
     session: {},
     ipcMain: { handle: () => {} },
     shell: {},

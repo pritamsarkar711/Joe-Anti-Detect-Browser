@@ -160,6 +160,16 @@ check('the app icon referenced by the builder exists', () => {
   return icon;
 });
 
+check('the profile toolbar page is packaged and loaded', () => {
+  // chrome.html is the only page a profile window's own webContents loads.
+  // Without it in the allowlist, every profile window would open blank — the
+  // same class of packaging bug that killed the 3.1.0 installer.
+  must(isPacked('chrome.html'), 'chrome.html is not in build.files — profile windows would open with no toolbar');
+  must(fs.existsSync(path.join(desktop, 'chrome.html')), 'chrome.html is missing from the source tree');
+  must(mainSrc.includes("loadFile(path.join(__dirname, 'chrome.html'))"), 'main.js no longer loads chrome.html');
+  return 'chrome.html packed and loaded';
+});
+
 check('preload exposes exactly the IPC channels the main process handles', () => {
   // A channel exposed in preload but never handled makes the UI await forever;
   // a channel handled but not exposed is dead code. Both are silent in a build.

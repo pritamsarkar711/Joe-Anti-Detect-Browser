@@ -10,7 +10,7 @@
  *
  * The management UI is the same Vite/React build used by the web control plane.
  */
-const { app, BrowserWindow, session, ipcMain, shell, Menu } = require('electron');
+const { app, BrowserWindow, WebContentsView, session, ipcMain, shell, Menu } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 // The fingerprint core is not optional: without it there are no profiles to
@@ -50,7 +50,38 @@ try {
   const unavailable = () => { throw new Error('Extension support is unavailable in this build.'); };
   ext = { listInstalled: () => [], installZip: unavailable, digest: unavailable };
 }
-const windows = new Map(); // profileId -> BrowserWindow
+const windows = new Map(); // profileId -> profile window record (see launchProfile)
+
+/**
+ * Per-profile browsing controls state: bookmarks and permission decisions.
+ * Kept beside the workspace but in its own file — `workspace:replace` adopts
+ * the UI's profile objects wholesale and would otherwise clobber these.
+ */
+const CONTROLS_FILE = () => path.join(app.getPath('userData'), 'controls.json');
+let controls = { bookmarks: {}, permissions: {} };
+function loadControls() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(CONTROLS_FILE(), 'utf8'));
+    controls = {
+      bookmarks: parsed.bookmarks && typeof parsed.bookmarks === 'object' ? parsed.bookmarks : {},
+      permissions: parsed.permissions && typeof parsed.permissions === 'object' ? parsed.permissions : {},
+    };
+  } catch {
+    controls = { bookmarks: {}, permissions: {} };
+  }
+}
+function saveControls() {
+  try {
+    fs.mkdirSync(path.dirname(CONTROLS_FILE()), { recursive: true });
+    fs.writeFileSync(CONTROLS_FILE(), JSON.stringify(controls, null, 2));
+  } catch (e) { console.error('controls save failed', e); }
+}
+function bookmarksFor(profileId) {
+  return Array.isArray(controls.bookmarks[profileId]) ? controls.bookmarks[profileId] : [];
+}
+function permissionsFor(profileId) {
+  return { geolocation: false, notifications: false, media: false, ...(controls.permissions[profileId] ?? {}) };
+}
 
 let managerWindow = null;
 let workspace = { profiles: [], proxies: [], groups: ['Default'] }; // `sync` is optional
@@ -236,15 +267,350 @@ function attachHistory(profileId, profileName, wc) {
   });
 }
 
-function attachInjection(win, spec) {
-  // CDP injection runs in the main world *before* any page script executes.
+/* ------------------------------------------------------------------ *
+ * Profile window chrome and tabs.
+ *
+ * A profile window is two trusted surfaces around one untrusted one:
+ *   - win.webContents loads apps/desktop/chrome.html (toolbar, tabs, find,
+ *     bookmarks, downloads, permissions) with the preload bridge;
+ *   - each tab is a WebContentsView that browses the open web with NO preload,
+ *     so a hostile page can never reach the app's IPC bridge (v3.1.x attached
+ *     the full management bridge to profile pages — any site could drive the
+ *     workspace through window.joe).
+ * ------------------------------------------------------------------ */
+
+const TAB_BAR = 30;
+const MAIN_BAR = 40;
+const FIND_BAR = 34;
+
+function chromeHeight(rec) {
+  return TAB_BAR + MAIN_BAR + (rec.findOpen ? FIND_BAR : 0);
+}
+
+function layoutProfile(rec) {
+  const win = rec.win;
+  if (!win || win.isDestroyed()) return;
+  const [width, height] = win.getContentSize();
+  const y = chromeHeight(rec);
+  for (const tab of rec.tabs.values()) {
+    try { tab.view.setBounds({ x: 0, y, width, height: Math.max(120, height - y) }); } catch { /* closing */ }
+  }
+}
+
+function pushChromeState(rec) {
+  if (!rec.win || rec.win.isDestroyed()) return;
+  const tab = rec.tabs.get(rec.activeTab);
+  const state = {
+    tabs: [...rec.tabs.values()].map((t) => ({ id: t.id, title: t.title, url: t.url })),
+    activeId: rec.activeTab,
+    url: tab?.url ?? '',
+    title: tab?.title ?? '',
+    canBack: tab ? navCan(tab.wc, 'Back') : false,
+    canForward: tab ? navCan(tab.wc, 'Forward') : false,
+    loading: !!rec.loading,
+    zoom: tab?.zoom ?? 0,
+    findOpen: !!rec.findOpen,
+    findMatches: rec.findMatches ?? '',
+    bookmarks: bookmarksFor(rec.profileId),
+    downloads: rec.downloads ?? [],
+    permissions: permissionsFor(rec.profileId),
+    blocked: rec.blocked ?? 0,
+    home: startUrlFor(findProfile(rec.profileId) ?? {}),
+  };
+  try { rec.win.webContents.send('nav:state', state); } catch { /* closing */ }
+}
+
+/** Electron moved history navigation to webContents.navigationHistory; support both. */
+function navCan(wc, direction) {
   try {
-    win.webContents.debugger.attach('1.3');
+    const hist = wc.navigationHistory;
+    if (hist && typeof hist[`canGo${direction}`] === 'function') return hist[`canGo${direction}`]();
+    return direction === 'Back' ? wc.canGoBack() : wc.canGoForward();
+  } catch { return false; }
+}
+function navGo(wc, direction) {
+  try {
+    const hist = wc.navigationHistory;
+    if (hist && typeof hist[`go${direction}`] === 'function') hist[`go${direction}`]();
+    else if (direction === 'Back') wc.goBack();
+    else wc.goForward();
+  } catch { /* noop */ }
+}
+
+/** What the address bar should navigate to: URLs as-is, bare hosts with https, everything else as a search. */
+function inputToUrl(input) {
+  const raw = String(input ?? '').trim();
+  if (!raw) return null;
+  if (/^https?:\/\//i.test(raw)) {
+    try { return new URL(raw).toString(); } catch { return null; }
+  }
+  if (/^[\w-]+(\.[\w-]+)+(\/.*)?$/i.test(raw)) {
+    try { return new URL(`https://${raw}`).toString(); } catch { return null; }
+  }
+  return `https://www.google.com/search?q=${encodeURIComponent(raw)}`;
+}
+
+function activateTab(rec, tabId) {
+  const tab = rec.tabs.get(tabId);
+  if (!tab) return;
+  for (const other of rec.tabs.values()) {
+    if (other !== tab && other.attached) {
+      try { rec.win.contentView.removeChildView(other.view); } catch { /* noop */ }
+      other.attached = false;
+    }
+  }
+  if (!tab.attached) {
+    rec.win.contentView.addChildView(tab.view);
+    tab.attached = true;
+  }
+  rec.activeTab = tab.id;
+  layoutProfile(rec);
+  pushChromeState(rec);
+}
+
+function closeTab(rec, tabId) {
+  const tab = rec.tabs.get(tabId);
+  if (!tab) return;
+  if (tab.attached) {
+    try { rec.win.contentView.removeChildView(tab.view); } catch { /* noop */ }
+    tab.attached = false;
+  }
+  try { tab.wc.close(); } catch { /* noop */ }
+  rec.tabs.delete(tabId);
+  if (rec.tabs.size === 0) {
+    if (!rec.win.isDestroyed()) rec.win.close();
+    return;
+  }
+  if (rec.activeTab === tabId) {
+    const next = [...rec.tabs.keys()][0];
+    activateTab(rec, next);
+  } else {
+    pushChromeState(rec);
+  }
+}
+
+function closeFind(rec) {
+  const tab = rec.tabs.get(rec.activeTab);
+  rec.findOpen = false;
+  rec.findMatches = '';
+  try { tab?.wc.stopFindInPage('clearSelection'); } catch { /* noop */ }
+  pushChromeState(rec);
+}
+
+function zoomTab(rec, tab, delta, absolute = false) {
+  if (!tab) return;
+  tab.zoom = absolute ? 0 : Math.max(-3, Math.min(3, (tab.zoom ?? 0) + delta));
+  try { tab.wc.setZoomLevel(tab.zoom); } catch { /* noop */ }
+  pushChromeState(rec);
+}
+
+/** Keyboard controls — every shortcut maps to the same command the buttons send. */
+function handleShortcut(rec, tab, input) {
+  if (input.type !== 'keyDown') return false;
+  const key = String(input.key ?? '').toLowerCase();
+  const ctrl = !!(input.control || input.meta);
+  if (ctrl && key === 'f') { rec.findOpen = true; pushChromeState(rec); return true; }
+  if (ctrl && key === 't') { createTab(rec, null); return true; }
+  if (ctrl && key === 'w') { closeTab(rec, tab.id); return true; }
+  if ((ctrl && key === 'r') || key === 'f5') { tab.wc.reload(); return true; }
+  if (key === 'escape') {
+    if (rec.findOpen) { closeFind(rec); return true; }
+    if (rec.loading) { try { tab.wc.stop(); } catch { /* noop */ } return true; }
+    return false;
+  }
+  if (input.alt && key === 'arrowleft') { navGo(tab.wc, 'Back'); return true; }
+  if (input.alt && key === 'arrowright') { navGo(tab.wc, 'Forward'); return true; }
+  if (ctrl && (key === '=' || key === '+')) { zoomTab(rec, tab, 0.5); return true; }
+  if (ctrl && key === '-') { zoomTab(rec, tab, -0.5); return true; }
+  if (ctrl && key === '0') { zoomTab(rec, tab, 0, true); return true; }
+  return false;
+}
+
+function createTab(rec, url, activate = true) {
+  const profile = findProfile(rec.profileId) ?? {};
+  const spec = profile.fingerprint ?? {};
+  const view = new WebContentsView({
+    webPreferences: {
+      partition: rec.partition,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      spellcheck: false,
+    },
+  });
+  const wc = view.webContents;
+  const tab = {
+    id: `tab_${Date.now().toString(36)}_${rec.tabs.size}`,
+    view, wc, url: '', title: '', zoom: 0, attached: false,
+  };
+  rec.tabs.set(tab.id, tab);
+
+  if (spec.userAgent) {
+    attachInjection(wc, spec);
+    try { wc.setUserAgent(spec.userAgent); } catch { /* noop */ }
+  }
+  attachHistory(rec.profileId, rec.profileName, wc);
+
+  wc.on('did-navigate', (_e, u) => { tab.url = u; pushChromeState(rec); });
+  wc.on('did-navigate-in-page', (_e, u, isMainFrame) => {
+    if (isMainFrame !== false) { tab.url = u; pushChromeState(rec); }
+  });
+  wc.on('page-title-updated', (_e, title) => {
+    tab.title = title;
+    if (tab.id === rec.activeTab && rec.win && !rec.win.isDestroyed()) {
+      rec.win.setTitle(`Joe Browser — ${rec.profileName} — ${title}`);
+    }
+    pushChromeState(rec);
+  });
+  wc.on('did-start-loading', () => { rec.loading = true; pushChromeState(rec); });
+  wc.on('did-stop-loading', () => { rec.loading = false; pushChromeState(rec); });
+  wc.on('found-in-page', (_e, result) => {
+    rec.findMatches = result?.matches
+      ? `${result.activeMatchOrdinal ?? 0}/${result.matches}`
+      : '0/0';
+    pushChromeState(rec);
+  });
+  wc.on('render-process-gone', (_e, details) => {
+    console.error('[joe] tab renderer gone', rec.profileId, details?.reason);
+    try { wc.reload(); } catch { /* noop */ }
+  });
+  wc.on('before-input-event', (event, input) => {
+    if (handleShortcut(rec, tab, input)) event.preventDefault();
+  });
+  // Pop-ups and target=_blank stay inside the same isolated profile.
+  wc.setWindowOpenHandler(({ url: target }) => {
+    try {
+      if (/^https?:/i.test(target)) createTab(rec, target);
+    } catch (e) { console.error('popup tab failed', e); }
+    return { action: 'deny' };
+  });
+
+  if (activate) activateTab(rec, tab.id);
+  const target = inputToUrl(url) ?? url ?? null;
+  const destination = typeof target === 'string' && /^https?:/i.test(target) ? target : startUrlFor(profile);
+  wc.loadURL(destination).catch((e) => console.error('tab load failed', e));
+  return tab;
+}
+
+/** One chrome command from the toolbar. Every button in chrome.html maps to a case here. */
+function chromeCommand(rec, action, arg) {
+  const tab = rec.tabs.get(rec.activeTab);
+  switch (action) {
+    case 'back': if (tab) navGo(tab.wc, 'Back'); break;
+    case 'forward': if (tab) navGo(tab.wc, 'Forward'); break;
+    case 'reload': tab?.wc.reload(); break;
+    case 'stop': try { tab?.wc.stop(); } catch { /* noop */ } break;
+    case 'home': tab?.wc.loadURL(startUrlFor(findProfile(rec.profileId) ?? {})).catch(() => {}); break;
+    case 'open': {
+      const u = inputToUrl(arg);
+      if (u && tab) tab.wc.loadURL(u).catch(() => {});
+      break;
+    }
+    case 'tabs:new': createTab(rec, null); break;
+    case 'tabs:close': closeTab(rec, String(arg)); break;
+    case 'tabs:select': activateTab(rec, String(arg)); break;
+    case 'find:open': rec.findOpen = true; break;
+    case 'find:close': closeFind(rec); break;
+    case 'find':
+      rec.findQuery = String(arg ?? '');
+      if (tab && rec.findQuery) tab.wc.findInPage(rec.findQuery, { forward: true, findNext: false });
+      break;
+    case 'find:next':
+      if (tab && rec.findQuery) tab.wc.findInPage(rec.findQuery, { forward: Number(arg) >= 0, findNext: true });
+      break;
+    case 'zoom': zoomTab(rec, tab, Number(arg) || 0); break;
+    case 'bookmark:add': {
+      const list = bookmarksFor(rec.profileId);
+      const entry = { url: arg?.url, title: arg?.title || arg?.url };
+      if (entry.url && !list.some((b) => b.url === entry.url)) {
+        controls.bookmarks[rec.profileId] = [entry, ...list].slice(0, 500);
+        saveControls();
+      }
+      break;
+    }
+    case 'bookmark:remove':
+      controls.bookmarks[rec.profileId] = bookmarksFor(rec.profileId).filter((b) => b.url !== arg);
+      saveControls();
+      break;
+    case 'download:open':
+      if (typeof arg === 'string' && arg) shell.showItemInFolder(arg);
+      break;
+    case 'perm:set': {
+      const perms = permissionsFor(rec.profileId);
+      perms[String(arg?.type)] = !!arg?.allow;
+      controls.permissions[rec.profileId] = perms;
+      saveControls();
+      break;
+    }
+    case 'clear-data': {
+      const ses = session.fromPartition(rec.partition);
+      Promise.resolve()
+        .then(() => ses.clearStorageData?.({ storages: ['cookies', 'localstorage', 'indexdb', 'websql', 'serviceworkers', 'cachestorage'] }))
+        .then(() => ses.clearCache?.())
+        .catch((e) => console.error('clear-data failed', e));
+      break;
+    }
+    default:
+      throw new Error(`Unknown chrome action: ${action}`);
+  }
+  pushChromeState(rec);
+  return { ok: true };
+}
+
+/** Deny-by-default permission gate, with per-profile decisions from controls.json. */
+function wirePermissions(rec, ses) {
+  const decide = (permission) => {
+    const perms = permissionsFor(rec.profileId);
+    if (permission === 'geolocation') return perms.geolocation;
+    if (permission === 'notifications') return perms.notifications;
+    if (permission === 'media' || permission === 'mediaKeySystem') return perms.media;
+    return false;
+  };
+  try {
+    ses.setPermissionRequestHandler((_wc, permission, callback) => {
+      const allowed = decide(permission);
+      if (!allowed) {
+        rec.blocked = (rec.blocked ?? 0) + 1;
+        pushChromeState(rec);
+      }
+      callback(allowed);
+    });
+    ses.setPermissionCheckHandler((_wc, permission) => decide(permission));
+  } catch (e) { console.error('permission handler failed', e); }
+}
+
+/** Downloads land in the user's downloads folder and are listed in chrome.html. */
+function wireDownloads(rec, ses) {
+  if (typeof ses.on !== 'function') return;
+  ses.on('will-download', (_e, item) => {
+    try {
+      const name = item.getFilename();
+      const dir = app.getPath('downloads');
+      fs.mkdirSync(dir, { recursive: true });
+      const target = path.join(dir, name);
+      item.setSavePath(target);
+      item.once('done', (_e2, state) => {
+        if (state === 'completed') {
+          rec.downloads = [{ name, path: target, at: new Date().toISOString() }, ...(rec.downloads ?? [])].slice(0, 100);
+          pushChromeState(rec);
+        }
+      });
+    } catch (e) { console.error('download failed', e); }
+  });
+}
+
+/** Map a profile window's chrome webContents to its record for IPC dispatch. */
+const chromeRecipients = new WeakMap();
+
+function attachInjection(wc, spec) {
+  try {
+    wc.debugger.attach('1.3');
     const script = core.buildInjectionScript(spec, { maskToString: true, selfTestHook: true });
-    win.webContents.debugger.sendCommand('Page.enable');
-    win.webContents.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument', { source: script });
-    win.webContents.debugger.sendCommand('Network.enable');
-    win.webContents.debugger.sendCommand('Network.setUserAgentOverride', {
+    wc.debugger.sendCommand('Page.enable');
+    wc.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument', { source: script });
+    wc.debugger.sendCommand('Network.enable');
+    wc.debugger.sendCommand('Network.setUserAgentOverride', {
       userAgent: spec.userAgent,
       acceptLanguage: spec.languages.join(','),
       platform: spec.platform,
@@ -265,7 +631,7 @@ async function launchProfile(id) {
   const profile = findProfile(id);
   if (!profile) throw new Error('That profile is no longer in this workspace. Reload to refresh the list.');
   if (!profile.fingerprint?.userAgent) throw new Error('That profile has no fingerprint yet. Recreate it to regenerate one.');
-  if (windows.has(id)) { windows.get(id).focus(); return { ok: true, alreadyRunning: true }; }
+  if (windows.has(id)) { windows.get(id).win.focus(); return { ok: true, alreadyRunning: true }; }
 
   const partition = `persist:${id}`;
   const ses = session.fromPartition(partition);
@@ -285,33 +651,64 @@ async function launchProfile(id) {
     height: Math.min(960, Math.max(640, height)),
     show: false,
     title: `Joe Browser — ${profile.name}`,
+    autoHideMenuBar: true,
     webPreferences: {
-      partition, preload: path.join(__dirname, 'preload.js'),
+      // The chrome window is a bundled, trusted page. The browsed site lives in
+      // WebContentsViews below with NO preload — a page on the open web must
+      // never get the management bridge again.
+      preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true, sandbox: false, nodeIntegration: false,
       webSecurity: true, spellcheck: false,
     },
   });
 
-  windows.set(id, win);
+  const rec = {
+    win,
+    profileId: id,
+    profileName: profile.name,
+    partition,
+    tabs: new Map(),
+    activeTab: null,
+    findOpen: false,
+    findQuery: '',
+    findMatches: '',
+    loading: false,
+    downloads: [],
+    blocked: 0,
+  };
+  windows.set(id, rec);
+  chromeRecipients.set(win.webContents, rec);
+
+  win.on('resize', () => layoutProfile(rec));
   win.on('closed', () => {
+    for (const tab of rec.tabs.values()) {
+      try { tab.wc.close(); } catch { /* already gone */ }
+    }
+    rec.tabs.clear();
     windows.delete(id);
-    profile.status = 'stopped';
-    profile.device = null;
-    saveWorkspace();
+    const p = findProfile(id);
+    if (p) {
+      p.status = 'stopped';
+      p.device = null;
+      saveWorkspace();
+    }
     managerWindow?.webContents.send('profiles:changed', workspace.profiles);
   });
 
   win.webContents.on('render-process-gone', (_e, details) => {
-    console.error('[joe] profile renderer gone', profile.id, details.reason);
+    console.error('[joe] profile chrome renderer gone', profile.id, details?.reason);
   });
 
-  attachInjection(win, profile.fingerprint);
-  attachHistory(profile.id, profile.name, win.webContents);
-  win.webContents.setUserAgent(profile.fingerprint.userAgent);
-  // dom-ready fires as soon as the document exists; loading the target URL here
-  // keeps a collapsed or slow window from appearing frozen.
+  wirePermissions(rec, ses);
+  wireDownloads(rec, ses);
+
+  // First tab opens the profile's start page inside the isolated partition.
+  createTab(rec, startUrlFor(profile));
+
   win.once('ready-to-show', () => win.show());
-  await win.loadURL(startUrlFor(profile)).catch((e) => console.error('profile load failed', e));
+  win.webContents.once('did-finish-load', () => pushChromeState(rec));
+  win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
+  await win.loadFile(path.join(__dirname, 'chrome.html')).catch((e) => console.error('chrome load failed', e));
 
   profile.status = 'running';
   profile.device = 'desktop-exe';
@@ -322,8 +719,18 @@ async function launchProfile(id) {
 }
 
 function stopProfile(id) {
-  const win = windows.get(id);
-  if (win) { win.close(); windows.delete(id); }
+  const rec = windows.get(id);
+  if (rec) {
+    for (const tab of rec.tabs.values()) {
+      if (tab.attached) {
+        try { rec.win.contentView.removeChildView(tab.view); } catch { /* noop */ }
+      }
+      try { tab.wc.close(); } catch { /* noop */ }
+    }
+    rec.tabs.clear();
+    if (!rec.win.isDestroyed()) rec.win.close();
+    windows.delete(id);
+  }
   const p = findProfile(id);
   if (p) { p.status = 'stopped'; p.device = null; saveWorkspace(); }
   managerWindow?.webContents.send('profiles:changed', workspace.profiles);
@@ -508,6 +915,18 @@ function registerIpc() {
     await realtime.send({ type: 'broadcast', event: 'joe-sync', payload: { topic, payload, to, from: 'desktop-exe', sentAt: new Date().toISOString() } });
     return { ok: true };
   });
+
+  /**
+   * Profile-window chrome commands. Registered with a raw handler so the
+   * sending webContents can be resolved to its profile record — the shared
+   * `handle` wrapper discards the event, and one window's toolbar must never
+   * drive another profile's tabs.
+   */
+  ipcMain.handle('chrome:command', (event, action, arg) => {
+    const rec = chromeRecipients.get(event.sender);
+    if (!rec) throw new Error('No profile window owns this toolbar.');
+    return chromeCommand(rec, action, arg);
+  });
 }
 
 /** Optional Supabase Realtime link — no credentials bundled, configured in Settings. */
@@ -575,6 +994,7 @@ process.on('uncaughtException', (error) => console.error('[joe] uncaught excepti
 
 app.whenReady().then(async () => {
   loadWorkspace();
+  loadControls();
   registerIpc();
   createManagerWindow();
   const apiToken = readOrCreateToken(app.getPath('userData'));
