@@ -58,6 +58,12 @@ shell and Android app ship together).
 
 ### Fixed
 
+- A failed entry script left a window with no recovery action: the static shell now
+  has a retry link that works before JavaScript runs, and the failure screen has a
+  Retry button (`scripts/test-boot-retry.mjs`).
+- Every APK build used a fresh signing identity, so updates could not install over
+  an existing app. The build now requires an externally managed signing store and
+  fails loudly without one.
 - `npm run test:devices` hung after printing results because `npx` left a Vite
   grandchild holding the inherited pipe.
 - `createOne` returned `null as unknown as BrowserProfile`.

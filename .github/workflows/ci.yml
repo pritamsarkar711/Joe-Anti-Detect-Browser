@@ -35,6 +35,10 @@ jobs:
         # Built first so the browser suites below can serve dist/ via preview.
         run: npm run build
 
+      - name: Exercise startup recovery in Chromium
+        # A failed entry script or a failed app chunk must both offer a retry.
+        run: npm run test:boot
+
       - name: Browser end-to-end against the real UI
         # Self-serving since 3.2.0: starts its own Vite server and shuts it down.
         run: npm run test:ui

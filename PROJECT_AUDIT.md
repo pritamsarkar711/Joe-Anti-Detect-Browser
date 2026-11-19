@@ -52,7 +52,7 @@ correct the description. Both were done.
 
 | Area | State at audit | Note |
 |---|---|---|
-| Startup / blank screen | **Good** | `boot.tsx` catches bundle failure and renders a readable error; an error boundary wraps the app; the main process reloads a crashed renderer; the Android shell shows a diagnostic page instead of white. Not verified on a real Windows/Android runtime. |
+| Startup / blank screen | **Good** | `boot.tsx` catches bundle failure and renders a readable error; the static shell now carries a retry link that works even if the entry script never loads; an error boundary wraps the app; the main process reloads a crashed renderer; the Android shell shows a diagnostic page instead of white. `scripts/test-boot-retry.mjs` proves both retry paths in Chromium. Not verified on a real Windows/Android runtime. |
 | Browser engine | **Misrepresented** | One Chromium (Electron/WebView) is bundled, but the UI and README advertised "five bundled engines" including Firefox. `browserFamily` was stored and never used at launch, and no Firefox template existed — a Firefox identity would have been a Gecko UA on a Chromium engine. |
 | Profile isolation | **Real** | Electron partitions and the Android per-process data directory are genuine isolation mechanisms. |
 | Fingerprints | **Real, L3-scoped** | Coherent per-profile specifications; 29/29 self-test payloads pass. Engine/network layers are explicitly out of scope and documented. |
@@ -92,6 +92,15 @@ correct the description. Both were done.
   which environment, and what was not executed.
 - Version metadata aligned at `3.2.0` (the desktop shell had been reporting
   `3.1.0`).
+
+**Merged from `main` during this pass**
+
+- Static-shell retry + failure-screen Retry button, with an automated
+  boot-recovery test (`scripts/test-boot-retry.mjs`, wired into CI).
+- The APK build now requires an externally managed signing store instead of
+  generating a new identity per build, so releases can update in place. Existing
+  installs signed with an older key are not upgradable — the release notes warn
+  about backing up before uninstalling.
 
 **Tooling and evidence**
 

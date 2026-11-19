@@ -321,6 +321,44 @@ to the account email so one user's plan cannot be restored onto another.
 
 ---
 
+## BUG-017 — A failed entry script left no recovery action · medium (fixed on `main`, merged here)
+
+**Where** `index.html`, `src/boot.tsx`
+
+**What** The boot error screen was rendered by the very script that had failed to
+load. If the entry chunk itself failed — a truncated install, a blocked asset — the
+window stayed empty with nothing to click, which is the permanent white screen the
+brief describes.
+
+**Fix** A plain HTML retry link exists in the static shell before any JavaScript
+runs, and the failure screen adds a Retry button. `scripts/test-boot-retry.mjs`
+blocks the entry script and then the app chunk and asserts a document request for
+each retry.
+
+**Verified** `node scripts/test-boot-retry.mjs` → *"PASS: missing entry and
+missing app chunk both allow retry"* (3 document requests).
+
+---
+
+## BUG-018 — Every APK build used a different signing identity · medium (fixed on `main`, merged here)
+
+**Where** `scripts/build-apk.sh`, `.github/workflows/release.yml`
+
+**What** The script generated a fresh keystore per build, so each release was
+signed by a different key. Android refuses an in-place update signed by another
+identity: users would have had to uninstall, losing their workspace.
+
+**Fix** The build now requires an externally managed store and alias from CI
+secrets and fails loudly when they are absent (`JOE_SIGNING_STORE_B64: Release
+signing store required`), instead of fabricating one. Past installs signed with an
+unavailable key are still not upgradable — the release notes warn to back up data
+before uninstalling.
+
+**Verified** `bash -n scripts/build-apk.sh` and an invocation without the secrets,
+which refuses as intended.
+
+---
+
 ## Known open issues (not fixed in this release)
 
 | ID | Issue | Why it is still open | Mitigation |
@@ -330,3 +368,4 @@ to the account email so one user's plan cannot be restored onto another.
 | OPEN-003 | No payment provider. | Out of scope without a real provider account; inventing one would be a fake feature. | Premium is granted server-side by an administrator. |
 | OPEN-004 | Windows/Android binaries are built only in GitHub Actions. | This environment has no JDK, Android SDK, Electron runtime or Windows host. | CI/release workflow builds and checksums them; see `RELEASE_NOTES.md`. |
 | OPEN-005 | Migrations are verified statically only. | No Postgres instance or project credentials here. | Apply `0002_entitlements.sql` before signing in; the app reports a missing function rather than guessing. |
+| OPEN-006 | The generated Android demo workspace seeds documentation-range proxy addresses with a successful status and a latency value that was never measured, so a clean install can show invented measurements. | Demo fixtures and first-run production state are the same file; separating them changes what the APK ships and was not attempted in this pass. | Proxy checks in the desktop app recompute status; treat seeded latency as demo data. Tracked for the next release. |

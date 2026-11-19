@@ -35,6 +35,8 @@ a result look better.
 | 17 | `npm run test:ui` | **37/37** real-browser checks, no console errors |
 | 18 | `npm run test:devices` | **75/75** across Pixel 8, Xiaomi 13, Galaxy S23, OPPO Find X6, Vivo X90 |
 | 19 | `npm run screenshots` | **17 app captures + 11 site captures + OG card**, regenerated from the running app |
+| 20 | `node scripts/test-boot-retry.mjs` | **pass** — blocking the entry script and then the App chunk both leave a usable retry (3 document requests) |
+| 21 | `bash -n scripts/build-apk.sh`; run without signing secrets | **pass** — syntax accepted, and the build refuses to fabricate a keystore (`JOE_SIGNING_STORE_B64: Release signing store required`) |
 
 Suites 17–19 start their own Vite server and shut it down again (new in 3.2.0).
 

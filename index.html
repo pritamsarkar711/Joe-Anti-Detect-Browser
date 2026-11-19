@@ -20,7 +20,7 @@
         color: #666c7a; background: #f6f7f9; transition: opacity .18s ease;
       }
       #joe-boot svg { width: 44px; height: 44px; }
-      #joe-boot.hidden { opacity: 0; pointer-events: none; }
+      #joe-boot.hidden { display: none; }
       @media (prefers-color-scheme: dark) {
         html, body, #joe-boot { background: #0e1015; color: #9aa1b0; }
       }
@@ -34,6 +34,7 @@
         <path d="M29.4 12.5v15.4a8.4 8.4 0 0 1-16.8 0" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" />
       </svg>
       <span>Starting Joe Browser…</span>
+      <a href="">Taking too long? Retry startup</a>
     </div>
     <noscript>Joe Browser needs JavaScript enabled.</noscript>
     <script type="module" src="/src/boot.tsx"></script>

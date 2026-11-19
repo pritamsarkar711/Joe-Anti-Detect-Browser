@@ -28,7 +28,8 @@
     "test:icons": "node scripts/check-icons.mjs",
     "test:main": "node scripts/smoke-desktop-main.mjs",
     "test:ui-desktop": "node scripts/smoke-desktop-ui.mjs",
-    "check:bridges": "node scripts/check-bridges.mjs"
+    "check:bridges": "node scripts/check-bridges.mjs",
+    "test:boot": "node scripts/test-boot-retry.mjs"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

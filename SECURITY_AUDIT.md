@@ -27,7 +27,8 @@ could not run here (no Postgres, no JDK, no device), the finding is marked
 | S-11 | **Medium** | A missing `profile_limit` in the entitlement payload was interpreted as "unlimited". | **Fixed** — fail-closed three-state parse, pinned by test. |
 | S-12 | **Medium** | The Realtime channel is a fixed name authorised by the anon key, so anyone holding that key could broadcast commands into it. | **Open** — see §6. |
 | S-13 | **Medium** | `npm run test:devices` overwrote committed evidence with a failed run. | **Fixed** — only a clean run promotes the report. |
-| S-14 | **Low** | The Android debug APK build embeds a fixed keystore passphrase in `scripts/build-apk.sh`. | **Accepted** — the key is generated inside the CI workspace for sideload builds and is not a release-signing secret. A production key must come from CI secrets. |
+| S-15 | **Low** | If the entry script itself failed to load, the boot handler could not run, so the window had no recovery action at all. | **Fixed** (merged from `main`) — the static shell carries a plain HTML retry link that works before JavaScript starts, and the failure screen offers a Retry button. `scripts/test-boot-retry.mjs` exercises both paths in Chromium. |
+| S-14 | **Medium** | Every APK build generated a fresh keystore, so each release had a different signing identity and could not update an installed build in place. | **Fixed** — `scripts/build-apk.sh` now refuses to run without an externally managed store (`JOE_SIGNING_STORE_B64`, `JOE_SIGNING_ALIAS`, `JOE_STORE_PASSWORD`, `JOE_KEY_PASSWORD`) supplied by CI secrets, and the release job no longer fabricates one. Installs signed with an older, unavailable key are **not** upgradable in place: back up the workspace before uninstalling, because uninstalling deletes app data. |
 
 ---
 

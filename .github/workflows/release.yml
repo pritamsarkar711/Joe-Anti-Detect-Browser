@@ -12,7 +12,6 @@ on:
 permissions:
   contents: write
   actions: read
-  issues: write
 
 jobs:
   web:
@@ -114,19 +113,12 @@ jobs:
       - uses: actions/download-artifact@v4
         with: { name: android-assets, path: apps/android/assets }
       - name: Compile, dex, package and sign the APK
-        id: apkbuild
-        run: |
-          set +e
-          chmod +x scripts/build-apk.sh
-          bash -x scripts/build-apk.sh 2>&1 | tee apk-build.log
-          exit ${PIPESTATUS[0]}
-      - name: Publish APK build diagnostics
-        if: failure() && steps.apkbuild.outcome == 'failure'
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          { echo "APK build failed on $(git rev-parse --short HEAD)"; echo '```text'; tail -160 apk-build.log; echo '```'; } > apk-issue.md
-          gh issue create --title "APK build diagnostics $(git rev-parse --short HEAD)" --body-file apk-issue.md || true
+          JOE_SIGNING_STORE_B64: ${{ secrets.JOE_SIGNING_STORE_B64 }}
+          JOE_SIGNING_ALIAS: ${{ secrets.JOE_SIGNING_ALIAS }}
+          JOE_STORE_PASSWORD: ${{ secrets.JOE_STORE_PASSWORD }}
+          JOE_KEY_PASSWORD: ${{ secrets.JOE_KEY_PASSWORD }}
+        run: bash scripts/build-apk.sh
       - uses: actions/upload-artifact@v4
         with: { name: android-apk, path: apps/android/JoeBrowser.apk, retention-days: 7 }
 

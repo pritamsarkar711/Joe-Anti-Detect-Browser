@@ -70,6 +70,16 @@ refused by RLS and the UI still showed success.
 - Version metadata is consistent again (`3.2.0`; the desktop shell had been
   reporting `3.1.0`).
 
+### Startup recovery and signing
+
+- The static shell now offers a **Retry** link even when the entry script itself
+  never loads, and the failure screen has a Retry button. Automated in
+  `scripts/test-boot-retry.mjs` (both paths, headless Chromium) and in CI.
+- The APK build **requires an externally managed signing store** instead of
+  generating a new identity per build, so consecutive releases can update in
+  place. If you installed a build signed with an older, unavailable key, back up
+  your workspace first: uninstalling removes app data.
+
 ### Reliability and evidence
 
 - `npm run test:ui`, `npm run test:devices` and `npm run screenshots` start their

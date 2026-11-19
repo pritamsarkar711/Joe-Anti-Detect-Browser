@@ -3,6 +3,11 @@
 # Uses only the Android SDK build-tools + JDK that ship on GitHub Actions runners.
 set -euo pipefail
 
+: "${JOE_SIGNING_STORE_B64:?Release signing store required}"
+: "${JOE_SIGNING_ALIAS:?Release signing alias required}"
+: "${JOE_STORE_PASSWORD:?Store password required}"
+: "${JOE_KEY_PASSWORD:?Key password required}"
+umask 077
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
 if [ ! -d "$SDK" ]; then echo "Android SDK not found at $SDK"; exit 1; fi
@@ -24,6 +29,7 @@ SRC="$ROOT/apps/android/app/src/main"
 ASSETS="$ROOT/apps/android/assets"
 OUT="$ROOT/apps/android/JoeBrowser.apk"
 WORK="$(mktemp -d)"
+trap 'rm -rf -- "$WORK"' EXIT
 mkdir -p "$WORK/gen" "$WORK/classes" "$WORK/dex"
 
 echo "== build-tools: $BT_DIR =="
@@ -62,13 +68,12 @@ cp "$WORK/base.apk" "$WORK/unsigned.apk"
 "$ZIPALIGN" -f 4 "$WORK/unsigned.apk" "$WORK/aligned.apk"
 
 echo "== sign =="
-keytool -genkeypair -keystore "$WORK/joe.keystore" -alias joe \
-  -keyalg RSA -keysize 2048 -validity 10000 \
-  -storepass joebrowser -keypass joebrowser \
-  -dname "CN=Joe Browser, OU=Engineering, O=Joe Browser, L=Khulna, ST=Khulna, C=BD" >/dev/null 2>&1
-"$APKSIGNER" sign --ks "$WORK/joe.keystore" --ks-pass pass:joebrowser \
-  --key-pass pass:joebrowser --out "$OUT" "$WORK/aligned.apk"
-"$APKSIGNER" verify "$OUT"
+printf '%s' "$JOE_SIGNING_STORE_B64" | base64 --decode > "$WORK/release.keystore"
+"$APKSIGNER" sign --ks "$WORK/release.keystore" --ks-key-alias "$JOE_SIGNING_ALIAS" \
+  --ks-pass env:JOE_STORE_PASSWORD --key-pass env:JOE_KEY_PASSWORD \
+  --out "$WORK/signed.apk" "$WORK/aligned.apk"
+"$APKSIGNER" verify "$WORK/signed.apk"
+mv "$WORK/signed.apk" "$OUT"
 
 echo "== done =="
 ls -lh "$OUT"
