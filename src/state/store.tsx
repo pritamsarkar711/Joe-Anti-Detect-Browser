@@ -2,13 +2,29 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import {
   createProfile, generateProfiles, hashString, DEVICE_TEMPLATES, checkProxy, parseProxyLines, proxyUrl,
   applyRealPreset, getRealPreset, applyGeoToSpec, geoForCountry, profilesFromCsv,
-  type BrowserProfile, type ProxyConfig, type ProfileStatus,
+  ADMIN_EMAIL, planFor, isAdmin, checkProfileQuota, browserAllowed,
+  type Account, type BrowserProfile, type ProxyConfig, type ProfileStatus, type Entitlement,
   importWorkspace as parseWorkspace, exportWorkspace as makeExport, type WorkspaceExport,
 } from '@joe/core';
 import { createLocalTransport, SyncClient, DEFAULT_PRESENCE, type DeviceKind, type DevicePresence, type SyncEnvelope, type Topic } from '@joe/sync';
 import { getNativeWorkspace, installCommandHandler, nativeKind, nativeLaunch, nativeStop, nativeDeviceName } from './native';
 
-export type View = 'profiles' | 'proxies' | 'devices' | 'fingerprints' | 'tests' | 'activity' | 'settings';
+export type View =
+  | 'profiles' | 'proxies' | 'groups'
+  | 'history' | 'extensions'
+  | 'fingerprints' | 'tests'
+  | 'devices' | 'activity' | 'settings' | 'account';
+
+export interface HistoryEntry {
+  id: string;
+  profileId: string;
+  profileName: string;
+  url: string;
+  title: string;
+  at: string;
+  /** true when the URL came from a search query rather than direct navigation */
+  search?: boolean;
+}
 
 export interface ActivityEntry {
   id: string;
@@ -17,6 +33,32 @@ export interface ActivityEntry {
   text: string;
   meta?: string;
 }
+
+/**
+ * Two account states, on purpose:
+ *
+ * - Demo (no account yet): the seeded showcase workspace ships with six
+ *   profiles, so the account carries a Starter allowance of six. Without this
+ *   the free 2-profile cap would immediately contradict the 6 seeded rows and
+ *   block every create action on first run.
+ * - Local (signed in): the hard free tier, exactly two profiles for life.
+ *
+ * Supabase can replace both when cloud auth is configured; nothing here is
+ * presented as a server-verified entitlement.
+ */
+const DEMO_ACCOUNT: Account = {
+  email: 'local@joe.browser',
+  plan: 'starter',
+  role: 'member',
+  renewsAt: null,
+};
+
+const DEFAULT_ACCOUNT: Account = {
+  email: 'local@joe.browser',
+  plan: 'free',
+  role: 'member',
+  renewsAt: null,
+};
 
 export interface Settings {
   theme: 'dark' | 'light';
@@ -27,20 +69,32 @@ export interface Settings {
   defaultDevice: DeviceKind;
   startPage: string;
   density: 'comfortable' | 'compact';
+  /** notify when a monitored proxy drops or recovers */
+  proxyAlerts: boolean;
+  /** notify when the app rotates a profile onto a new exit */
+  rotationAlerts: boolean;
 }
 
 interface Persisted {
+  account: Account;
   profiles: BrowserProfile[];
   proxies: ProxyConfig[];
   groups: string[];
   activity: ActivityEntry[];
+  history: HistoryEntry[];
   settings: Settings;
 }
 
 export interface Toast { id: string; text: string; kind: 'ok' | 'warn' | 'err' | 'info' }
 
-const STORAGE_KEY = 'joe-browser:v2';
-export const APP_VERSION = '2.0.0';
+/**
+ * v3 moves the workspace to a new key so a v2 install cannot hydrate the old
+ * 24-profile shape (or any stale cached bundle) after an update. v2 data is
+ * still read once as a migration source and then copied forward.
+ */
+const STORAGE_KEY = 'joe-browser:v3';
+const LEGACY_KEYS = ['joe-browser:v2'];
+export const APP_VERSION = '3.0.0';
 
 const DEFAULT_SETTINGS: Settings = {
   theme: 'light',
@@ -49,8 +103,10 @@ const DEFAULT_SETTINGS: Settings = {
   anonKey: '',
   autoSync: true,
   defaultDevice: 'desktop-exe',
-  startPage: 'https://example.com',
+  startPage: 'https://browserscan.net/',
   density: 'comfortable',
+  proxyAlerts: true,
+  rotationAlerts: true,
 };
 
 /** Fill fields added in v2 so older workspace files keep working. */
@@ -75,15 +131,18 @@ function normalizeProfile(p: BrowserProfile): BrowserProfile {
 }
 
 function seed(): Persisted {
+  /**
+   * Demo workspace. It is deliberately sized to the Starter plan (six profiles,
+   * four groups) so the first screen is not the empty state but also is not a
+   * 24-row wall, and so browse/demo usage never sits above a plan limit.
+   */
   const names = [
-    ['Storefront US', 'QA'], ['Storefront EU', 'QA'], ['Ad Ops A', 'Marketing'], ['Ad Ops B', 'Marketing'],
-    ['Client Northwind', 'Clients'], ['Client Acme', 'Clients'], ['Mobile Smoke 1', 'Mobile'], ['Mobile Smoke 2', 'Mobile'],
-    ['Staging Auth', 'Staging'], ['Staging Checkout', 'Staging'], ['Research A', 'Research'], ['Research B', 'Research'],
-    ['Analytics US', 'Analytics'], ['Analytics DE', 'Analytics'], ['Support Desk', 'Support'], ['Support Escalations', 'Support'],
-    ['Sandbox 01', 'Sandbox'], ['Sandbox 02', 'Sandbox'], ['Sandbox 03', 'Sandbox'], ['Backup Alpha', 'Backup'],
-    ['Backup Beta', 'Backup'], ['Temp Review', 'Temp'], ['Temp Audit', 'Temp'], ['Demo Locale BD', 'Demo'],
+    ['Storefront US', 'Desktop'], ['Storefront EU', 'Desktop'],
+    ['Client Northwind', 'Clients'], ['Mobile Smoke', 'Mobile'],
+    ['Research A', 'Research'], ['Sandbox 01', 'Sandbox'],
   ];
   const templates = ['win11-intel', 'win11-nvidia', 'mac-sonoma-m1', 'android-pixel8', 'win10-amd', 'linux-ubuntu', 'android-samsung-s23', 'mac-ventura-intel'];
+  // index 0/1 = Storefront US/EU, the two rows that head the newest-first list
   const groups = [...new Set(names.map((n) => n[1]))];
   const proxies: ProxyConfig[] = [
     { id: 'px_1', name: 'US Residential', protocol: 'socks5', host: '198.51.100.12', port: 1080, country: 'US', status: 'ok', latencyMs: 84, lastCheckedAt: null },
@@ -92,18 +151,30 @@ function seed(): Persisted {
     { id: 'px_4', name: 'SG Rotating', protocol: 'socks5', host: '198.51.100.90', port: 1080, country: 'SG', status: 'ok', latencyMs: 132, lastCheckedAt: null },
     { id: 'px_5', name: 'GB Static', protocol: 'https', host: '203.0.113.5', port: 443, country: 'GB', status: 'failed', latencyMs: null, lastCheckedAt: null },
   ];
-  const profiles = names.map(([name, group], i) => createProfile({
+  /**
+   * Profiles render newest-first and creation times now differ per index, so
+   * index 0 (Storefront US) heads the list. The template list therefore starts
+   * with the two Windows desktops a new workspace should open on.
+   */
+  const created = names.map(([name, group], i) => createProfile({
     name, group, templateId: templates[i % templates.length],
     proxyId: i % 4 === 0 ? null : proxies[i % proxies.length].id,
     tags: i % 5 === 0 ? ['priority'] : i % 7 === 0 ? ['review'] : [],
     seed: `seed::${name}`,
   }, i));
+  const profiles = [...created].reverse();
   return {
+    account: DEMO_ACCOUNT,
     profiles, proxies, groups: ['Default', ...groups],
     activity: [
       { id: 'a0', at: new Date(Date.now() - 1000 * 60 * 4).toISOString(), kind: 'sync', text: 'Workspace synced', meta: '24 profiles' },
       { id: 'a1', at: new Date(Date.now() - 1000 * 60 * 38).toISOString(), kind: 'launch', text: 'Storefront US launched', meta: 'desktop' },
       { id: 'a2', at: new Date(Date.now() - 1000 * 60 * 95).toISOString(), kind: 'check', text: 'Proxy check finished', meta: '4 of 5 online' },
+    ],
+    history: [
+      { id: 'h1', profileId: profiles[0].id, profileName: profiles[0].name, url: 'https://browserscan.net/', title: 'BrowserScan — fingerprint check', at: new Date(Date.now() - 1000 * 60 * 22).toISOString() },
+      { id: 'h2', profileId: profiles[2].id, profileName: profiles[2].name, url: 'https://pixelscan.net/', title: 'Pixelscan', at: new Date(Date.now() - 1000 * 60 * 51).toISOString() },
+      { id: 'h3', profileId: profiles[2].id, profileName: profiles[2].name, url: 'https://www.google.com/search?q=browser+fingerprint+test', title: 'browser fingerprint test - Google Search', at: new Date(Date.now() - 1000 * 60 * 52).toISOString(), search: true },
     ],
     settings: DEFAULT_SETTINGS,
   };
@@ -112,21 +183,23 @@ function seed(): Persisted {
 function load(): Persisted {
   if (typeof window === 'undefined') return seed();
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(STORAGE_KEY) ?? LEGACY_KEYS.map((k) => window.localStorage.getItem(k)).find(Boolean);
     if (!raw) {
       const fromNative = getNativeWorkspace();
       if (fromNative) {
-        return { ...fromNative, profiles: fromNative.profiles.map(normalizeProfile), activity: [], settings: DEFAULT_SETTINGS };
+        return { ...fromNative, account: DEFAULT_ACCOUNT, profiles: fromNative.profiles.map(normalizeProfile), activity: [], history: [], settings: DEFAULT_SETTINGS };
       }
       return seed();
     }
     const parsed = JSON.parse(raw) as Partial<Persisted>;
     if (!Array.isArray(parsed.profiles)) return seed();
     return {
+      account: parsed.account ?? DEFAULT_ACCOUNT,
       profiles: parsed.profiles.map(normalizeProfile),
       proxies: parsed.proxies ?? [],
       groups: parsed.groups ?? ['Default'],
       activity: parsed.activity ?? [],
+      history: parsed.history ?? [],
       settings: { ...DEFAULT_SETTINGS, ...(parsed.settings ?? {}) },
     };
   } catch { return seed(); }
@@ -143,11 +216,23 @@ interface Store {
   proxies: ProxyConfig[];
   groups: string[];
   activity: ActivityEntry[];
+  history: HistoryEntry[];
   settings: Settings;
   devices: DevicePresence[];
   toasts: Toast[];
   appVersion: string;
   view: View; setView: (v: View) => void;
+  groupFilter: string | null; setGroupFilter: (g: string | null) => void;
+  nativeLabel: string;
+  account: Account;
+  planLabel: string;
+  entitlement: Entitlement;
+  lockedBrowser: (family: string) => boolean;
+  signIn: (email: string) => void;
+  signOut: () => void;
+  setPlan: (plan: Account['plan']) => void;
+  addHistory: (entries: Array<Omit<HistoryEntry, 'id' | 'at'> & { at?: string }>) => void;
+  clearHistory: (profileId?: string) => void;
   selectedId: string | null; setSelectedId: (id: string | null) => void;
   createOpen: boolean; setCreateOpen: (v: boolean) => void;
   paletteOpen: boolean; setPaletteOpen: (v: boolean) => void;
@@ -158,6 +243,7 @@ interface Store {
   duplicateProfiles: (ids: string[]) => void;
   applyPreset: (ids: string[], realId: string) => void;
   geoMatch: (ids: string[]) => void;
+  rotateProxy: (ids: string[]) => void;
   importCsv: (text: string) => number;
   setStatus: (ids: string[], status: ProfileStatus, device?: DeviceKind | null) => void;
   addGroup: (g: string) => void;
@@ -183,6 +269,7 @@ const Ctx = createContext<Store | null>(null);
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<Persisted>(load);
   const [view, setView] = useState<View>('profiles');
+  const [groupFilter, setGroupFilter] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -195,14 +282,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   })));
   const [syncEvents, setSyncEvents] = useState<SyncEnvelope[]>([]);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const first = useRef(true);
+  const prevProxyStatus = useRef<Map<string, string>>(new Map());
 
+  /**
+   * Persist on every data change, including the very first render. The old code
+   * skipped the first save, so a fresh install kept nothing until the user
+   * happened to mutate something — which also meant a reload re-seeded the
+   * workspace and any account choice was silently lost.
+   */
   useEffect(() => {
-    if (first.current) { first.current = false; return; }
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch { /* quota */ }
-    }, 250);
+      try {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      } catch {
+        // Quota exceeded: keep the in-memory workspace usable and say so once.
+        console.warn('Workspace is too large for localStorage; keeping it in memory only');
+      }
+    }, 200);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
   }, [data]);
 
@@ -220,6 +317,41 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setToasts((t) => [...t, { id, text, kind }].slice(-4));
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3400);
   }, []);
+
+  /**
+   * Proxy monitor: compare the previous health state with the current one and
+   * raise exactly one notification per transition (down or recovered). Without
+   * the ref this would fire on every render and spam the user.
+   */
+  useEffect(() => {
+    if (!data.settings.proxyAlerts) return;
+    const prev = prevProxyStatus.current;
+    const changes: Array<{ kind: 'proxy' | 'check'; text: string; meta?: string }> = [];
+    const toasts: Array<{ text: string; kind: 'ok' | 'warn' | 'err' | 'info' }> = [];
+    for (const p of data.proxies) {
+      const before = prev.get(p.id);
+      if (before && before !== p.status) {
+        if (p.status === 'failed') {
+          changes.push({ kind: 'proxy', text: `Proxy offline: ${p.name}` });
+          toasts.push({ text: `${p.name} is offline`, kind: 'err' });
+        } else if (before === 'failed' && p.status === 'ok') {
+          changes.push({ kind: 'proxy', text: `Proxy recovered: ${p.name}` });
+          toasts.push({ text: `${p.name} is back online`, kind: 'ok' });
+        }
+      }
+      prev.set(p.id, p.status);
+    }
+    if (!changes.length) return;
+    setData((d) => ({
+      ...d,
+      activity: [
+        ...changes.map((c, i) => ({ id: `act_${Date.now()}_${i}`, at: new Date().toISOString(), ...c })),
+        ...d.activity,
+      ].slice(0, 400),
+    }));
+    toasts.forEach((t) => toast(t.text, t.kind));
+  }, [data.proxies, data.settings.proxyAlerts, toast]);
+
 
   useEffect(() => installCommandHandler((topic, ids) => {
     if (!ids.length) return;
@@ -251,9 +383,56 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const api = useMemo<Store>(() => ({
     ...data, devices, toasts, appVersion: APP_VERSION,
-    view, setView, selectedId, setSelectedId, createOpen, setCreateOpen, paletteOpen, setPaletteOpen, syncEvents,
-    addProfiles: (ps) => { setData((d) => ({ ...d, profiles: [...ps, ...d.profiles] })); log('create', `${ps.length} profiles created`); },
+    view, setView, groupFilter, setGroupFilter,
+    nativeLabel: nativeKind() === 'android' ? 'Android active' : nativeKind() === 'desktop' ? 'Desktop active' : 'Browser workspace',
+    account: data.account,
+    planLabel: isAdmin(data.account)
+      ? 'Owner · unlimited'
+      : `${planFor(data.account).name} plan${planFor(data.account).profileLimit ? ` · ${planFor(data.account).profileLimit} profiles` : ' · unlimited'}`,
+    entitlement: checkProfileQuota(data.account, data.profiles.length, 1),
+    lockedBrowser: (family) => !browserAllowed(data.account, family as never),
+    signIn: (email) => {
+      const clean = email.trim().toLowerCase();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clean)) { toast('Enter a valid email address', 'warn'); return; }
+      const admin = clean === ADMIN_EMAIL.toLowerCase();
+      setData((d) => ({
+        ...d,
+        account: { email: clean, plan: admin ? 'premium' : d.account.plan, role: admin ? 'owner' : 'member', renewsAt: null },
+      }));
+      log('edit', admin ? 'Owner signed in' : 'Signed in', clean);
+      toast(admin ? 'Signed in as owner — all features unlocked' : 'Signed in');
+    },
+    signOut: () => { setData((d) => ({ ...d, account: DEFAULT_ACCOUNT })); toast('Signed out', 'info'); },
+    setPlan: (plan) => { setData((d) => ({ ...d, account: { ...d.account, plan } })); toast(`Switched to ${plan}`); },
+    addHistory: (entries) => setData((d) => ({
+      ...d,
+      history: [
+        ...entries.map((e, i) => ({
+          id: `h_${Date.now().toString(36)}_${i}`,
+          at: e.at ?? new Date().toISOString(),
+          profileId: e.profileId, profileName: e.profileName,
+          url: e.url, title: e.title, search: e.search,
+        })),
+        ...d.history,
+      ].slice(0, 1500),
+    })),
+    clearHistory: (profileId) => setData((d) => ({
+      ...d,
+      history: profileId ? d.history.filter((h) => h.profileId !== profileId) : [],
+    })),
+    selectedId, setSelectedId, createOpen, setCreateOpen, paletteOpen, setPaletteOpen, syncEvents,
+    addProfiles: (ps) => {
+      const quota = checkProfileQuota(data.account, data.profiles.length, ps.length);
+      if (!quota.allowed) { toast(quota.reason, 'warn'); return; }
+      setData((d) => ({ ...d, profiles: [...ps, ...d.profiles] }));
+      log('create', `${ps.length} profiles created`);
+    },
     createOne: (input) => {
+      const quota = checkProfileQuota(data.account, data.profiles.length, 1);
+      if (!quota.allowed) {
+        toast(quota.reason, 'warn');
+        return null as unknown as BrowserProfile;
+      }
       const p = createProfile(input, Date.now() % 100000);
       setData((d) => ({ ...d, profiles: [p, ...d.profiles] }));
       log('create', `${p.name} created`, p.templateId);
@@ -267,6 +446,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setSelectedId((s) => (s && set.has(s) ? null : s));
     },
     duplicateProfiles: (ids) => {
+      const quota = checkProfileQuota(data.account, data.profiles.length, ids.length);
+      if (!quota.allowed) { toast(quota.reason, 'warn'); return; }
       const set = new Set(ids);
       const copies = data.profiles.filter((p) => set.has(p.id)).map((p, i) => {
         const id = `prf_${Date.now().toString(36)}_${i}`;
@@ -286,6 +467,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setData((d) => ({ ...d, profiles: d.profiles.map((p) => set.has(p.id) ? applyRealPreset(p, real) : p) }));
       log('edit', `Real device applied to ${ids.length} profiles`, realId);
       toast('Observed device applied');
+    },
+    rotateProxy: (ids) => {
+      const set = new Set(ids);
+      let rotated = 0;
+      setData((d) => ({
+        ...d,
+        profiles: d.profiles.map((p) => {
+          if (!set.has(p.id)) return p;
+          const current = d.proxies.find((x) => x.id === p.proxyId);
+          const pool = d.proxies.filter((x) => x.id !== p.proxyId && x.status !== 'failed'
+            && (current ? x.country === current.country : true));
+          if (!pool.length) return p;
+          rotated += 1;
+          const next = pool[rotated % pool.length];
+          return { ...p, proxyId: next.id, revision: p.revision + 1, updatedAt: new Date().toISOString() };
+        }),
+      }));
+      if (rotated && data.settings.rotationAlerts) toast(`${rotated} profiles rotated to a new exit`, 'info');
+      log('proxy', `Rotation applied to ${rotated} profiles`);
     },
     geoMatch: (ids) => {
       const set = new Set(ids);
@@ -366,7 +566,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return profiles.length;
     },
     exportData: () => { log('export', 'Workspace exported'); return makeExport(data.profiles, data.proxies, data.groups); },
-    reset: () => { setData(seed()); toast('Demo workspace restored', 'info'); },
+    reset: () => { setData(seed()); setGroupFilter(null); toast('Demo workspace restored', 'info'); },
     setSetting: (k, v) => setData((d) => ({ ...d, settings: { ...d.settings, [k]: v } })),
     log, toast,
     dismissToast: (id) => setToasts((t) => t.filter((x) => x.id !== id)),
@@ -375,7 +575,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setDevices((d) => d.map((x) => x.kind === kind ? { ...x, online, lastSeen: new Date().toISOString() } : x));
       log('sync', `${kind} ${online ? 'connected' : 'disconnected'}`);
     },
-  }), [data, devices, toasts, view, selectedId, createOpen, paletteOpen, syncEvents, log, toast]);
+  }), [data, devices, toasts, view, groupFilter, selectedId, createOpen, paletteOpen, syncEvents, log, toast]);
 
   useEffect(() => {
     setDevices((d) => d.map((x) => ({ ...x, profiles: data.profiles.filter((p) => p.device === x.kind).length })));

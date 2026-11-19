@@ -8,7 +8,7 @@ import { checkProfile, downloadFile, type BrowserProfile } from '@joe/core';
 import { buildInjectionScript } from '@joe/fingerprint';
 import { Icon } from '../Icons';
 import { Official } from '../Brand';
-import { Btn, SectionHead, Panel, Tag, ScoreRing, StatCard } from '../Primitives';
+import { Btn, MetricStrip, PageHead, Panel, ScoreRing, Tag } from '../Primitives';
 
 interface ProbeResult { passed: number; total: number; failures: string[]; probe: Record<string, unknown> }
 
@@ -76,17 +76,23 @@ export function TestsView() {
 
   return (
     <Box>
-      <SectionHead kicker="VALIDATION" title="Leak check" hint="Internal self test plus independent detector links."
-        action={<Stack direction="row" spacing={1}><Btn icon="download" onClick={download}>Save test page</Btn><Btn variant="primary" icon="factcheck" onClick={run} disabled={!p || running}>{running ? 'Running' : 'Run local probe'}</Btn></Stack>} />
+      <PageHead
+        title="Leak check" hint="Internal self test plus independent detector links."
+        action={
+          <>
+            <Btn icon="download" onClick={download}>Save test page</Btn>
+            <Btn variant="primary" icon="factcheck" onClick={run} disabled={!p || running}>{running ? 'Running…' : 'Run local probe'}</Btn>
+          </>
+        }
+      />
 
-      <Grid container spacing={2} sx={{ mb: 2.5 }}>
-        {[
-          { icon: 'factcheck' as const, label: 'Local checks', value: result ? `${result.passed}/${result.total}` : 'Not run' },
-          { icon: 'verified' as const, label: 'Static consistency', value: report ? `${report.score}%` : 'None' },
-          { icon: 'web' as const, label: 'Detector targets', value: DETECTORS.length },
-          { icon: 'build' as const, label: 'Engine surfaces', value: 'Native' },
-        ].map((c) => <Grid item xs={6} md={3} key={c.label}><StatCard icon={c.icon} label={c.label} value={c.value} /></Grid>)}
-      </Grid>
+      <MetricStrip
+        items={[
+          { label: 'Local checks', value: result ? `${result.passed}/${result.total}` : 'Not run' },
+          { label: 'Consistency', value: report ? `${report.score}%` : '—' },
+          { label: 'Detectors', value: DETECTORS.length },
+        ]}
+      />
 
       <Grid container spacing={2}>
         <Grid item xs={12} lg={7}>

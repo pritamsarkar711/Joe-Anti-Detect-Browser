@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-19T13:47:44.380Z",
+  "generatedAt": "2026-11-19T15:21:33.422Z",
   "base": "http://localhost:5173",
   "report": [
     {
@@ -76,7 +76,7 @@
         {
           "name": "create dialog fits the viewport",
           "pass": true,
-          "extra": "380×851"
+          "extra": "380×883"
         },
         {
           "name": "no console errors",
@@ -159,7 +159,7 @@
         {
           "name": "create dialog fits the viewport",
           "pass": true,
-          "extra": "361×788"
+          "extra": "361×820"
         },
         {
           "name": "no console errors",
@@ -242,7 +242,7 @@
         {
           "name": "create dialog fits the viewport",
           "pass": true,
-          "extra": "328×716"
+          "extra": "328×748"
         },
         {
           "name": "no console errors",
@@ -325,7 +325,7 @@
         {
           "name": "create dialog fits the viewport",
           "pass": true,
-          "extra": "380×851"
+          "extra": "380×883"
         },
         {
           "name": "no console errors",
@@ -408,7 +408,7 @@
         {
           "name": "create dialog fits the viewport",
           "pass": true,
-          "extra": "361×809"
+          "extra": "361×841"
         },
         {
           "name": "no console errors",

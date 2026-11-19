@@ -10,7 +10,7 @@ import {
 import { surfaces, buildInjectionScript } from '@joe/fingerprint';
 import { Icon } from '../Icons';
 import { Official, CountryFlag } from '../Brand';
-import { Btn, SectionHead, Panel, Tag, ScoreRing, StatCard, Empty } from '../Primitives';
+import { Btn, MetricStrip, PageHead, Panel, ScoreRing, Tag } from '../Primitives';
 
 type TabKey = 'quality' | 'data' | 'surfaces' | 'geo' | 'limits';
 
@@ -31,23 +31,36 @@ export function FingerprintsView() {
   const s = useStore();
   const [tab, setTab] = useState<TabKey>('quality');
   const wq = workspaceQuality(s.profiles);
-  const totalIssues = s.profiles.reduce((a, p) => a + checkProfile(p).issues.length, 0);
+  const healthScore = Math.round((wq.averageConsistency + wq.averageUniqueness) / 2);
+  /**
+   * Only real problems belong in "Needs attention". Info-level entries are the
+   * three engine limits every profile shares by design (TLS, rasterisation,
+   * CDP), so summing them produced "18 contradictions" on a workspace with
+   * zero actual problems and pushed the grade to B next to a 100 ring.
+   */
+  const realIssues = s.profiles.flatMap((p) => checkProfile(p).issues
+    .filter((i) => i.severity !== 'info')
+    .map((i) => ({ name: p.name, issue: i })));
+  const totalIssues = realIssues.length;
   const duplicates = wq.distinctBundles ? s.profiles.length - wq.distinctBundles : 0;
   const sample = s.profiles[0];
   const probe = sample ? buildInjectionScript(sample.fingerprint) : '';
 
   return (
     <Box>
-      <SectionHead kicker="IDENTITY" title="Fingerprints" hint="Coherent observed devices, honest scope." action={<Btn variant="primary" icon="factcheck" onClick={() => s.setView('tests')}>Open leak check</Btn>} />
+      <PageHead
+        title="Fingerprints" hint="Coherent observed devices, with the limits stated plainly."
+        action={<Btn variant="primary" icon="factcheck" onClick={() => s.setView('tests')}>Open leak check</Btn>}
+      />
 
-      <Grid container spacing={2} sx={{ mb: 2.5 }}>
-        {[
-          { icon: 'database' as const, label: 'Observed devices', value: REAL_DEVICE_PRESETS.length },
-          { icon: 'verified' as const, label: 'Avg. consistency', value: `${wq.averageConsistency}%` },
-          { icon: 'spark' as const, label: 'Avg. uniqueness', value: `${wq.averageUniqueness}%` },
-          { icon: 'shield' as const, label: 'Contradictions', value: totalIssues },
-        ].map((c) => <Grid item xs={6} md={3} key={c.label}><StatCard icon={c.icon} label={c.label} value={c.value} /></Grid>)}
-      </Grid>
+      <MetricStrip
+        items={[
+          { label: 'Observed devices', value: REAL_DEVICE_PRESETS.length },
+          { label: 'Consistency', value: `${wq.averageConsistency}%` },
+          { label: 'Uniqueness', value: `${wq.averageUniqueness}%` },
+          { label: 'Grade', value: wq.grade },
+        ]}
+      />
 
       <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto" sx={{ borderBottom: '1px solid', borderColor: 'divider', mb: 2 }}>
         <Tab value="quality" label="Quality" /><Tab value="data" label="Observed data" /><Tab value="surfaces" label="Surfaces" /><Tab value="geo" label="Regions" /><Tab value="limits" label="Limits" />
@@ -57,10 +70,15 @@ export function FingerprintsView() {
         <Stack spacing={2}>
           <Panel>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }}>
-              <ScoreRing value={wq.averageConsistency} size={96} />
+              {/* Average of coherence and separation: the same score the grade
+                  is derived from, so the ring and the letter cannot disagree. */}
+              <ScoreRing value={healthScore} size={96} />
               <Box sx={{ flex: 1 }}>
                 <Typography variant="h2">Workspace health {wq.grade}</Typography>
-                <Typography variant="body2" color="text.secondary">{s.profiles.length} profiles · {duplicates} duplicates · {totalIssues} contradictions · {wq.entropyBits} entropy bits</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {s.profiles.length} profiles · {duplicates} duplicate bundle{duplicates === 1 ? '' : 's'} ·{' '}
+                  {totalIssues === 0 ? 'no contradictions' : `${totalIssues} contradiction${totalIssues === 1 ? '' : 's'}`} · {wq.entropyBits} bits of entropy
+                </Typography>
               </Box>
             </Stack>
             <Divider sx={{ my: 2 }} />
@@ -74,20 +92,44 @@ export function FingerprintsView() {
             </Grid>
           </Panel>
 
-          {totalIssues > 0 && <Panel title="Needs attention">
-            {s.profiles.flatMap((p) => checkProfile(p).issues.map((i) => ({ name: p.name, issue: i }))).slice(0, 10).map(({ name, issue }, n) => <Paper key={n} variant="outlined" sx={{ p: 1.1, mb: 0.8, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Icon name="warn" size={19} color="#D81B60" />
-              <Typography variant="caption" sx={{ flex: 1 }}>{name} · {issue.surface}: {issue.message}</Typography>
-            </Paper>)}
-          </Panel>}
+          {realIssues.length > 0 ? (
+            <Panel title="Needs attention" action={<Tag tone="warn">{realIssues.length}</Tag>}>
+              {realIssues.slice(0, 10).map(({ name, issue }, n) => (
+                <Paper key={n} variant="outlined" sx={{ p: 1.1, mb: 0.8, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Icon name="warn" size={19} color="#D81B60" />
+                  <Box sx={{ minWidth: 0, flex: 1 }}>
+                    <Typography variant="caption" sx={{ display: 'block', fontWeight: 600 }}>{name} · {issue.surface}</Typography>
+                    <Typography variant="caption" color="text.secondary">{issue.message} — {issue.hint}</Typography>
+                  </Box>
+                  <Tag tone={issue.severity === 'critical' ? 'err' : 'warn'}>{issue.severity}</Tag>
+                </Paper>
+              ))}
+              {realIssues.length > 10 && (
+                <Typography variant="caption" color="text.secondary">and {realIssues.length - 10} more — open the profile to fix them.</Typography>
+              )}
+            </Panel>
+          ) : (
+            <Panel title="Needs attention">
+              <Stack direction="row" spacing={1.25} alignItems="center">
+                <Icon name="verified" size={22} color="#D81B60" />
+                <Box>
+                  <Typography sx={{ fontSize: '0.84rem', fontWeight: 600 }}>No contradictions in this workspace</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Every profile agrees with its own UA, platform, GPU, locale and screen. Engine-level limits are listed under Limits.
+                  </Typography>
+                </Box>
+              </Stack>
+            </Panel>
+          )}
 
           <Panel title="Per profile" pad={0}>
             <Box sx={{ overflowX: 'auto' }}>
               <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead><tr><th>Profile</th><th>Real backed</th><th>Consistency</th><th>Uniqueness</th><th>Contradictions</th></tr></thead>
+                <thead><tr><th>Profile</th><th>Source</th><th>Consistency</th><th>Uniqueness</th><th>Contradictions</th><th>Known limits</th></tr></thead>
                 <tbody>{s.profiles.slice(0, 25).map((p) => {
                   const q = profileQuality(p, s.profiles);
-                  return <tr key={p.id}><td>{p.name}</td><td>{q.realBacked ? <Tag tone="primary">Observed</Tag> : 'Generated'}</td><td>{q.consistency}%</td><td>{q.uniqueness}%</td><td>{checkProfile(p).issues.length}</td></tr>;
+                  const issues = checkProfile(p).issues;
+                  return <tr key={p.id}><td>{p.name}</td><td>{q.realBacked ? <Tag tone="primary">Observed</Tag> : 'Generated'}</td><td>{q.consistency}%</td><td>{q.uniqueness}%</td><td>{issues.filter((i) => i.severity !== 'info').length}</td><td>{issues.filter((i) => i.severity === 'info').length}</td></tr>;
                 })}</tbody>
               </table>
             </Box>

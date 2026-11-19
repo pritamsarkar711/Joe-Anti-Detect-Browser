@@ -33,6 +33,7 @@ echo "== aapt2 compile =="
 echo "== aapt2 link =="
 "$AAPT2" link \
   -o "$WORK/base.apk" \
+  --no-version-vectors \
   -I "$ANDROID_JAR" \
   --manifest "$SRC/AndroidManifest.xml" \
   -R "$WORK/res.zip" \

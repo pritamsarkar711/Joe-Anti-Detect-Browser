@@ -14,7 +14,7 @@ const { app, BrowserWindow, session, ipcMain, shell, Menu } = require('electron'
 const path = require('node:path');
 const fs = require('node:fs');
 const core = require('./core.cjs');
-const { startRestApi } = require('./rest');
+const { startRestApi, readOrCreateToken } = require('./rest');
 
 const APP_VERSION = '2.0.0';
 const DATA_FILE = () => path.join(app.getPath('userData'), 'workspace.json');
@@ -92,18 +92,38 @@ async function applyProxy(ses, profile) {
   catch (e) { console.error('proxy error', e); }
 }
 
+/**
+ * WebKit families (Safari-shaped iPhone/iPad profiles and any Firefox profile)
+ * never send `Sec-CH-UA*`. Adding those headers to a WebKit user agent is the
+ * single most obvious mismatch a server-side check can spot, so the whole
+ * Client Hints block is skipped for them instead of forced.
+ */
+function supportsClientHints(spec) {
+  const ua = spec.userAgent || '';
+  const webkitOnly = !/Chrome\//.test(ua) && !/Edg\//.test(ua);
+  const firefox = /Firefox\//.test(ua);
+  return !webkitOnly && !firefox;
+}
+
 function applyHeaders(ses, spec) {
   const h = spec.uaClientHints;
+  const clientHints = supportsClientHints(spec);
   ses.webRequest.onBeforeSendHeaders({ urls: ['*://*/*'] }, (details, callback) => {
     const headers = { ...details.requestHeaders };
     headers['User-Agent'] = spec.userAgent;
     headers['Accept-Language'] = spec.languages.join(',') + ';q=0.9';
-    headers['Sec-CH-UA'] = h.secChUa || h.brands.map((b) => `"${b.brand}";v="${b.version}"`).join(', ');
-    headers['Sec-CH-UA-Mobile'] = h.secChUaMobile || (h.mobile ? '?1' : '?0');
-    headers['Sec-CH-UA-Platform'] = `"${h.platform}"`;
-    headers['Sec-CH-UA-Platform-Version'] = `"${h.platformVersion}"`;
-    headers['Sec-CH-UA-Full-Version'] = `"${h.fullVersion}"`;
-    headers['Sec-CH-UA-Full-Version-List'] = h.brands.map((b) => `"${b.brand}";v="${h.fullVersion}"`).join(', ');
+    if (clientHints) {
+      headers['Sec-CH-UA'] = h.secChUa || h.brands.map((b) => `"${b.brand}";v="${b.version}"`).join(', ');
+      headers['Sec-CH-UA-Mobile'] = h.secChUaMobile || (h.mobile ? '?1' : '?0');
+      headers['Sec-CH-UA-Platform'] = `"${h.platform}"`;
+      headers['Sec-CH-UA-Platform-Version'] = `"${h.platformVersion}"`;
+      headers['Sec-CH-UA-Full-Version'] = `"${h.fullVersion}"`;
+      headers['Sec-CH-UA-Full-Version-List'] = h.brands.map((b) => `"${b.brand}";v="${h.fullVersion}"`).join(', ');
+    } else {
+      for (const key of Object.keys(headers)) {
+        if (/^sec-ch-ua/i.test(key)) delete headers[key];
+      }
+    }
     if (spec.doNotTrack) headers['DNT'] = '1';
     callback({ requestHeaders: headers });
   });
@@ -135,11 +155,11 @@ async function loadExtensions(ses, profile) {
 }
 
 function startUrlFor(profile) {
-  const candidate = profile.startUrl || process.env.JOE_START_PAGE || 'https://example.com';
+  const candidate = profile.startUrl || process.env.JOE_START_PAGE || 'https://browserscan.net/';
   try {
     const u = new URL(candidate);
     return u.protocol === 'http:' || u.protocol === 'https:' ? u.toString() : 'https://example.com';
-  } catch { return 'https://example.com'; }
+  } catch { return 'https://browserscan.net/'; }
 }
 
 function attachInjection(win, spec) {
@@ -182,6 +202,7 @@ async function launchProfile(id) {
   const win = new BrowserWindow({
     width: Math.min(1440, Math.max(900, profile.fingerprint.screen.width)),
     height: Math.min(960, Math.max(640, profile.fingerprint.screen.height)),
+    show: false,
     title: `Joe Browser — ${profile.name}`,
     webPreferences: {
       partition, preload: path.join(__dirname, 'preload.js'),
@@ -199,9 +220,16 @@ async function launchProfile(id) {
     managerWindow?.webContents.send('profiles:changed', workspace.profiles);
   });
 
+  win.webContents.on('render-process-gone', (_e, details) => {
+    console.error('[joe] profile renderer gone', profile.id, details.reason);
+  });
+
   attachInjection(win, profile.fingerprint);
   win.webContents.setUserAgent(profile.fingerprint.userAgent);
-  await win.loadURL(startUrlFor(profile)).catch((e) => console.error('load failed', e));
+  // dom-ready fires as soon as the document exists; loading the target URL here
+  // keeps a collapsed or slow window from appearing frozen.
+  win.once('ready-to-show', () => win.show());
+  await win.loadURL(startUrlFor(profile)).catch((e) => console.error('profile load failed', e));
 
   profile.status = 'running';
   profile.device = 'desktop-exe';
@@ -221,16 +249,57 @@ function stopProfile(id) {
 }
 
 function createManagerWindow() {
+  if (managerWindow && !managerWindow.isDestroyed()) {
+    managerWindow.show();
+    managerWindow.focus();
+    return managerWindow;
+  }
+  const width = 1360;
+  const height = 860;
   managerWindow = new BrowserWindow({
-    width: 1440, height: 900, minWidth: 980, minHeight: 620,
+    width, height, minWidth: 760, minHeight: 520,
+    show: false,
     title: 'Joe Browser', backgroundColor: '#F6F7F9',
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false },
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+      spellcheck: false,
+      backgroundThrottling: true,
+      devTools: !app.isPackaged,
+    },
   });
+
+  // Show only when the first paint is ready — avoids a white flash on Windows.
+  managerWindow.once('ready-to-show', () => managerWindow?.show());
+  managerWindow.on('closed', () => { managerWindow = null; });
+
+  // A crashed renderer used to leave a permanently blank window.
+  managerWindow.webContents.on('render-process-gone', (_e, details) => {
+    console.error('[joe] manager renderer gone', details);
+    if (details.reason !== 'clean-exit' && managerWindow && !managerWindow.isDestroyed()) {
+      managerWindow.webContents.reload();
+    }
+  });
+  managerWindow.webContents.on('did-fail-load', (_e, code, description, url, isMainFrame) => {
+    if (!isMainFrame) return;
+    console.error('[joe] manager failed to load', code, description, url);
+  });
+  managerWindow.webContents.on('unresponsive', () => console.warn('[joe] manager unresponsive'));
+
   const ui = path.join(__dirname, 'web-dist', 'index.html');
-  if (fs.existsSync(ui)) managerWindow.loadFile(ui);
-  else managerWindow.loadURL(process.env.JOE_CONTROL_PLANE_URL || 'https://joe-browser.vercel.app');
+  if (fs.existsSync(ui)) {
+    managerWindow.loadFile(ui).catch((e) => console.error('[joe] UI load failed', e));
+  } else {
+    // Developer fallback only; shipped builds always contain web-dist.
+    console.warn('[joe] web-dist missing, loading control plane URL');
+    managerWindow.loadURL(process.env.JOE_CONTROL_PLANE_URL || 'https://joe-browser-control.vercel.app').catch((e) => console.error(e));
+  }
   managerWindow.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
   Menu.setApplicationMenu(null);
+  return managerWindow;
 }
 
 function registerIpc() {
@@ -312,11 +381,47 @@ async function connectRealtime() {
   } catch (e) { console.error('Supabase connection failed', e); }
 }
 
+/**
+ * Crash avoidance for low-spec Windows machines.
+ *
+ *   - A second launch must focus the existing window, not start a second
+ *     process that competes for the same userData lock.
+ *   - GPU compositing on old Intel/AMD drivers is a common cause of a white
+ *     management window. Users can force software rendering with
+ *     JOE_DISABLE_GPU=1 (or --disable-gpu), plus the shell fallbacks below.
+ *   - An unhandled rejection must be logged, never left to kill the process.
+ */
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (managerWindow) {
+      if (managerWindow.isMinimized()) managerWindow.restore();
+      managerWindow.show();
+      managerWindow.focus();
+    }
+  });
+}
+
+if (process.env.JOE_DISABLE_GPU === '1' || process.argv.includes('--disable-gpu')) {
+  app.disableHardwareAcceleration();
+}
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+if (process.platform === 'win32') {
+  app.commandLine.appendSwitch('use-angle', 'd3d11');
+}
+
+process.on('unhandledRejection', (reason) => console.error('[joe] unhandled rejection', reason));
+process.on('uncaughtException', (error) => console.error('[joe] uncaught exception', error));
+
 app.whenReady().then(async () => {
   loadWorkspace();
   registerIpc();
   createManagerWindow();
-  startRestApi({ port: Number(process.env.JOE_API_PORT || 9333), api: {
+  const apiToken = readOrCreateToken(app.getPath('userData'));
+  startRestApi({ port: Number(process.env.JOE_API_PORT || 9333), userDataDir: app.getPath('userData'), api: {
     info: () => ({ version: APP_VERSION, profiles: workspace.profiles.length, running: windows.size }),
     list: () => workspace.profiles,
     get: (id) => findProfile(id),

@@ -5,7 +5,7 @@ import {
 import { useStore, type ActivityEntry } from '@/state/store';
 import { downloadFile } from '@joe/core';
 import { Icon, type IconName } from '../Icons';
-import { Btn, Empty, SectionHead, StatCard, Panel } from '../Primitives';
+import { Btn, Empty, MetricStrip, PageHead, Panel, Tag } from '../Primitives';
 
 const ICONS: Record<ActivityEntry['kind'], IconName> = {
   launch: 'play', stop: 'stop', create: 'plus', delete: 'trash', proxy: 'globe',
@@ -24,16 +24,18 @@ export function ActivityView() {
 
   return (
     <Box>
-      <SectionHead kicker="HISTORY" title="Activity" hint="Recent workspace events." action={<Btn icon="download" onClick={() => { downloadFile('joe-activity.json', JSON.stringify(s.activity, null, 2)); s.toast('Activity exported'); }}>Export log</Btn>} />
+      <PageHead
+        title="Activity" hint="Recent workspace events."
+        action={<Btn icon="download" onClick={() => { downloadFile('joe-activity.json', JSON.stringify(s.activity, null, 2)); s.toast('Activity exported'); }}>Export log</Btn>}
+      />
 
-      <Grid container spacing={2} sx={{ mb: 2.5 }}>
-        {[
-          { icon: 'activity' as const, label: 'Events', value: s.activity.length },
-          { icon: 'play' as const, label: 'Launches', value: s.activity.filter((a) => a.kind === 'launch').length },
-          { icon: 'sync' as const, label: 'Sync messages', value: s.syncEvents.length },
-          { icon: 'clock' as const, label: 'Retention', value: 400 },
-        ].map((c) => <Grid item xs={6} md={3} key={c.label}><StatCard icon={c.icon} label={c.label} value={c.value} /></Grid>)}
-      </Grid>
+      <MetricStrip
+        items={[
+          { label: 'Events', value: s.activity.length },
+          { label: 'Launches', value: s.activity.filter((a) => a.kind === 'launch').length },
+          { label: 'Sync messages', value: s.syncEvents.length },
+        ]}
+      />
 
       <Panel pad={0} sx={{ overflow: 'hidden' }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ p: 1.6, flexWrap: 'wrap', gap: 1 }}>

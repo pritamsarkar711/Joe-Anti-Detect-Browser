@@ -1,6 +1,6 @@
 {
   "name": "joe-browser",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": true,
   "type": "module",
   "description": "Joe Browser \u2014 Material UI profile-isolation workspace for Windows, Android and the web, synced with Supabase and Vercel.",
@@ -8,7 +8,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
     "build:core": "esbuild packages/desktop-entry.ts --bundle --platform=node --format=cjs --outfile=apps/desktop/core.cjs",
-    "build:android-ui": "vite build --base=./ --outDir dist-android",
+    "build:android-ui": "node scripts/build-ui.mjs android",
     "build:assets": "node scripts/generate-android-assets.mjs",
     "build:site": "node scripts/build-site.mjs",
     "test:site": "node scripts/check-site.mjs",
@@ -20,7 +20,9 @@
     "test:fingerprint": "vite-node scripts/fingerprint-test.ts",
     "test:devices": "node scripts/device-matrix.mjs",
     "screenshots:v2": "node scripts/screenshots.mjs",
-    "build:brands": "node scripts/generate-brand-assets.mjs"
+    "build:brands": "node scripts/generate-brand-assets.mjs",
+    "build:desktop": "node scripts/build-ui.mjs desktop",
+    "build:icons": "node scripts/generate-app-icons.mjs"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

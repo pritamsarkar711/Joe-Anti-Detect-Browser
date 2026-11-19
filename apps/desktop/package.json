@@ -1,9 +1,9 @@
 {
   "name": "joe-browser-desktop",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": true,
   "main": "main.js",
-  "description": "Joe Browser 2 — Electron desktop shell (Windows EXE)",
+  "description": "Joe Browser 2 \u2014 Electron desktop shell (Windows EXE)",
   "author": "Joe Browser",
   "license": "MIT",
   "scripts": {
@@ -20,9 +20,10 @@
   "build": {
     "appId": "com.joebrowser.desktop",
     "productName": "Joe Browser",
-    "copyright": "Copyright © 2026 Joe Browser",
+    "copyright": "Copyright \u00a9 2026 Joe Browser",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "../../build"
     },
     "files": [
       "main.js",
@@ -36,7 +37,8 @@
       "target": [
         "nsis",
         "portable"
-      ]
+      ],
+      "icon": "../../build/icon.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -46,6 +48,7 @@
     },
     "portable": {
       "artifactName": "JoeBrowser-Portable-${version}.${ext}"
-    }
+    },
+    "icon": "../../build/icon.ico"
   }
 }

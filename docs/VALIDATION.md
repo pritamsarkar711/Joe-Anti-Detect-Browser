@@ -1,26 +1,42 @@
-# Validation report — v2.0.0
+# Validation report — v3.0.0
 
 Every number below comes from a command in this repository. Nothing here is a third-party detector score, and no result is claimed for surfaces the project does not control.
 
-Environment: Debian 12, Node `v22.22.3`, npm `10.9.8`, Python `3.11.2`, no display server, no JDK/Android SDK, no Electron runtime. Native EXE/APK binaries are therefore built only in GitHub Actions.
+Environment: Debian, Node `v22.22.3`, npm `10.9.8`, Python `3.11.2`, no display server, no JDK/Android SDK, no Electron runtime. Native EXE/APK binaries are therefore built only in GitHub Actions.
 
 ## Automated suites
 
 | Command | Result |
 |---|---|
 | `npx tsc --noEmit` | pass, exit 0 |
-| `npm test` | 4 files, 29 tests passed |
+| `npm test` | 5 files, 43 tests passed |
 | `npm run test:fingerprint` | 29/29 injection self-tests, exit 0 |
-| `npm run test:ui` | 31/31 real-browser checks, no console errors |
-| `npm run test:devices` | 75/75 checks on five mobile devices |
+| `npm run test:ui` | 34/34 real-browser checks, no console errors |
+| `npm run test:devices` | 75/75 checks on five Android families |
 | `npm run test:java` | 4/4 Java sources parsed cleanly (parse only, not compilation) |
-| `npm run test:site` | static site metadata, asset and provenance checks |
-| `npm run build` | typecheck + production bundle, 11,544 modules |
-| `npm run build:core` | `apps/desktop/core.cjs`, 42 exports |
+| `npm run test:site` | 15/15 static site, version and provenance checks |
+| `npm run build` | typecheck + production bundle |
+| `npm run build:core` | `apps/desktop/core.cjs`, 58 exports |
+| `npm run build:android-ui` | Android web bundle (`dist-android/`) |
+| `npm run build:desktop` | Desktop web bundle (`apps/desktop/web-dist/`) |
 | `npm run build:assets` | 16 profiles, 17 self-testing injection scripts, bundled UI |
 | `npm run build:site` | `dist-site/` generated for the canonical URL |
-| `npm run build:brands` | 26 official brand marks, Joe Browser mark, 12 flags |
-| `npm run screenshots` | 13 desktop PNGs at 1440×900 |
+| `npm run build:brands` | 33 official brand marks, Joe Browser mark, 12 flags |
+| `npm run screenshots` | 17 app captures + 11 cropped site captures + OG card |
+
+### Bundle weight
+
+The app chunk was 712 kB before v3 and is 248 kB now. Two generated data tables
+(54 inline flags, 29 observed device samples) moved into their own chunks, so a
+cold start parses the shell first:
+
+| Chunk | Size |
+|---|---|
+| `App` | 248.00 kB |
+| `mui` | 325.44 kB |
+| `react` | 143.87 kB |
+| `flags` | 305.69 kB |
+| `icons` | 32.75 kB |
 
 ### Workspace quality
 
@@ -33,57 +49,65 @@ Geo match BD: PASS · Unique observed bundles: 29/29
 ```
 
 - **Consistency 100%** means every generated profile agrees with itself across UA, Client Hints, platform, GPU, screen, DPR, CPU, RAM, fonts, timezone, locale and touch.
-- **Uniqueness 77%** means 29 profiles resolve to 29 distinct fingerprint bundles without collisions in the sampled workspace. It is a collision measure, not a cloaking promise.
-- **Grade B** is the project's own internal scale. It is deliberately not an A, because engine-level surfaces are unimplemented.
+- **Uniqueness 77%** is a collision measure inside the workspace, not a cloaking promise.
+- **Grade B** is the project's own scale, deliberately not an A while engine-level surfaces are unaddressed.
+- Apple/WebKit classes (`iphone-15-pro`, `ipad-pro-11`) are marked `source: 'curated'` because no observed sample exists for them; every other class is `source: 'observed'` and traceable to a `real-*` sample.
 
 ### Browser smoke (`npm run test:ui`)
 
-Highlights from the 31 passing checks:
+Highlights from the 34 passing checks:
 
-- 24 profile rows render on first paint; all seven sidebar views load.
-- IBM Plex Sans is the active computed font.
-- `no gradients or dashed borders · 0 offenders`.
-- Command palette opens with Ctrl/⌘ + K.
-- 250 profiles can be created without an artificial cap.
-- The local JavaScript probe passes `22 of 22 checks`.
-- Six independent detector links are present.
-- Dark and light themes both render.
-- A desktop-to-Android command is created successfully.
-- Proxy add flow works.
-- Official marks and circular flags load locally, with no external requests.
-- `no horizontal page overflow · 0px`.
-- No console errors.
+- Six seeded profiles render on first paint; every sidebar destination resolves (16 navigation entries).
+- IBM Plex Sans is the active computed font; `no gradients or dashed borders`.
+- Command palette opens with Ctrl/⌘ + K and filters.
+- All five bundled engines are offered in the create dialog.
+- A new profile persists to the table, 250 profiles can be created on Premium, and the table paginates.
+- The local JavaScript probe passes `22 of 22 checks`; six independent detector links are present.
+- Dark and light themes both render; a desktop-to-Android command is created.
+- Proxy add flow works; official marks and circular flags load from local data URIs.
+- `no horizontal page overflow · 0px`; no console errors.
 
 ### Device matrix (`npm run test:devices`)
 
-`75/75` checks across Google Pixel 8, Xiaomi 13, Samsung Galaxy S23, OPPO Find X6 and Vivo X90. Each device is checked for horizontal overflow, clipped gutters, tap-target overlap, bottom navigation behaviour, dialog fit, table scrolling and export-row layout. Report: [`assets/screenshots/devices/report.json`](../assets/screenshots/devices/report.json).
+`75/75` checks across Google Pixel 8, Xiaomi 13, Samsung Galaxy S23, OPPO Find X6 and Vivo X90. Each device is checked for horizontal overflow, controls outside the viewport, clipped text, overlapping tap targets, bottom navigation (four destinations plus a working **More** drawer), dialog fit, table scrolling and console errors. Report: [`assets/screenshots/devices/report.json`](../assets/screenshots/devices/report.json).
 
 ## Visual verification
 
-The 13 desktop screenshots in `assets/screenshots/` are captured from the running app by Playwright with a real Chromium build:
+Screenshots in `assets/screenshots/` are captured from the running app by Playwright with a real Chromium build; the site uses the cropped, chrome-free versions in `site/screens/`.
 
-`01-profiles-light`, `02-profile-detail`, `03-create-profile`, `04-command-palette`, `05-proxies`, `06-devices-sync`, `07-fingerprints`, `08-leak-check`, `08b-leak-check-result`, `09-activity`, `10-settings`, `11-profiles-dark`, `og-image`.
+Defects found by looking at the captures rather than by assertion, and fixed:
 
-Screenshots were reviewed visually, not only by assertion. Two defects were found and fixed that way: a duplicated top-left logo/New-profile control in the shell, and stacked export icons on mobile which now use a horizontal `Stack`.
+- Two "New profile" buttons on desktop (app bar + page header). The header now only shows the primary action on phones, where the app bar hides it.
+- The device picker in the create dialog clipped cards mid-row inside a nested scroller. It is now one row of OS chips over a short card list.
+- The Settings select for the default device drew an inline brand icon over its own value.
+- "18 contradictions" on a workspace with none: informational engine limits were summed as problems and pushed the grade to B next to a 100 ring. Informational limits are now counted separately and the ring shows the same score the grade derives from.
+- An observed device reporting 12 cores with 8 GB of RAM: CPU and RAM were drawn from independent lists. Hardware is now an ordered pair.
+- Mobile toolbars wrapped two export icons onto their own row.
 
 ## Detector sites
 
-The app links to IP Fighter, Pixelscan, IPHey, AmIUnique, CreepJS and BrowserLeaks and provides an in-app probe so a profile can be inspected without leaving the workspace.
+The app links to BrowserScan, Pixelscan, IP Fighter, whoer.net, AmIUnique, CreepJS and BrowserLeaks and provides an in-app probe so a profile can be inspected without leaving the workspace.
 
-Direct Chromium navigation from this sandbox to `iphey.com`, `pixelscan.net`, `amiunique.org` and `ipfighter.com` failed with `net::ERR_CONNECTION_CLOSED`. Content was readable through a server-side fetch, which confirms the endpoints exist but does not constitute a detector run.
+Direct Chromium navigation from this sandbox to those hosts fails (`net::ERR_CONNECTION_CLOSED` / blocked egress). Therefore **no third-party detector score is claimed for v3.** The in-app probe result (`22 of 22`) is a local self-test of Joe Browser's own payload, not an independent verdict. To evaluate independently, launch a native profile, open the detector links, and compare proxy exit country, timezone, locale, WebRTC candidates and Client Hints.
 
-Therefore: **no third-party detector score is claimed.** The in-app probe result (`22 of 22`) is a local self-test of Joe Browser's own payload, not an independent verdict. To evaluate independently, launch a native profile, open the detector links and compare proxy exit country, timezone, locale, WebRTC candidates and Client Hints for yourself.
+Two engine-level corrections were made so a profile does not carry a one-line giveaway:
 
-## Environment limits
+- WebKit profiles (iPhone/iPad) no longer expose `navigator.userAgentData` and no longer send `Sec-CH-UA*` request headers; Chromium profiles keep both.
+- Firefox profiles remove `Sec-CH-UA*` as well.
 
-- No display server: Electron GUI was not run locally; the shared UI was validated in Chromium at the same code path.
-- No JDK or Android SDK: `npm run test:java` parses sources only. Real compilation happens in GitHub Actions.
-- No Wine: the Windows installer cannot be executed locally. Artifact existence, size and checksums come from the release workflow.
-- GitHub Actions log download is blocked in this sandbox; job status, artifacts and published releases were verified through the API instead.
+Verified in a real Chromium context: the iPhone payload reports `navigator.userAgentData === undefined`, the Windows payload reports the expected brand list.
+
+## Stability work in this release
+
+- **White screen on the installed Windows build:** the bundle used absolute asset paths, which fail under `file://`. `base` is now relative for the desktop and Android targets; the built `apps/desktop/web-dist/index.html` was rendered from `file://` with zero console errors.
+- **Workspace never persisted:** the first save was skipped, so a fresh install kept nothing and a reload re-seeded the workspace. Saves now run on the first render, under a new `joe-browser:v3` key, with the v2 key read once as a migration source.
+- **Dead-end create flow:** the demo workspace held 24 profiles against a 2-profile free tier, so every create attempt was refused. The demo is now six profiles on a six-profile demo allowance; signing in switches to the real two-profile free tier or Premium.
+- **Build scripts could not run in CI:** `cross-env` was used by `build:desktop` and `build:android-ui` but never depended on. A dependency-free runner replaces it.
+- **Android blank frames:** challenge iframes are child frames that `evaluateJavascript` on the main frame cannot reach, so the payload could disappear. The profile browser now re-injects per frame with three bounded retries and shows an offline error page instead of white.
 
 ## What is not claimed
 
-- Not "100% undetectable", not "passes Pixelscan/IPHey/CreepJS" and not "AdsPower-tier".
+- Not "100% undetectable", not "passes Pixelscan/BrowserScan/CreepJS" and not "AdsPower-tier".
 - No claim of parity with C++-patched browsers such as ShardBrowser, Camoufox, Donut/Wayfern or OVO.
 - No claim that TLS/JA4, HTTP/2, QUIC, font rasterisation, GPU driver output or CDP side channels are spoofed.
 - No claim that the Android APK is production-signed; CI builds are debug-signed and published with checksums.

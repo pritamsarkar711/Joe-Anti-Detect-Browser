@@ -134,12 +134,19 @@ for (const device of DEVICES) {
 
     // Check every view on this device through the bottom bar and More drawer.
     for (const view of VIEWS) {
+      // The bottom bar covers four destinations; everything else lives behind
+      // More. Navigation is state-driven, so the More drawer button is reused
+      // on every iteration and must be clicked before each off-bar view.
       const bottom = page.locator('.MuiBottomNavigationAction-root', { hasText: view.label });
       if (await bottom.count()) {
         await bottom.first().click();
       } else {
-        await page.locator('.MuiBottomNavigationAction-root', { hasText: 'More' }).click();
-        await page.locator('.MuiDrawer-root .MuiListItemButton-root', { hasText: view.label }).first().click();
+        const more = page.locator('.MuiBottomNavigationAction-root', { hasText: 'More' });
+        await more.first().click();
+        await page.waitForTimeout(220);
+        const item = page.locator('.MuiDrawer-root .MuiListItemButton-root', { hasText: view.label }).first();
+        await item.waitFor({ state: 'visible', timeout: 5000 });
+        await item.click();
       }
       await page.waitForTimeout(320);
       const heading = await page.getByRole('heading', { name: view.heading, exact: true }).first().isVisible();
@@ -148,7 +155,11 @@ for (const device of DEVICES) {
         `overflow ${a.overflow}, outside ${a.outside.length}, overlaps ${a.overlaps}, clipped ${a.clipped.length}`);
     }
 
-    // Create dialog must fit a phone screen.
+    // Create dialog must fit a phone screen. On mobile the only entry point is
+    // the Profiles toolbar button (the app bar hides its copy), so return to
+    // Profiles first instead of relying on whatever view the loop ended on.
+    await page.locator('.MuiBottomNavigationAction-root', { hasText: 'Profiles' }).first().click();
+    await page.waitForTimeout(200);
     await page.getByRole('button', { name: 'New profile' }).first().click();
     await page.waitForSelector('.MuiDialog-paper', { timeout: 5000 });
     const dialog = await page.locator('.MuiDialog-paper').boundingBox();

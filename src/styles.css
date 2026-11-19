@@ -75,14 +75,8 @@ code, pre, .mono { font-family: "IBM Plex Sans", ui-monospace, SFMono-Regular, M
 :root[data-density="compact"] .MuiTableCell-root { padding-top: 6px !important; padding-bottom: 6px !important; }
 :root[data-density="compact"] .MuiListItemButton-root { padding-top: 4px !important; padding-bottom: 4px !important; }
 
-/* Circular national flags from flag-icons */
-.fi.fis.flag-round {
-  border-radius: 50% !important;
-  background-size: cover !important;
-  background-position: center !important;
-  box-shadow: inset 0 0 0 1px var(--line-soft);
-  line-height: 1;
-}
+/* Flag rendering is inline SVG (see src/ui/flagData.ts) — no CSS asset URLs. */
+.country-flag { user-select: none; }
 
 /* Compact data tables used across views */
 .data-table th,

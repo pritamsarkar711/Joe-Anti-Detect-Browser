@@ -94,7 +94,13 @@ def(N,'cookieEnabled',true);
 def(N,'onLine',true);
 try{
   var B=(C.hint.brands&&C.hint.brands.length)?C.hint.brands:[{brand:'Google Chrome',version:String(C.major)},{brand:'Chromium',version:String(C.major)}];
-  def(N,'userAgentData',{
+  /* WebKit and Gecko families do not expose navigator.userAgentData at all.
+     Leaving the Chromium object on an iPhone or Firefox UA is a one-line
+     giveaway, so the property is removed instead of populated. */
+  var webkitUa=C.ua.indexOf('Chrome/')<0&&C.ua.indexOf('Edg/')<0&&C.ua.indexOf('Firefox/')<0;
+  var geckoUa=C.ua.indexOf('Firefox/')>=0;
+  if(webkitUa||geckoUa){try{delete N.userAgentData;}catch(e){}}
+  else def(N,'userAgentData',{
     brands:B.map(function(b){return {brand:b.brand,version:b.version}}),
     mobile:!!C.hint.mobile,platform:C.hint.platform,
     getHighEntropyValues:function(){
@@ -334,3 +340,8 @@ export function surfaces(spec: FingerprintSpec): FingerprintSurface[] {
     { key: 'cdp', label: 'CDP side channels', value: 'engine level', level: 'engine' },
   ];
 }
+
+export {
+  humanPasteSchedule, scheduleDuration, describeSchedule,
+  type Keystroke, type TypingOptions,
+} from './humanize';

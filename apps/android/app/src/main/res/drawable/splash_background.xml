@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Painted while the WebView starts, so the app never shows bare white. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#F6F7F9" />
+        </shape>
+    </item>
+    <item android:gravity="center" android:width="96dp" android:height="96dp">
+        <shape android:shape="oval">
+            <solid android:color="#F6F7F9" />
+            <stroke android:width="6dp" android:color="#D81B60" />
+        </shape>
+    </item>
+</layer-list>

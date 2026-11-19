@@ -22,11 +22,16 @@ describe('control-plane UI (headless render smoke)', () => {
   });
 
   it('shows real derived fingerprint values, not placeholders', () => {
+    // The profiles table shows platform + engine major and a plain 0-100 score
+    // with uniqueness. Screen resolutions were moved into the profile drawer to
+    // stop the main table from being a wall of text, so assert on what the view
+    // actually renders rather than on the old layout.
     expect(text).toMatch(/Chrome \d{3}/);
-    expect(text).toMatch(/\d{3,4}×\d{3,4}/);
-    expect(text).toContain('Windows');
-    expect(text).toContain('macOS');
-    expect(text).toContain('Android');
+    expect(text).toMatch(/Uniq \d{1,3}%/);
+    expect(text).toMatch(/Windows/);
+    expect(text).toMatch(/macOS|Linux|Android/);
+    expect(text).not.toContain('undefined');
+    expect(text).not.toContain('NaN');
   });
 
   it('uses the v2 MUI theme and local IBM Plex Sans family', () => {
