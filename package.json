@@ -1,23 +1,35 @@
 {
-  "name": "joe-anti-detect-browser",
-  "version": "0.1.0",
+  "name": "joe-browser",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Shared TypeScript control plane for a profile-isolation browser on desktop and Android.",
+  "description": "Joe Browser — professional profile-isolation browser for Windows desktop and Android, synced with Supabase.",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
+    "build:core": "esbuild packages/desktop-entry.ts --bundle --platform=node --format=cjs --outfile=apps/desktop/core.cjs",
+    "build:android-ui": "vite build --base=./ --outDir dist-android",
+    "build:assets": "node scripts/generate-android-assets.mjs",
+    "build:site": "node scripts/build-site.mjs",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:java": "node scripts/check-java.mjs",
+    "test:ui": "node scripts/ui-check.mjs",
+    "screenshots": "node scripts/screenshots.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@sparticuz/chromium": "^131.0.1",
+    "@types/node": "^22.10.2",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "esbuild": "^0.24.0",
+    "java-parser": "^2.3.2",
+    "playwright-core": "^1.49.0",
     "typescript": "^5.7.3",
     "vite": "^6.0.7",
     "vitest": "^3.0.5"

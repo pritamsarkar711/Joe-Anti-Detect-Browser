@@ -1,6 +1,15 @@
 node_modules/
 dist/
+dist-android/
+dist-site/
 .vite/
+apps/desktop/core.cjs
+apps/desktop/web-dist/
+apps/desktop/release/
+apps/android/assets/
+apps/android/*.apk
+apps/android/*.keystore
+apps/android/app/build/
 *.log
 .env
 .env.local
@@ -8,3 +17,4 @@ dist/
 coverage/
 *.tsbuildinfo
 .DS_Store
+/probe/

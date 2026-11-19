@@ -1,0 +1,138 @@
+name: Build and publish binaries
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  web:
+    name: Shared UI + core
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - run: npm run build
+      - run: npm run build:core
+      - run: npm run build:android-ui
+      - run: npm run build:assets
+      - run: npm run build:site
+      - uses: actions/upload-artifact@v4
+        with: { name: web-dist, path: dist/, retention-days: 7 }
+      - uses: actions/upload-artifact@v4
+        with: { name: core-bundle, path: apps/desktop/core.cjs, retention-days: 7 }
+      - uses: actions/upload-artifact@v4
+        with: { name: android-assets, path: apps/android/assets/, retention-days: 7 }
+      - uses: actions/upload-artifact@v4
+        with: { name: seo-site, path: dist-site/, retention-days: 7 }
+
+  desktop:
+    name: Windows EXE
+    needs: web
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/download-artifact@v4
+        with: { name: core-bundle, path: apps/desktop }
+      - uses: actions/download-artifact@v4
+        with: { name: web-dist, path: apps/desktop/web-dist }
+      - name: Install Electron toolchain
+        run: npm install --prefix apps/desktop --no-audit --no-fund
+      - name: Verify packaged inputs
+        shell: bash
+        run: |
+          test -f apps/desktop/core.cjs
+          test -f apps/desktop/web-dist/index.html
+          node -e "const c=require('./apps/desktop/core.cjs'); console.log('core exports:', Object.keys(c).length)"
+      - name: Build NSIS installer + portable EXE
+        working-directory: apps/desktop
+        run: npx electron-builder --win --x64 --publish never
+      - name: List binaries
+        shell: bash
+        run: ls -lh apps/desktop/release/*.exe
+      - uses: actions/upload-artifact@v4
+        with: { name: desktop-binaries, path: apps/desktop/release/*.exe, retention-days: 7 }
+
+  android:
+    name: Android APK
+    needs: web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: android-actions/setup-android@v3
+      - name: Install Android platform + build tools
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0" > /dev/null
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME/build-tools"
+      - uses: actions/download-artifact@v4
+        with: { name: android-assets, path: apps/android/assets }
+      - name: Compile, dex, package and sign the APK
+        run: |
+          chmod +x scripts/build-apk.sh
+          bash scripts/build-apk.sh
+      - uses: actions/upload-artifact@v4
+        with: { name: android-apk, path: apps/android/JoeBrowser.apk, retention-days: 7 }
+
+  publish:
+    name: GitHub Release
+    needs: [desktop, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: desktop-binaries, path: release-assets }
+      - uses: actions/download-artifact@v4
+        with: { name: android-apk, path: release-assets }
+      - name: Checksums + manifest
+        run: |
+          cd release-assets
+          ls -lh
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - name: Create release with binaries
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: Joe Browser ${{ github.event.inputs.tag || github.ref_name }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          files: release-assets/*
+          body: |
+            ## Joe Browser — desktop + Android
+
+            Download the Windows installer (`JoeBrowser-Setup-*.exe`), the portable build
+            (`JoeBrowser-Portable-*.exe`) or the Android app (`JoeBrowser.apk`).
+            `SHA256SUMS.txt` contains checksums for every binary.
+
+            **What's inside**
+            - Unlimited isolated browser profiles (cookies, cache, storage per profile)
+            - 8 coherent device templates with a fingerprint consistency checker
+            - Per-profile proxies (HTTP / HTTPS / SOCKS4 / SOCKS5), bulk import
+            - Bulk profile creation, groups, tags, import/export, activity log
+            - Local REST API on the desktop build (`127.0.0.1:9333`)
+            - EXE ⇄ APK sync through Supabase Realtime / Postgres
+            - Shared React control-plane UI on desktop, Android and Vercel
+
+            **Honest scope**: fingerprint consistency is applied at the JS layer.
+            TLS/JA4, HTTP/2 and font rasterisation are engine-level surfaces that
+            require a patched Chromium fork — see `docs/ARCHITECTURE.md`.
+
+            Built by GitHub Actions from source in this repository.

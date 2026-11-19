@@ -1,105 +1,150 @@
-# Joe Browser — proposed architecture (pre-requirements draft)
+# Joe Browser — architecture
 
-This is the stack I recommend for a profile-isolation browser that ships as a
-Windows desktop app (`.exe`) and an Android app (`.apk`), with the two clients
-kept in sync through Supabase and a Vercel control plane. It is a proposal, not
-the final build — the full requirements will refine it.
+Last updated: v1.0.0. This document is deliberately explicit about what the
+project does and what it cannot do.
 
-## 1. Chosen language / framework
+## 1. Why this stack
 
-**TypeScript everywhere, with thin native shells.**
-
-| Layer | Technology | Why |
+| Requirement | Decision | Reason |
 |---|---|---|
-| Shared logic | **TypeScript** (no DOM deps) | One profile/fingerprint/sync implementation compiled into both clients. Same language I can test here with Vitest. |
-| Shared UI | **React 18 + Vite** | The control-plane UI is literally the same code inside Electron, inside the APK's WebView shell, and on Vercel. |
-| Desktop | **Electron** (bundled Chromium) + `electron-builder` → `.exe` | Only a *bundled* Chromium gives per-profile `BrowserWindow`/`session` isolation, request-header control, proxy-per-session, and preload injection. Tauri uses the OS WebView, which cannot do this reliably. |
-| Android | **Kotlin** native shell + Android `WebView` (+ a Capacitor-style bridge) | Electron does not exist on Android; a WebView with a JS bridge and per-profile data dirs is the practical equivalent. Kotlin gives control over UA, headers, cookie/storage partitioning, and JS injection before page load. |
-| Sync / data | **Supabase**: Postgres + Auth + Realtime (broadcast/presence) + Storage + Edge Functions | Realtime is a WebSocket bus both clients can hold open; RLS-scoped tables store profiles, devices, commands, and audit events. |
-| Control plane / API | **Next.js on Vercel** | Hosted dashboard, device management, webhooks, and download/update endpoints. Serverless routes validate and fan out commands. |
-| Tests | Vitest (unit), Playwright (Electron E2E), Supertest/Node (API), Gradle `test` (Kotlin) | All of the JS/TS side is runnable in this sandbox. |
-| Packaging | `electron-builder` (Windows runner) + Gradle/`assembleRelease` (Android runner) via **GitHub Actions** | The binaries are produced by CI, not by this Linux sandbox. |
+| One product on Windows + Android | **TypeScript shared core** + thin native shells | Profile model, fingerprint spec, consistency rules and sync protocol are written once and bundled into both clients. V8 (Electron) and ART (Android) derive byte-identical specs from the same seed. |
+| Professional, low-text UI | **React 18 + Vite** | The same control plane is embedded in Electron, in the APK's WebView, and deployed on Vercel. |
+| Real per-profile isolation on desktop | **Electron** with bundled Chromium | Only a bundled Chromium gives `session.fromPartition`, `ses.setProxy`, `webRequest` header control and CDP pre-navigation injection. Tauri's OS WebView cannot be partitioned this way. |
+| Isolation on Android | **Java + Android WebView** in a dedicated `:profile` process | `WebView.setDataDirectorySuffix()` is called before any WebView exists in that process; the process is killed on exit so every profile gets a fresh data directory. |
+| EXE ⇄ APK communication | **Supabase** Realtime + Postgres | Direct device-to-device traffic fails behind NAT, on changing mobile IPs and when one device is offline. Realtime carries commands; Postgres holds authoritative state behind RLS. |
+| Hosted control plane | **Vercel** | SEO landing page, downloads, device dashboard, and the same React UI as a website. |
+| Ship real binaries | **GitHub Actions** | This Linux sandbox has no JDK, Android SDK, Wine, X server or access to Electron release assets. CI has all of them. |
 
-## 2. How the EXE and APK actually communicate
+### Frameworks considered and rejected
 
-They never talk to each other directly (NAT, offline devices, different
-networks). Both connect to the same Supabase project:
+- **Flutter / React Native** — no controllable browser engine; their WebView plugins cannot partition storage or override headers at the network layer.
+- **Tauri** — uses the OS WebView (WebView2/WebKitGTK), so per-profile Chromium partitioning and CDP injection are unavailable.
+- **Capacitor** alone — fine as a wrapper, but its stock WebView plugin gives no per-profile data dirs. We use the same idea with a custom native bridge instead.
+- **Custom Chromium fork** — this is what AdsPower-tier stealth actually requires (see §6). Not feasible to build or verify in this environment; not claimed.
+
+## 2. System topology
 
 ```
-EXE (Electron) ─┐                        ┌─ Vercel / Next.js dashboard
-                ├─► Supabase Realtime ◄──┤
-APK (Android)  ─┘   channel joe:<ws>     └─ Edge Functions (validation, fan-out)
-                          │
-                     Postgres (RLS)
-                  profiles · devices · commands · events
+                         ┌──────────────────────────────┐
+                         │  Vercel (Next-free static)   │
+                         │  SEO site · control plane    │
+                         └──────────────┬───────────────┘
+                                        │ same React UI
+        ┌───────────────────────────────┼───────────────────────────────┐
+        │                               │                               │
+┌───────▼────────┐            ┌────────▼─────────┐            ┌────────▼─────────┐
+│ Electron (EXE) │            │ Supabase project │            │ Android (APK)    │
+│ main / preload │◄──────────►│ Realtime · RLS   │◄──────────►│ MainActivity     │
+│ REST :9333     │ broadcast  │ Postgres · Edge  │  PostgREST │ BrowserActivity  │
+└───────┬────────┘  joe-sync  │ Functions        │   poll     └────────┬────────┘
+        │                     └──────────────────┘                     │
+        │ session.fromPartition + CDP inject          :profile process  │
+        ▼                                                              ▼
+   Chromium per profile                                     WebView per profile
+   (cookies/cache/IP)                                       (data dir suffix)
 ```
 
-- **Realtime broadcast** (`joe-sync`): low-latency commands — `command:launch`,
-  `command:close`, `presence:heartbeat`, `profiles:reload`. See
-  `src/core/sync.ts` for the transport interface and the exact adapter shape.
-- **Postgres as truth**: profiles, revisions and device registry. Realtime is
-  notification only; every client re-reads state after a command, so a missed
-  message is recoverable.
-- **Auth + RLS**: both apps sign in as the same workspace user; a device token
-  is scoped to that workspace. No service-role key ever ships inside an APK/EXE.
-- **Vercel**: the human-facing dashboard and the HTTP endpoints (device
-  registration, update checks, audit). It writes to the same Supabase project —
-  it is *not* a middleman for device-to-device traffic.
-- **Supabase Storage**: encrypted profile bundles (cookies, localStorage) synced
-  on demand, with the encryption key held on-device.
+Both apps hold the same `workspace.json` shape. The desktop app stores it in
+Electron `userData`; the APK ships a generated copy in `assets/workspace.json`
+and reads it through `window.JoeBridge.getProfiles()`. Both then persist local
+edits to `localStorage`.
 
-## 3. Profile isolation model
+## 3. Profile isolation
 
-`src/core/profile.ts` shows the key idea: a profile is a **declaration** derived
-deterministically from `name + workspace seed`. Because the derivation is a pure
-FNV-1a hash over a fixed table of screens, timezones, locales and GPU strings,
-V8 (desktop) and ART (Android) produce *identical* parameters from the same
-seed. Each client then applies them with its own native mechanism:
+### Desktop (`apps/desktop/main.js`)
 
-- **Electron**: one `session.fromPartition('persist:' + profile.id)` per profile,
-  `webRequest.onBeforeSendHeaders` for UA/Accept-Language, `ses.setProxy`, and a
-  preload script injected with `contextIsolation` that patches the JS-visible
-  fingerprint surface (canvas/audio/WebGL/screen/navigator) from `noiseSeed`.
-- **Android**: one `WebView` data directory per profile, `WebSettings.userAgentString`,
-  `shouldInterceptRequest` for header overrides, and the *same* JS payload injected
-  via `evaluateJavascript` on `onPageStarted`.
+1. `session.fromPartition('persist:' + profile.id)` — separate cookies, cache, localStorage, IndexedDB.
+2. `ses.setProxy({ proxyRules })` — HTTP/HTTPS/SOCKS proxy bound to that session only.
+3. `webRequest.onBeforeSendHeaders` — `User-Agent`, `Accept-Language`, `Sec-CH-UA-*`, `DNT`.
+4. `webContents.debugger.attach('1.3')` + `Page.addScriptToEvaluateOnNewDocument` — injects `buildInjectionScript(spec)` into the **main world before any page script**, plus `Network.setUserAgentOverride` with matching `userAgentMetadata`.
+5. `preload.js` exposes a whitelisted `window.joe` bridge; `rest.js` serves a loopback REST API at `127.0.0.1:9333`.
 
-Isolation (cookies, cache, localStorage, IP) is per profile; the fingerprint
-surface is made consistent with the declared spec.
+### Android (`apps/android/...`)
 
-## 4. What this sandbox can and cannot do (verified)
+1. `MainActivity` writes the chosen profile id to `filesDir/profile_suffix.txt`, then starts `BrowserActivity` in the `:profile` process.
+2. `BrowserActivity.attachBaseContext()` calls `WebView.setDataDirectorySuffix("joe_" + id)` before any WebView is created.
+3. `onDestroy()` kills the process, guaranteeing a fresh data directory next time.
+4. `WebSettings.setUserAgentString`, then `onPageStarted` / `onPageFinished` run the **same** generated injection script from `assets/injection/<id>.js`.
+5. `SyncPoller` polls the Supabase `commands` table every 5 s and forwards commands to `window.__joeOnCommand` in the React UI.
+6. `SyncHttp` posts commands from the APK back to the EXE via PostgREST.
 
-| Capability | Here? |
+**Known Android limitation:** WebView-level proxying needs `androidx.webkit.ProxyController`. To keep the APK build dependency-free (plain SDK + `aapt2`/`d8`), Android profiles use the device network; proxy routing on mobile is expected at the VPN/system level. This is documented rather than hidden.
+
+## 4. Fingerprint consistency layer
+
+`packages/core/src/devices.ts` defines 8 **coherent device templates**. Each
+template is internally consistent (Windows UA ↔ D3D11 ANGLE renderer ↔ Win32
+platform ↔ desktop screen; Android UA ↔ ARM GPU ↔ Linux armv8l ↔ phone viewport
+↔ touch points). A generator never mixes random values, because modern engines
+hash the *whole* fingerprint and compare it against real-device datasets — a
+"Windows UA + Apple GPU + Bangladesh timezone + de-DE locale" profile is more
+suspicious than an unmodified browser.
+
+`createProfile()` adds region-matched locale selection, deterministic seeded
+variation, Client Hints derived from the same Chrome major, and a per-profile
+`noiseSeed`. `checkConsistency()` runs 24 checks and returns a score, grade and
+actionable hints.
+
+`packages/fingerprint/src/index.ts` builds one JS string that patches:
+navigator (UA, platform, vendor, hardware, languages, plugins, `userAgentData`,
+`webdriver`, DNT), screen/window geometry, `Intl.DateTimeFormat` +
+`getTimezoneOffset`, canvas + audio noise, WebGL `getParameter`/`getExtension`,
+WebRTC private-candidate stripping, media devices and speech voices, plus a
+`Function.prototype.toString` mask for installed getters.
+
+## 5. Data + sync
+
+Migration: `supabase/migrations/0001_joe_browser_init.sql` (also applied to the
+live project `rajxyaatbvlrxxzjntmo`). Tables: `workspaces`,
+`workspace_members`, `profiles`, `proxies`, `devices`, `commands`, `events`.
+All child tables are RLS-scoped to authenticated workspace members. Realtime
+publication covers `commands`, `events` and `devices`. The Edge Function
+`joe-command-validate` checks envelope shape, topics, devices, sequence and
+payload size before fan-out.
+
+`packages/sync/src/index.ts` defines `SyncTransport`, a loopback transport for
+tests/live preview, a Supabase Realtime adapter, and `SyncClient` with topic
+routing, directed messages, workspace isolation and bounded history.
+
+## 6. The honest ceiling
+
+Commercial "virtually undetectable" browsers patch the browser **engine**:
+
+- Donut Browser → proprietary Wayfern Chromium fork, fingerprint set in C++.
+- ShardBrowser → Chromium 157 patched for TLS/JA4, HTTP/3, WebGPU, Client Hints, font enumeration, V8/CDP side channels.
+- Camoufox → Firefox C++ injection; its docs explicitly note JS injection is detectable.
+- OVO Browser / Furi → source-level Chromium kernels.
+
+Joe Browser **does not ship a patched engine**. It therefore cannot claim parity
+with those products. Engine-level signals — TLS ClientHello / JA4, HTTP/2 frame
+order, QUIC behaviour, font rasterisation, GPU driver behaviour, CDP detector
+side channels — come from stock Chromium / Android WebView. The app labels these
+surfaces as `engine` in the Fingerprints view and in the profile detail, and the
+consistency checker calls them out. Building a real fork requires Chromium
+source, a full C++ toolchain and hours of compile time per platform; it is
+outside what this environment (or this project) can honestly deliver.
+
+The project is built for legitimate privacy, QA/testing, ad verification and
+separation of one's own accounts. It does not implement vendor-specific
+anti-bot circumvention, ban evasion, CAPTCHA solving or mass-account tooling.
+
+## 7. Environment constraints (verified in this sandbox)
+
+| Capability | Here |
 |---|---|
-| Run the React/Vite control-plane UI as a **live preview** (HTTP, proxied) | ✅ yes — `npm run dev`, host `0.0.0.0` |
-| Typecheck, unit-test, build, find bugs, fix, re-run | ✅ yes — `npm test`, `npm run build` |
-| Provision Supabase tables/migrations/Edge Functions, set Vercel env vars, deploy | ✅ yes — both connectors are enabled |
-| Run the Electron app with a visible GUI | ❌ no X server / no Xvfb / no Chromium binary |
-| Compile an APK | ❌ no JDK, no Android SDK, no Gradle, and `dl.google.com` (Android Maven) is blocked |
-| Package an NSIS `.exe` | ❌ no Wine; portable targets can be emitted but not executed |
-| Run an Android emulator / `adb` | ❌ no emulator, no KVM |
+| Live React/Vite preview, typecheck, 18 unit/SSR tests, headless-Chromium UI tests, real screenshots | ✅ |
+| Supabase migrations, Edge Functions, Vercel project + deploy via connectors | ✅ |
+| GitHub Actions → Windows EXE + Android APK + GitHub Release | ✅ |
+| Electron GUI, Xvfb, Wine, JDK, Android SDK, `dl.google.com`, Electron release assets, `uploads.github.com` | ❌ blocked locally; handled in CI |
 
-**Therefore:** binaries are produced by GitHub Actions (Windows runner for the
-EXE, Ubuntu runner with Android SDK for the APK) from source I write and commit
-here. I can fully verify the source, tests, the API, the database schema, the
-Vercel deployment, and the live web/control-plane UI. I cannot click through a
-desktop GUI or an emulator in this environment, and I will say so rather than
-pretend otherwise.
+The headless Chromium used for UI testing and screenshots comes from the npm
+package `@sparticuz/chromium` (its NSS libs are extracted from
+`bin/al2023.tar.br`); see `scripts/chromium.mjs`.
 
-## 5. Build order once requirements arrive
+## 8. Build order
 
-1. Lock the schema (`profiles`, `devices`, `commands`, `events`) + RLS policies via a Supabase migration.
-2. Ship `packages/core` (profiles, fingerprint payloads, sync client) with unit tests.
-3. Ship the shared React UI + Vercel control plane; deploy and hit the live URL.
-4. Ship the Electron desktop shell; test the main process headlessly with Playwright + `electron` in CI.
-5. Ship the Kotlin Android shell + WebView bridge; build the APK in CI.
-6. Wire Realtime end-to-end: EXE → Supabase → APK, with a real device-loopback test.
-7. GitHub Actions release workflow producing `.exe`, `.apk`, and SHA-256 checksums.
-
-## 6. Scope note
-
-I'll build profile isolation, privacy controls, and account separation for
-legitimate uses (QA, testing, managing multiple own accounts, privacy research).
-I won't implement features whose purpose is defrauding platforms, evading
-enforcement/bans, or impersonating real people. If a requested feature falls in
-that category, I'll flag it and suggest a legitimate alternative.
+1. `npm test` / `npm run test:java` / `npm run build` — shared core + UI.
+2. `npm run build:core` → `apps/desktop/core.cjs` (CommonJS bundle of the TS core).
+3. `npm run build:android-ui` (Vite with `base: './'`) + `npm run build:assets` → APK `assets/` (React UI, `workspace.json`, per-profile injection scripts).
+4. `npm run build:site` → static SEO site.
+5. GitHub Actions `release.yml`: Windows `electron-builder`, Ubuntu `scripts/build-apk.sh`, then a Release with binaries + checksums.

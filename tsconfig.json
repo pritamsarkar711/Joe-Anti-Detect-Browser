@@ -9,7 +9,14 @@
     "noEmit": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
-    "types": ["vite/client"]
+    "baseUrl": ".",
+    "paths": {
+      "@joe/core": ["packages/core/src/index.ts"],
+      "@joe/fingerprint": ["packages/fingerprint/src/index.ts"],
+      "@joe/sync": ["packages/sync/src/index.ts"],
+      "@/*": ["src/*"]
+    },
+    "types": ["vite/client", "node"]
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "tests", "packages", "vite.config.ts", "scripts"]
 }

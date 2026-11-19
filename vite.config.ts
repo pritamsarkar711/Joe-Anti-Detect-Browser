@@ -1,10 +1,21 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import { fileURLToPath, URL } from 'node:url';
+
+const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
-  // 0.0.0.0 + allowedHosts so the Arena live-preview proxy can reach the server.
-  server: { host: '0.0.0.0', port: 5173, allowedHosts: true },
+  resolve: {
+    alias: {
+      '@joe/core': r('./packages/core/src/index.ts'),
+      '@joe/fingerprint': r('./packages/fingerprint/src/index.ts'),
+      '@joe/sync': r('./packages/sync/src/index.ts'),
+      '@': r('./src'),
+    },
+  },
+  server: { host: '0.0.0.0', port: 5173, allowedHosts: true, strictPort: true },
   preview: { host: '0.0.0.0', port: 4173, allowedHosts: true },
-  test: { environment: 'node', include: ['src/**/*.test.{ts,tsx}'] },
+  build: { outDir: 'dist', chunkSizeWarningLimit: 900 },
+  test: { environment: 'node', include: ['tests/**/*.test.{ts,tsx}'] },
 });
