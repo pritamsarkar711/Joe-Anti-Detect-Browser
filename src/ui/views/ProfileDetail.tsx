@@ -1,143 +1,181 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
+import {
+  Box, Stack, Grid, Typography, Paper, Tabs, Tab, Chip, Divider, Select, MenuItem, Tooltip,
+} from '@mui/material';
 import { useStore } from '@/state/store';
-import { checkProfile, DEVICE_TEMPLATES, countryCode, proxyUrl, exportWorkspace, downloadFile } from '@joe/core';
-import { surfaces, buildInjectionScript } from '@joe/fingerprint';
-import { Icon } from '@/ui/Icons';
-import { Button, IconButton, Badge, Progress, Empty, Segmented } from '@/ui/Primitives';
+import {
+  checkProfile, profileQuality, REAL_DEVICE_PRESETS, geoForCountry,
+  getRealPreset, FINGERPRINT_DATA_SOURCE, downloadFile,
+} from '@joe/core';
+import { surfaces } from '@joe/fingerprint';
+import { Icon } from '../Icons';
+import { Official, CountryFlag } from '../Brand';
+import { Btn, IconBtn, Panel, Tag, ScoreRing, Empty, Field, Modal } from '../Primitives';
 
-type Tab = 'overview' | 'fingerprint' | 'network' | 'data';
+type TabKey = 'overview' | 'fingerprint' | 'network' | 'data' | 'devices';
+
+function osMark(os: string): string {
+  return os === 'Windows' ? 'windows' : os === 'macOS' ? 'apple' : os === 'Android' ? 'android' : 'linux';
+}
 
 export function ProfileDetail() {
   const s = useStore();
-  const [tab, setTab] = useState<Tab>('overview');
-  const p = s.profiles.find((x) => x.id === s.selectedId);
-  const report = useMemo(() => p ? checkProfile(p) : null, [p]);
-  const spec = p?.fingerprint;
+  const p = s.profiles.find((x) => x.id === s.selectedId) ?? null;
+  const [tab, setTab] = useState<TabKey>('overview');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  if (!p) return null;
 
-  if (!p || !report || !spec) return null;
+  const report = checkProfile(p);
+  const quality = profileQuality(p, s.profiles);
   const px = s.proxies.find((x) => x.id === p.proxyId);
-  const tpl = DEVICE_TEMPLATES.find((t) => t.id === p.templateId);
-  const rows = surfaces(spec);
+  const geo = px ? geoForCountry(px.country) : null;
+  const real = p.realId ? getRealPreset(p.realId) : undefined;
+  const close = () => s.setSelectedId(null);
 
-  const duplicate = () => {
-    s.addProfiles([{ ...structuredClone(p), id: `${p.id}_copy_${Date.now().toString(36)}`, name: `${p.name} (copy)`, status: 'ready', createdAt: new Date().toISOString(), lastLaunchedAt: null, revision: 1 }]);
-    s.toast('Profile duplicated'); s.setSelectedId(null);
-  };
-  const exportOne = () => { downloadFile(`${p.name.replace(/\s+/g, '-').toLowerCase()}.json`, JSON.stringify(exportWorkspace([p], px ? [px] : [], [p.group]), null, 2)); s.toast('Profile exported'); };
-  const copyScript = () => { navigator.clipboard?.writeText(buildInjectionScript(spec)); s.toast('Injection script copied'); };
+  const exportProfile = () => { downloadFile(`${p.name.replace(/\s+/g, '_')}.json`, JSON.stringify(p, null, 2)); s.toast('Profile exported'); };
 
   return (
-    <div className="drawer-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) s.setSelectedId(null); }}>
-      <aside className="drawer drawer-wide" role="dialog" aria-label="Profile details">
-        <div className="drawer-head">
-          <div className="detail-title">
-            <span className={`os-badge big os-${p.os.toLowerCase()}`}>{p.os === 'Windows' ? '⊞' : p.os === 'macOS' ? '⌘' : p.os === 'Android' ? '◧' : '◇'}</span>
-            <div><h2>{p.name}</h2><p>{p.group} · rev {p.revision} · {p.id}</p></div>
-          </div>
-          <div className="detail-actions">
-            <IconButton icon="copy" label="Duplicate" onClick={duplicate} />
-            <IconButton icon="download" label="Export" onClick={exportOne} />
-            <IconButton icon="close" label="Close" onClick={() => s.setSelectedId(null)} />
-          </div>
-        </div>
+    <>
+      <Modal
+        open onClose={close} width={780} title={p.name} subtitle={`${p.group} · rev ${p.revision}`}
+        actions={<>
+          <Btn variant="danger" icon="trash" onClick={() => setConfirmDelete(true)}>Delete</Btn>
+          <Box sx={{ flex: 1 }} />
+          <Btn icon="download" onClick={exportProfile}>Export</Btn>
+          <Btn variant="primary" icon={p.status === 'running' ? 'stop' : 'play'} onClick={() => s.setStatus([p.id], p.status === 'running' ? 'stopped' : 'running')}>{p.status === 'running' ? 'Stop' : 'Launch'}</Btn>
+        </>}
+      >
+        <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto" sx={{ borderBottom: '1px solid', borderColor: 'divider', mb: 2 }}>
+          <Tab value="overview" label="Overview" />
+          <Tab value="fingerprint" label="Fingerprint" />
+          <Tab value="network" label="Network" />
+          <Tab value="data" label="Data" />
+          <Tab value="devices" label="Observed devices" />
+        </Tabs>
 
-        <div className="detail-toolbar">
-          <Segmented value={tab} onChange={setTab} options={[
-            { value: 'overview', label: 'Overview' }, { value: 'fingerprint', label: 'Fingerprint' },
-            { value: 'network', label: 'Network' }, { value: 'data', label: 'Data' },
-          ]} />
-          <div className="detail-launch">
-            <Button icon={p.status === 'running' ? 'stop' : 'play'} variant={p.status === 'running' ? 'outline' : 'primary'} size="sm" onClick={() => s.setStatus([p.id], p.status === 'running' ? 'stopped' : 'running', p.status === 'running' ? null : s.settings.defaultDevice)}>
-              {p.status === 'running' ? 'Stop' : 'Launch'}
-            </Button>
-          </div>
-        </div>
+        {tab === 'overview' && (
+          <Stack spacing={2}>
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              <Stack direction="row" alignItems="center" spacing={2}>
+                <ScoreRing value={report.score} size={76} />
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography variant="h3">Consistency grade {report.grade}</Typography>
+                  <Typography variant="body2" color="text.secondary">{report.checked} checks · {report.issues.filter((i) => i.severity === 'critical').length} critical · {report.issues.filter((i) => i.severity === 'warning').length} warnings</Typography>
+                </Box>
+                <Box sx={{ textAlign: 'right' }}>
+                  <Typography variant="overline" color="text.secondary" sx={{ display: 'block' }}>Uniqueness</Typography>
+                  <Typography variant="h3" color="primary.main">{quality.uniqueness}%</Typography>
+                  <Typography variant="caption" color="text.secondary">{quality.entropyBits} bits</Typography>
+                </Box>
+              </Stack>
+            </Paper>
 
-        <div className="drawer-body">
-          {tab === 'overview' && (
-            <div className="detail-stack">
-              <div className="score-card">
-                <div className="score-ring" style={{ background: `conic-gradient(var(--accent) 0deg, var(--teal) ${report.score * 3.6}deg, var(--surface-3) ${report.score * 3.6}deg)` }}><strong>{report.score}</strong><span>/ 100</span></div>
-                <div><h3>Consistency grade {report.grade}</h3><p>{report.checked} checks · {report.issues.filter((i) => i.severity === 'critical').length} critical · {report.issues.filter((i) => i.severity === 'warning').length} warnings</p><Progress value={report.score} /></div>
-              </div>
-              <div className="kv-grid">
-                <div><span>Device</span><strong>{tpl?.label}</strong></div>
-                <div><span>Engine</span><strong>Chromium {spec.chromeMajor}</strong></div>
-                <div><span>Screen</span><strong>{spec.screen.width}×{spec.screen.height} @ {spec.screen.dpr}x</strong></div>
-                <div><span>Timezone</span><strong>{spec.timezone}</strong></div>
-                <div><span>Locale</span><strong>{spec.locale}</strong></div>
-                <div><span>Hardware</span><strong>{spec.cores} cores · {spec.memoryGb} GB</strong></div>
-                <div><span>Status</span><strong><Badge tone={p.status === 'running' ? 'ok' : 'neutral'} dot>{p.status}</Badge></strong></div>
-                <div><span>Last launch</span><strong>{p.lastLaunchedAt ? new Date(p.lastLaunchedAt).toLocaleString() : 'Never'}</strong></div>
-              </div>
-              <div className="drawer-section-head"><h3>Checks</h3><span>{report.issues.length} results</span></div>
-              <div className="issue-list">
-                {report.issues.map((i) => (
-                  <div className={`issue issue-${i.severity}`} key={i.id}>
-                    <Icon name={i.severity === 'critical' ? 'warn' : i.severity === 'warning' ? 'info' : 'shield'} size={15} />
-                    <div><strong>{i.surface}</strong><span>{i.message}</span><em>{i.hint}</em></div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+            <Grid container spacing={2}>
+              {[
+                ['Device', `${p.fingerprint.uaClientHints.platform} · Chrome ${p.fingerprint.chromeMajor}`],
+                ['Screen', `${p.fingerprint.screen.width}×${p.fingerprint.screen.height} @${p.fingerprint.screen.dpr}`],
+                ['Timezone', p.fingerprint.timezone],
+                ['Locale', p.fingerprint.locale],
+                ['Hardware', `${p.fingerprint.cores} cores · ${p.fingerprint.memoryGb} GB`],
+                ['Status', p.status],
+              ].map(([k, v]) => (
+                <Grid item xs={6} sm={4} key={k}>
+                  <Typography variant="overline" color="text.secondary" sx={{ display: 'block' }}>{k}</Typography>
+                  <Typography sx={{ fontSize: '0.84rem', fontWeight: 500, wordBreak: 'break-word' }}>{v}</Typography>
+                </Grid>
+              ))}
+            </Grid>
 
-          {tab === 'fingerprint' && (
-            <div className="detail-stack">
-              <div className="notice"><Icon name="info" size={16} /><span>JS-level surfaces are patched per profile. TLS/JA4, HTTP/2 and font rasterisation are engine-level and need a patched Chromium build.</span></div>
-              <div className="surface-list">
-                {rows.map((r) => (
-                  <div className="surface-row" key={r.key}>
-                    <span>{r.label}</span><code>{r.value}</code>
-                    <Badge tone={r.level === 'js' ? 'ok' : 'neutral'}>{r.level}</Badge>
-                  </div>
-                ))}
-              </div>
-              <div className="drawer-section-head"><h3>Injection payload</h3><span>{buildInjectionScript(spec).length} bytes</span></div>
-              <div className="code-block"><code>{buildInjectionScript(spec).slice(0, 420)}…</code></div>
-              <Button icon="copy" size="sm" onClick={copyScript}>Copy full script</Button>
-            </div>
-          )}
+            {real && <Paper variant="outlined" sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.2 }}>
+              <Box sx={{ width: 34, height: 34, borderRadius: '50%', display: 'grid', placeItems: 'center', bgcolor: 'rgba(216,27,96,0.10)' }}><Official name={osMark(real.os)} size={19} color="#D81B60" /></Box>
+              <Box sx={{ minWidth: 0 }}><Typography sx={{ fontSize: '0.82rem', fontWeight: 600 }}>{real.label}</Typography><Typography variant="caption" color="text.secondary">{FINGERPRINT_DATA_SOURCE}</Typography></Box>
+              <Box sx={{ flex: 1 }} /><Tag tone="primary">Observed</Tag>
+            </Paper>}
 
-          {tab === 'network' && (
-            <div className="detail-stack">
-              {px ? (
-                <div className="proxy-card">
-                  <div className="proxy-flag">{countryCode(px.country)}</div>
-                  <div><strong>{px.name}</strong><code>{proxyUrl(px)}</code></div>
-                  <Badge tone={px.status === 'ok' ? 'ok' : px.status === 'failed' ? 'err' : 'neutral'} dot>{px.status}</Badge>
-                </div>
-              ) : <Empty icon="globe" title="Direct connection" hint="No proxy assigned to this profile." />}
-              <div className="toggle-row"><div><strong>WebRTC mode</strong><span>{spec.webrtcMode === 'replace' ? 'Private / mDNS candidates stripped' : spec.webrtcMode}</span></div><Badge tone="violet">{spec.webrtcMode}</Badge></div>
-              <div className="toggle-row"><div><strong>Do Not Track</strong><span>navigator.doNotTrack + header</span></div><Badge tone={spec.doNotTrack ? 'ok' : 'neutral'}>{spec.doNotTrack ? 'on' : 'off'}</Badge></div>
-              <div className="form-grid">
-                <label className="field"><span className="field-label">Assign proxy</span>
-                  <select className="input" value={p.proxyId ?? ''} onChange={(e) => s.updateProfile(p.id, { proxyId: e.target.value || null })}>
-                    <option value="">Direct</option>{s.proxies.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-                  </select>
-                </label>
-              </div>
-            </div>
-          )}
+            <Box>
+              <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+                <Typography variant="h6">Checks</Typography>
+                <Typography variant="caption" color="text.secondary">{report.issues.length} results</Typography>
+              </Stack>
+              {report.issues.length === 0 ? <Empty icon="verified" title="No contradictions found" /> : report.issues.map((i) => (
+                <Paper key={i.id} variant="outlined" sx={{ p: 1.3, mb: 0.9, display: 'flex', gap: 1.2, alignItems: 'flex-start' }}>
+                  <Icon name={i.severity === 'critical' ? 'err' : i.severity === 'warning' ? 'warn' : 'info'} size={20} color={i.severity === 'info' ? undefined : '#D81B60'} />
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography sx={{ fontSize: '0.82rem', fontWeight: 600 }}>{i.surface}</Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>{i.message}</Typography>
+                    <Typography variant="caption" color="text.secondary">{i.hint}</Typography>
+                  </Box>
+                  <Box sx={{ flex: 1 }} />
+                  <Tag tone={i.severity === 'critical' ? 'err' : i.severity === 'warning' ? 'warn' : 'neutral'}>{i.severity}</Tag>
+                </Paper>
+              ))}
+            </Box>
+          </Stack>
+        )}
 
-          {tab === 'data' && (
-            <div className="detail-stack">
-              <div className="notice"><Icon name="shield" size={16} /><span>Each profile gets its own cookie store, localStorage, cache and IndexedDB partition. Nothing is shared between profiles.</span></div>
-              <div className="kv-grid">
-                <div><span>Created</span><strong>{new Date(p.createdAt).toLocaleString()}</strong></div>
-                <div><span>Updated</span><strong>{new Date(p.updatedAt).toLocaleString()}</strong></div>
-                <div><span>Notes</span><strong>{p.notes || '—'}</strong></div>
-                <div><span>Device</span><strong>{p.device ?? 'not launched'}</strong></div>
-              </div>
-              <div className="button-row">
-                <Button icon="download" size="sm" onClick={exportOne}>Export profile</Button>
-                <Button icon="copy" size="sm" onClick={duplicate}>Duplicate</Button>
-                <Button icon="trash" size="sm" variant="danger" onClick={() => { s.deleteProfiles([p.id]); s.toast('Profile deleted'); }}>Delete</Button>
-              </div>
-            </div>
-          )}
-        </div>
-      </aside>
-    </div>
+        {tab === 'fingerprint' && (
+          <Stack spacing={1}>
+            <Typography variant="body2" color="text.secondary">Every JavaScript surface comes from one observed device. Engine surfaces stay native.</Typography>
+            {surfaces(p.fingerprint).map((x) => (
+              <Paper key={x.key} variant="outlined" sx={{ p: 1.2, display: 'flex', alignItems: 'center', gap: 1.2 }}>
+                <Box sx={{ width: 30, height: 30, borderRadius: '50%', display: 'grid', placeItems: 'center', bgcolor: 'rgba(216,27,96,0.10)', color: 'primary.main', flex: 'none' }}><Icon name={x.level === 'js' ? 'code' : 'build'} size={17} /></Box>
+                <Box sx={{ minWidth: 0, flex: 1 }}><Typography sx={{ fontSize: '0.8rem', fontWeight: 600 }}>{x.label}</Typography><Typography variant="caption" color="text.secondary" sx={{ wordBreak: 'break-all' }}>{x.value}</Typography></Box>
+                <Tag tone={x.level === 'js' ? 'primary' : 'neutral'}>{x.level === 'js' ? 'JS' : 'Engine'}</Tag>
+              </Paper>
+            ))}
+          </Stack>
+        )}
+
+        {tab === 'network' && (
+          <Stack spacing={2}>
+            {px ? (
+              <Paper variant="outlined" sx={{ p: 1.8, display: 'flex', alignItems: 'center', gap: 1.4 }}>
+                <CountryFlag code={px.country} size={38} title={geo?.name} />
+                <Box sx={{ minWidth: 0, flex: 1 }}><Typography sx={{ fontWeight: 600, fontSize: '0.86rem' }}>{px.name}</Typography><Typography variant="caption" color="text.secondary">{px.protocol} · {px.host}:{px.port}</Typography></Box>
+                <Tag tone={px.status === 'ok' ? 'primary' : 'neutral'}>{px.status}</Tag>
+              </Paper>
+            ) : <Empty icon="globe" title="Direct connection" hint="No proxy assigned." />}
+            <Paper variant="outlined" sx={{ p: 1.5 }}>
+              <Stack direction="row" alignItems="center" spacing={1.2} sx={{ mb: 1 }}><Icon name="language" size={21} /><Typography sx={{ fontWeight: 600, fontSize: '0.84rem' }}>Proxy geo match</Typography></Stack>
+              <Typography variant="caption" color="text.secondary">Timezone, locale, Accept Language and WebRTC follow the exit country.</Typography>
+              <Box sx={{ mt: 1.4 }}><Btn size="small" icon="globe" onClick={() => { s.geoMatch([p.id]); s.toast('Geo match applied'); }} disabled={!px}>Match region</Btn></Box>
+            </Paper>
+            <Grid container spacing={2}>
+              <Grid item xs={6}><Typography variant="overline" color="text.secondary" sx={{ display: 'block' }}>WebRTC</Typography><Typography sx={{ fontSize: '0.84rem' }}>{p.fingerprint.webrtcMode}</Typography></Grid>
+              <Grid item xs={6}><Typography variant="overline" color="text.secondary" sx={{ display: 'block' }}>Do Not Track</Typography><Typography sx={{ fontSize: '0.84rem' }}>{p.fingerprint.doNotTrack ?? 'off'}</Typography></Grid>
+            </Grid>
+          </Stack>
+        )}
+
+        {tab === 'data' && (
+          <Stack spacing={2}>
+            <Field label="Name" value={p.name} onChange={(v) => s.updateProfile(p.id, { name: v })} />
+            <Field label="Start URL" value={p.startUrl} onChange={(v) => s.updateProfile(p.id, { startUrl: v })} placeholder="https://example.com" />
+            <Field label="Notes" value={p.notes} onChange={(v) => s.updateProfile(p.id, { notes: v })} multiline rows={2} />
+            <Field label="Cookies (JSON or name=value pairs)" value={p.cookies} onChange={(v) => s.updateProfile(p.id, { cookies: v })} multiline rows={3} />
+            <Field label="Unpacked extensions (one path per line)" value={p.extensions.join('\n')} onChange={(v) => s.updateProfile(p.id, { extensions: v.split('\n').map((x) => x.trim()).filter(Boolean) })} multiline rows={2} />
+            <Stack direction="row" spacing={1}><Btn icon="copy" onClick={() => s.duplicateProfiles([p.id])}>Duplicate</Btn><Btn icon="globe" onClick={() => s.geoMatch([p.id])}>Geo match</Btn></Stack>
+          </Stack>
+        )}
+
+        {tab === 'devices' && (
+          <Stack spacing={1}>
+            <Typography variant="body2" color="text.secondary">{FINGERPRINT_DATA_SOURCE}. Each entry is one coherent observed device.</Typography>
+            {REAL_DEVICE_PRESETS.map((r) => (
+              <Paper key={r.id} variant="outlined" sx={{ p: 1.2, display: 'flex', alignItems: 'center', gap: 1.2 }}>
+                <Box sx={{ width: 30, height: 30, borderRadius: '50%', display: 'grid', placeItems: 'center', bgcolor: 'rgba(216,27,96,0.10)', flex: 'none' }}><Official name={osMark(r.os)} size={17} color="#D81B60" /></Box>
+                <Box sx={{ minWidth: 0, flex: 1 }}><Typography sx={{ fontSize: '0.8rem', fontWeight: 600 }}>{r.label}</Typography><Typography variant="caption" color="text.secondary">Chrome {r.chromeMajor} · {r.screen.width}×{r.screen.height}</Typography></Box>
+                <Tooltip title={r.gpu.renderer}><span><Chip label={`${r.cores} cores`} size="small" variant="outlined" /></span></Tooltip>
+                <Btn size="small" onClick={() => { s.applyPreset([p.id], r.id); s.toast('Observed device applied'); }}>Apply</Btn>
+              </Paper>
+            ))}
+          </Stack>
+        )}
+      </Modal>
+
+      <Modal open={confirmDelete} onClose={() => setConfirmDelete(false)} width={380} title="Delete profile" actions={<><Btn onClick={() => setConfirmDelete(false)}>Cancel</Btn><Btn variant="danger" icon="trash" onClick={() => { s.deleteProfiles([p.id]); setConfirmDelete(false); close(); }}>Delete</Btn></>}>
+        <Typography variant="body2">This removes the profile from this workspace.</Typography>
+      </Modal>
+    </>
   );
 }

@@ -1,141 +1,174 @@
 import { useMemo, useState } from 'react';
+import {
+  Box, Stack, Grid, Typography, Paper, TextField, Select, MenuItem, Chip, Accordion,
+  AccordionSummary, AccordionDetails, Divider, ToggleButton, ToggleButtonGroup, InputAdornment,
+} from '@mui/material';
 import { useStore } from '@/state/store';
-import { DEVICE_TEMPLATES, TEMPLATE_GROUPS, createProfile, generateProfiles, checkConsistency, countryCode, type OSType } from '@joe/core';
-import { Icon } from '@/ui/Icons';
-import { Button, IconButton, Field, Badge, Toggle, Progress } from '@/ui/Primitives';
+import {
+  DEVICE_TEMPLATES, TEMPLATE_GROUPS as GROUPS, REAL_DEVICE_PRESETS,
+  generateProfiles, parseCookies, FINGERPRINT_DATA_SOURCE, type BrowserProfile,
+} from '@joe/core';
+import { Icon } from '../Icons';
+import { Official, CountryFlag } from '../Brand';
+import { Btn, Field, Modal } from '../Primitives';
 
-const OS_ICON: Record<OSType, string> = { Windows: '⊞', macOS: '⌘', Android: '◧', Linux: '◇' };
+function osMark(os: string): string {
+  return os === 'Windows' ? 'windows' : os === 'macOS' ? 'apple' : os === 'Android' ? 'android' : 'linux';
+}
 
 export function CreateProfile() {
   const s = useStore();
   const [name, setName] = useState('');
-  const [count, setCount] = useState(1);
-  const [templateId, setTemplateId] = useState(DEVICE_TEMPLATES[0].id);
+  const [qty, setQty] = useState(1);
   const [group, setGroup] = useState('Default');
-  const [newGroup, setNewGroup] = useState('');
   const [tags, setTags] = useState('');
-  const [proxyId, setProxyId] = useState<string>('');
+  const [preset, setPreset] = useState('win11-intel');
+  const [mode, setMode] = useState<'template' | 'real'>('template');
+  const [proxyId, setProxyId] = useState('');
+  const [startUrl, setStartUrl] = useState('');
   const [notes, setNotes] = useState('');
-  const [advanced, setAdvanced] = useState(false);
-  const [tz, setTz] = useState('');
+  const [cookies, setCookies] = useState('');
+  const [extensions, setExtensions] = useState('');
+  const [timezone, setTimezone] = useState('');
   const [locale, setLocale] = useState('');
-  const [webrtc, setWebrtc] = useState<'disabled' | 'proxy' | 'replace'>('replace');
-  const [dnt, setDnt] = useState(false);
+  const [cores, setCores] = useState('');
+  const [memory, setMemory] = useState('');
 
-  const template = DEVICE_TEMPLATES.find((t) => t.id === templateId)!;
-  const input = useMemo(() => ({
-    name: name || 'New profile',
-    templateId,
-    group,
-    tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
-    proxyId: proxyId || null,
-    notes,
-    overrides: {
-      ...(tz ? { timezone: tz } : {}), ...(locale ? { locale } : {}),
-      webrtcMode: webrtc, doNotTrack: dnt ? '1' : null,
-    },
-  }), [name, templateId, group, tags, proxyId, notes, tz, locale, webrtc, dnt]);
+  const selectedReal = useMemo(() => REAL_DEVICE_PRESETS.find((r) => r.id === preset), [preset]);
+  const cookieCount = useMemo(() => parseCookies(cookies).length, [cookies]);
+  const extensionPaths = useMemo(() => extensions.split('\n').map((x) => x.trim()).filter(Boolean), [extensions]);
 
-  const preview = useMemo(() => createProfile(input, 1), [input]);
-  const report = useMemo(() => checkConsistency(preview.fingerprint), [preview]);
-
+  const close = () => s.setCreateOpen(false);
   const submit = () => {
-    const g = newGroup.trim() || group;
-    if (newGroup.trim()) s.addGroup(g);
-    const { name: _ignored, ...base } = { ...input, group: g, seed: `ws::${Date.now()}` };
-    const made = count === 1
-      ? [s.createOne({ ...input, group: g, name: name.trim() || `Profile ${s.profiles.length + 1}` })]
-      : generateProfiles(count, base, name.trim() || 'Profile');
-    if (count > 1) s.addProfiles(made);
-    s.toast(`${made.length} profile${made.length === 1 ? '' : 's'} created`);
-    s.setCreateOpen(false);
-    setName(''); setCount(1); setNewGroup(''); setTags(''); setNotes('');
+    const base = {
+      seed: name || `joe::${Date.now()}`,
+      group, tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
+      proxyId: proxyId || null, notes, startUrl, cookies,
+      extensions: extensionPaths,
+      ...(mode === 'real' ? { realPresetId: preset } : { templateId: preset }),
+      overrides: {
+        ...(timezone ? { timezone } : {}), ...(locale ? { locale } : {}),
+        ...(cores ? { cores: Number(cores) } : {}), ...(memory ? { memoryGb: Number(memory) } : {}),
+      },
+    };
+    const created: BrowserProfile[] = qty > 1
+      ? generateProfiles(qty, base, name || 'Profile')
+      : [s.createOne({ ...base, name: name || 'New profile' })];
+    if (qty > 1) s.addProfiles(created);
+    s.toast(`${created.length} profiles created`);
+    setName(''); setQty(1); setCookies(''); setExtensions(''); setTimezone(''); setLocale(''); setCores(''); setMemory('');
+    close();
   };
 
-  if (!s.createOpen) return null;
   return (
-    <div className="drawer-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) s.setCreateOpen(false); }}>
-      <aside className="drawer drawer-wide" role="dialog" aria-label="Create profile">
-        <div className="drawer-head">
-          <div><h2>New profile</h2><p>Coherent device · isolated storage · own proxy</p></div>
-          <IconButton icon="close" label="Close" onClick={() => s.setCreateOpen(false)} />
-        </div>
+    <Modal
+      open={s.createOpen} onClose={close} width={720}
+      title="New profile" subtitle="One coherent device per profile. No limits."
+      actions={<><Btn onClick={close}>Cancel</Btn><Btn variant="primary" icon="plus" onClick={submit}>Create profile</Btn></>}
+    >
+      <Stack spacing={2}>
+        <Grid container spacing={2}>
+          <Grid item xs={12} sm={8}><Field label="Name" value={name} onChange={setName} placeholder="Storefront US" /></Grid>
+          <Grid item xs={12} sm={4}><Field label="Quantity" value={String(qty)} onChange={(v) => setQty(Math.max(1, Math.min(2000, Number(v) || 1)))} type="number" helper="No limit" /></Grid>
+          <Grid item xs={12} sm={6}><Field label="Group" value={group} onChange={setGroup} /></Grid>
+          <Grid item xs={12} sm={6}><Field label="Tags" value={tags} onChange={setTags} placeholder="priority, review" /></Grid>
+        </Grid>
 
-        <div className="drawer-body">
-          <div className="form-grid">
-            <Field label="Name"><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Storefront · US" /></Field>
-            <Field label="Quantity" hint="No limit"><input className="input" type="number" min={1} max={100000} value={count} onChange={(e) => setCount(Math.max(1, Math.min(100000, Number(e.target.value) || 1)))} /></Field>
-            <Field label="Group">
-              <div className="inline-field">
-                <select className="input" value={group} onChange={(e) => setGroup(e.target.value)}>{s.groups.map((g) => <option key={g}>{g}</option>)}</select>
-                <input className="input" value={newGroup} onChange={(e) => setNewGroup(e.target.value)} placeholder="+ new" />
-              </div>
-            </Field>
-            <Field label="Tags"><input className="input" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="priority, review" /></Field>
-          </div>
+        <Box>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+            <Typography variant="h6">Device</Typography>
+            <ToggleButtonGroup size="small" exclusive value={mode} onChange={(_, v) => { if (!v) return; setMode(v); setPreset(v === 'real' ? REAL_DEVICE_PRESETS[0].id : DEVICE_TEMPLATES[0].id); }}>
+              <ToggleButton value="template" sx={{ px: 1.4, fontSize: '0.75rem' }}>Templates</ToggleButton>
+              <ToggleButton value="real" sx={{ px: 1.4, fontSize: '0.75rem' }}>Observed devices</ToggleButton>
+            </ToggleButtonGroup>
+          </Stack>
 
-          <div className="drawer-section">
-            <div className="drawer-section-head"><h3>Device template</h3><span>{DEVICE_TEMPLATES.length} coherent presets</span></div>
-            <div className="template-groups">
-              {TEMPLATE_GROUPS.map(({ os, items }) => (
-                <div key={os} className="template-group">
-                  <span className="template-os">{OS_ICON[os]} {os}</span>
-                  <div className="template-cards">
-                    {items.map((t) => (
-                      <button key={t.id} className={`template-card ${templateId === t.id ? 'active' : ''}`} onClick={() => setTemplateId(t.id)}>
-                        <span className="tc-top"><Icon name={t.mobile ? 'phone' : 'monitor'} size={16} /><i className="tc-check"><Icon name="check" size={11} /></i></span>
-                        <strong>{t.label}</strong>
-                        <em>{t.screens[0].width}×{t.screens[0].height} · {t.cores[0]} cores</em>
-                      </button>
+          {mode === 'template' ? (
+            <Stack spacing={1.4}>
+              {GROUPS.map((g) => (
+                <Box key={g.os}>
+                  <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 0.6 }}>{g.os}</Typography>
+                  <Grid container spacing={1}>
+                    {g.items.map((t) => (
+                      <Grid item xs={12} sm={6} key={t.id}>
+                        <Paper
+                          variant="outlined" onClick={() => setPreset(t.id)}
+                          sx={{ p: 1.3, cursor: 'pointer', borderColor: preset === t.id ? 'primary.main' : 'divider', bgcolor: preset === t.id ? 'rgba(216,27,96,0.06)' : 'transparent', display: 'flex', alignItems: 'center', gap: 1.2 }}
+                        >
+                          <Box sx={{ width: 34, height: 34, borderRadius: '50%', display: 'grid', placeItems: 'center', bgcolor: 'rgba(216,27,96,0.10)', flex: 'none' }}>
+                            <Official name={osMark(t.os)} size={19} color="#D81B60" />
+                          </Box>
+                          <Box sx={{ minWidth: 0, flex: 1 }}>
+                            <Typography sx={{ fontSize: '0.82rem', fontWeight: 600 }}>{t.label}</Typography>
+                            <Typography variant="caption" color="text.secondary">Chrome {t.chromeMajor} · {t.screens[0].width}×{t.screens[0].height}</Typography>
+                          </Box>
+                          {preset === t.id && <Icon name="check" size={20} color="#D81B60" />}
+                        </Paper>
+                      </Grid>
                     ))}
-                  </div>
-                </div>
+                  </Grid>
+                </Box>
               ))}
-            </div>
-          </div>
-
-          <div className="drawer-section">
-            <div className="drawer-section-head"><h3>Network</h3><span>proxy per profile</span></div>
-            <div className="form-grid">
-              <Field label="Proxy">
-                <select className="input" value={proxyId} onChange={(e) => setProxyId(e.target.value)}>
-                  <option value="">Direct connection</option>
-                  {s.proxies.map((p) => <option key={p.id} value={p.id}>[{countryCode(p.country)}] {p.name} · {p.protocol}://{p.host}:{p.port}</option>)}
-                </select>
-              </Field>
-              <Field label="Notes"><input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional note" /></Field>
-            </div>
-          </div>
-
-          <button className="advanced-toggle" onClick={() => setAdvanced((v) => !v)}>
-            <Icon name="sliders" size={15} /><span>Advanced fingerprint overrides</span><Icon name={advanced ? 'chevronDown' : 'chevron'} size={14} />
-          </button>
-          {advanced && (
-            <div className="advanced-body">
-              <div className="form-grid">
-                <Field label="Timezone"><select className="input" value={tz} onChange={(e) => setTz(e.target.value)}><option value="">Auto ({template.timezones[0]})</option>{template.timezones.map((z) => <option key={z}>{z}</option>)}</select></Field>
-                <Field label="Locale"><select className="input" value={locale} onChange={(e) => setLocale(e.target.value)}><option value="">Auto ({template.locales[0]})</option>{template.locales.map((l) => <option key={l}>{l}</option>)}</select></Field>
-              </div>
-              <div className="toggle-row"><div><strong>WebRTC local-IP protection</strong><span>Strip private / mDNS candidates</span></div><select className="input compact" value={webrtc} onChange={(e) => setWebrtc(e.target.value as typeof webrtc)}><option value="replace">Replace candidates</option><option value="proxy">Proxy only</option><option value="disabled">Disable WebRTC</option></select></div>
-              <div className="toggle-row"><div><strong>Do Not Track</strong><span>Send DNT: 1 header</span></div><Toggle checked={dnt} onChange={setDnt} label="Do Not Track" /></div>
-            </div>
+              <Typography variant="caption" color="text.secondary">{FINGERPRINT_DATA_SOURCE}</Typography>
+            </Stack>
+          ) : (
+            <Box>
+              <Select fullWidth size="small" value={preset} onChange={(e) => setPreset(e.target.value)} sx={{ mb: 1.2 }}>
+                {REAL_DEVICE_PRESETS.map((r) => <MenuItem key={r.id} value={r.id}>{r.label} · Chrome {r.chromeMajor} · {r.screen.width}×{r.screen.height}</MenuItem>)}
+              </Select>
+              {selectedReal && (
+                <Paper variant="outlined" sx={{ p: 1.4 }}>
+                  <Stack direction="row" spacing={1.2} alignItems="center" sx={{ mb: 1 }}>
+                    <Box sx={{ width: 32, height: 32, borderRadius: '50%', display: 'grid', placeItems: 'center', bgcolor: 'rgba(216,27,96,0.10)' }}><Official name={osMark(selectedReal.os)} size={18} color="#D81B60" /></Box>
+                    <Typography sx={{ fontWeight: 600, fontSize: '0.84rem' }}>{selectedReal.label}</Typography>
+                    <Chip label="Observed" size="small" color="primary" />
+                  </Stack>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', wordBreak: 'break-all' }}>{selectedReal.userAgent}</Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', wordBreak: 'break-all' }}>{selectedReal.gpu.renderer}</Typography>
+                  <Typography variant="caption" color="text.secondary">{selectedReal.fonts.length} fonts · {selectedReal.cores} cores · {selectedReal.memoryGb} GB</Typography>
+                </Paper>
+              )}
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.8 }}>{FINGERPRINT_DATA_SOURCE}</Typography>
+            </Box>
           )}
+        </Box>
 
-          <div className="preview-card">
-            <div className="preview-head"><span className="preview-icon"><Icon name="shield" size={16} /></span><div><strong>Fingerprint preview</strong><em>{preview.fingerprint.uaClientHints.platform} · Chrome {preview.fingerprint.chromeMajor} · {preview.fingerprint.screen.width}×{preview.fingerprint.screen.height}</em></div><Badge tone={report.score >= 90 ? 'ok' : 'warn'}>{report.grade} · {report.score}</Badge></div>
-            <Progress value={report.score} />
-            <div className="preview-chips">
-              <span>{preview.fingerprint.timezone}</span><span>{preview.fingerprint.locale}</span><span>{preview.fingerprint.cores} cores</span><span>{preview.fingerprint.memoryGb} GB</span><span>{preview.fingerprint.gpu.vendor}</span>
-            </div>
-            {report.issues.filter((i) => i.severity !== 'info').slice(0, 2).map((i) => <div className="preview-warn" key={i.id}><Icon name="warn" size={13} />{i.message}</div>)}
-          </div>
-        </div>
+        <Divider />
+        <Grid container spacing={2}>
+          <Grid item xs={12} sm={6}>
+            <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 0.6 }}>Network</Typography>
+            <Select fullWidth size="small" value={proxyId} onChange={(e) => setProxyId(e.target.value)}>
+              <MenuItem value="">Direct connection</MenuItem>
+              {s.proxies.map((p) => <MenuItem key={p.id} value={p.id}>{p.name} · {p.host}:{p.port}</MenuItem>)}
+            </Select>
+            {proxyId && <Stack direction="row" alignItems="center" spacing={0.8} sx={{ mt: 0.8 }}><CountryFlag code={s.proxies.find((p) => p.id === proxyId)?.country ?? 'XX'} size={17} /><Typography variant="caption" color="text.secondary">Geo match available after creation</Typography></Stack>}
+          </Grid>
+          <Grid item xs={12} sm={6}><Field label="Start URL" value={startUrl} onChange={setStartUrl} placeholder="https://example.com" /></Grid>
+        </Grid>
 
-        <div className="drawer-foot">
-          <span className="muted">{count} profile{count === 1 ? '' : 's'} · isolated storage</span>
-          <div><Button onClick={() => s.setCreateOpen(false)}>Cancel</Button><Button icon="spark" variant="primary" onClick={submit}>Create {count > 1 ? `${count} profiles` : 'profile'}</Button></div>
-        </div>
-      </aside>
-    </div>
+        <Accordion disableGutters elevation={0} sx={{ border: '1px solid', borderColor: 'divider', '&:before': { display: 'none' } }}>
+          <AccordionSummary expandIcon={<Icon name="chevronDown" size={20} />} sx={{ minHeight: 40 }}>
+            <Stack direction="row" alignItems="center" spacing={1}><Icon name="tune" size={20} /><Typography sx={{ fontSize: '0.84rem', fontWeight: 600 }}>Advanced</Typography></Stack>
+          </AccordionSummary>
+          <AccordionDetails>
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}><Field label="Timezone" value={timezone} onChange={setTimezone} placeholder="Europe/Berlin" /></Grid>
+              <Grid item xs={12} sm={6}><Field label="Locale" value={locale} onChange={setLocale} placeholder="de-DE" /></Grid>
+              <Grid item xs={6} sm={3}><Field label="Cores" value={cores} onChange={setCores} placeholder="8" /></Grid>
+              <Grid item xs={6} sm={3}><Field label="Memory GB" value={memory} onChange={setMemory} placeholder="16" /></Grid>
+              <Grid item xs={12}><Field label="Notes" value={notes} onChange={setNotes} placeholder="Optional note" multiline rows={2} /></Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth size="small" label={`Cookies${cookieCount ? ` (${cookieCount})` : ''}`} value={cookies} onChange={(e) => setCookies(e.target.value)} placeholder="Paste JSON or name=value pairs" multiline rows={2} InputLabelProps={{ shrink: true }}
+                  InputProps={{ startAdornment: <InputAdornment position="start"><Icon name="cookie" size={19} /></InputAdornment> }} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth size="small" label={`Extensions${extensionPaths.length ? ` (${extensionPaths.length})` : ''}`} value={extensions} onChange={(e) => setExtensions(e.target.value)} placeholder="One unpacked extension path per line" multiline rows={2} InputLabelProps={{ shrink: true }}
+                  InputProps={{ startAdornment: <InputAdornment position="start"><Icon name="extension" size={19} /></InputAdornment> }} />
+              </Grid>
+            </Grid>
+          </AccordionDetails>
+        </Accordion>
+      </Stack>
+    </Modal>
   );
 }

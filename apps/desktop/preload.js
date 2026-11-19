@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld('joe', {
     launch: (id) => invoke('profiles:launch', id),
     stop: (id) => invoke('profiles:stop', id),
     consistency: (id) => invoke('profiles:consistency', id),
+    quality: (id) => invoke('profiles:quality', id),
+    surfaces: (id) => invoke('profiles:surfaces', id),
     script: (id) => invoke('profiles:script', id),
   },
   proxies: {

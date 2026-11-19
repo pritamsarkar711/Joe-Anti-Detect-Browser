@@ -61,11 +61,17 @@ export function checkConsistency(spec: FingerprintSpec): ConsistencyReport {
   const locale = spec.locale;
   const expectedPrefix: Record<string, string[]> = {
     'America/': ['en-US', 'en-CA', 'es-MX', 'pt-BR'],
-    'Europe/': ['en-GB', 'de-DE', 'fr-FR', 'nl-NL', 'en-IE'],
+    'Europe/': ['en-GB', 'de-DE', 'fr-FR', 'nl-NL', 'en-IE', 'es-ES', 'it-IT', 'sv-SE', 'pl-PL', 'tr-TR', 'uk-UA', 'de-CH'],
+    'Africa/': ['en-ZA', 'en-GB'],
     'Asia/Dhaka': ['bn-BD', 'en-US'],
     'Asia/Kolkata': ['en-IN', 'hi-IN', 'en-US'],
     'Asia/Singapore': ['en-SG', 'zh-SG', 'en-US'],
     'Asia/Dubai': ['ar-AE', 'en-US'],
+    'Asia/Tokyo': ['ja-JP', 'en-US'],
+    'Asia/Seoul': ['ko-KR', 'en-US'],
+    'Asia/Hong_Kong': ['zh-HK', 'en-US'],
+    'Australia/': ['en-AU', 'en-GB'],
+    'Pacific/Auckland': ['en-NZ', 'en-GB'],
   };
   const key = Object.keys(expectedPrefix).find((k) => zone.startsWith(k));
   if (key && !expectedPrefix[key].includes(locale) && !locale.startsWith('en')) {
@@ -80,6 +86,15 @@ export function checkConsistency(spec: FingerprintSpec): ConsistencyReport {
   if (spec.cores < 2 || spec.cores > 64) add('warning', 'Hardware', 'Implausible hardwareConcurrency', 'Use 2–32 cores');
   if (spec.uaClientHints.fullVersion.split('.')[0] !== String(spec.chromeMajor)) {
     add('critical', 'Client Hints', 'Sec-CH-UA-Full-Version does not match UA major', 'Derive both from the template');
+  }
+  if (!new RegExp(`Chrome/${spec.chromeMajor}\\.`).test(spec.userAgent) && !new RegExp(`Edg/${spec.chromeMajor}\\.`).test(spec.userAgent)) {
+    add('critical', 'Client Hints', 'UA major does not match Client Hints major', 'Derive both from one observed device');
+  }
+  if (spec.uaClientHints.brands.length && !spec.uaClientHints.brands.some((b) => b.version === String(spec.chromeMajor))) {
+    add('critical', 'Client Hints', 'Sec-CH-UA brand versions do not match UA', 'Use the brands from the same real device');
+  }
+  if (spec.timezoneOffset === 0 && /^(America|Asia|Australia)\//.test(spec.timezone)) {
+    add('warning', 'Timezone', 'UTC offset does not match the declared timezone', 'Apply proxy geo matching');
   }
 
   // 6. Known leak surfaces

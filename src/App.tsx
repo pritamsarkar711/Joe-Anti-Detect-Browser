@@ -1,9 +1,14 @@
+import { useMemo } from 'react';
+import { CssBaseline, ThemeProvider } from '@mui/material';
 import { StoreProvider, useStore } from '@/state/store';
-import { Shell, Toasts } from '@/ui/Shell';
+import { Shell } from '@/ui/Shell';
+import { makeTheme } from './theme';
+import { Toasts } from '@/ui/Primitives';
 import { ProfilesView } from '@/ui/views/ProfilesView';
 import { ProxiesView } from '@/ui/views/ProxiesView';
 import { DevicesView } from '@/ui/views/DevicesView';
 import { FingerprintsView } from '@/ui/views/FingerprintsView';
+import { TestsView } from '@/ui/views/TestsView';
 import { ActivityView } from '@/ui/views/ActivityView';
 import { SettingsView } from '@/ui/views/SettingsView';
 import { CreateProfile } from '@/ui/views/CreateProfile';
@@ -15,19 +20,27 @@ function Router() {
     case 'proxies': return <ProxiesView />;
     case 'devices': return <DevicesView />;
     case 'fingerprints': return <FingerprintsView />;
+    case 'tests': return <TestsView />;
     case 'activity': return <ActivityView />;
     case 'settings': return <SettingsView />;
     default: return <ProfilesView />;
   }
 }
 
-export default function App() {
+function ThemedApp() {
+  const s = useStore();
+  const theme = useMemo(() => makeTheme(s.settings.theme), [s.settings.theme]);
   return (
-    <StoreProvider>
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
       <Shell><Router /></Shell>
       <CreateProfile />
       <ProfileDetail />
       <Toasts />
-    </StoreProvider>
+    </ThemeProvider>
   );
+}
+
+export default function App() {
+  return <StoreProvider><ThemedApp /></StoreProvider>;
 }

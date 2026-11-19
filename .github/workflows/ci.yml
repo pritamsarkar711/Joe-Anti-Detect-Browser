@@ -27,6 +27,10 @@ jobs:
         run: npm run build:assets
       - name: Build SEO site
         run: npm run build:site
+      - name: Verify SEO metadata, provenance and license honesty
+        run: npm run test:site
+      - name: Verify fingerprint payload self-tests
+        run: npm run test:fingerprint
       - name: Verify generated assets
         run: |
           test -f apps/android/assets/workspace.json

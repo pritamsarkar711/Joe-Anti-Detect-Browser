@@ -1,0 +1,421 @@
+{
+  "generatedAt": "2026-11-19T13:47:44.380Z",
+  "base": "http://localhost:5173",
+  "report": [
+    {
+      "device": "Google Pixel 8",
+      "key": "google-pixel",
+      "viewport": "412×915",
+      "dpr": 2.625,
+      "checks": [
+        {
+          "name": "no horizontal page overflow",
+          "pass": true,
+          "extra": "0px"
+        },
+        {
+          "name": "no controls outside the viewport",
+          "pass": true,
+          "extra": ""
+        },
+        {
+          "name": "no clipped text",
+          "pass": true,
+          "extra": ""
+        },
+        {
+          "name": "no overlapping tap targets",
+          "pass": true,
+          "extra": "0"
+        },
+        {
+          "name": "tap targets are usable",
+          "pass": true,
+          "extra": "0 small"
+        },
+        {
+          "name": "mobile bottom navigation present",
+          "pass": true,
+          "extra": ""
+        },
+        {
+          "name": "Profiles renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Proxies renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Devices renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Fingerprints renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Leak check renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Activity renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Settings renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "create dialog fits the viewport",
+          "pass": true,
+          "extra": "380×851"
+        },
+        {
+          "name": "no console errors",
+          "pass": true,
+          "extra": ""
+        }
+      ]
+    },
+    {
+      "device": "Xiaomi 13",
+      "key": "xiaomi",
+      "viewport": "393×852",
+      "dpr": 3,
+      "checks": [
+        {
+          "name": "no horizontal page overflow",
+          "pass": true,
+          "extra": "0px"
+        },
+        {
+          "name": "no controls outside the viewport",
+          "pass": true,
+          "extra": ""
+        },
+        {
+          "name": "no clipped text",
+          "pass": true,
+          "extra": ""
+        },
+        {
+          "name": "no overlapping tap targets",
+          "pass": true,
+          "extra": "0"
+        },
+        {
+          "name": "tap targets are usable",
+          "pass": true,
+          "extra": "0 small"
+        },
+        {
+          "name": "mobile bottom navigation present",
+          "pass": true,
+          "extra": ""
+        },
+        {
+          "name": "Profiles renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Proxies renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Devices renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Fingerprints renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Leak check renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Activity renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Settings renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "create dialog fits the viewport",
+          "pass": true,
+          "extra": "361×788"
+        },
+        {
+          "name": "no console errors",
+          "pass": true,
+          "extra": ""
+        }
+      ]
+    },
+    {
+      "device": "Samsung Galaxy S23",
+      "key": "samsung-galaxy",
+      "viewport": "360×780",
+      "dpr": 3,
+      "checks": [
+        {
+          "name": "no horizontal page overflow",
+          "pass": true,
+          "extra": "0px"
+        },
+        {
+          "name": "no controls outside the viewport",
+          "pass": true,
+          "extra": ""
+        },
+        {
+          "name": "no clipped text",
+          "pass": true,
+          "extra": ""
+        },
+        {
+          "name": "no overlapping tap targets",
+          "pass": true,
+          "extra": "0"
+        },
+        {
+          "name": "tap targets are usable",
+          "pass": true,
+          "extra": "0 small"
+        },
+        {
+          "name": "mobile bottom navigation present",
+          "pass": true,
+          "extra": ""
+        },
+        {
+          "name": "Profiles renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Proxies renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Devices renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Fingerprints renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Leak check renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Activity renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Settings renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "create dialog fits the viewport",
+          "pass": true,
+          "extra": "328×716"
+        },
+        {
+          "name": "no console errors",
+          "pass": true,
+          "extra": ""
+        }
+      ]
+    },
+    {
+      "device": "OPPO Find X6",
+      "key": "oppo",
+      "viewport": "412×915",
+      "dpr": 2.625,
+      "checks": [
+        {
+          "name": "no horizontal page overflow",
+          "pass": true,
+          "extra": "0px"
+        },
+        {
+          "name": "no controls outside the viewport",
+          "pass": true,
+          "extra": ""
+        },
+        {
+          "name": "no clipped text",
+          "pass": true,
+          "extra": ""
+        },
+        {
+          "name": "no overlapping tap targets",
+          "pass": true,
+          "extra": "0"
+        },
+        {
+          "name": "tap targets are usable",
+          "pass": true,
+          "extra": "0 small"
+        },
+        {
+          "name": "mobile bottom navigation present",
+          "pass": true,
+          "extra": ""
+        },
+        {
+          "name": "Profiles renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Proxies renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Devices renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Fingerprints renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Leak check renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Activity renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Settings renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "create dialog fits the viewport",
+          "pass": true,
+          "extra": "380×851"
+        },
+        {
+          "name": "no console errors",
+          "pass": true,
+          "extra": ""
+        }
+      ]
+    },
+    {
+      "device": "Vivo X90",
+      "key": "vivo",
+      "viewport": "393×873",
+      "dpr": 3,
+      "checks": [
+        {
+          "name": "no horizontal page overflow",
+          "pass": true,
+          "extra": "0px"
+        },
+        {
+          "name": "no controls outside the viewport",
+          "pass": true,
+          "extra": ""
+        },
+        {
+          "name": "no clipped text",
+          "pass": true,
+          "extra": ""
+        },
+        {
+          "name": "no overlapping tap targets",
+          "pass": true,
+          "extra": "0"
+        },
+        {
+          "name": "tap targets are usable",
+          "pass": true,
+          "extra": "0 small"
+        },
+        {
+          "name": "mobile bottom navigation present",
+          "pass": true,
+          "extra": ""
+        },
+        {
+          "name": "Profiles renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Proxies renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Devices renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Fingerprints renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Leak check renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Activity renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "Settings renders cleanly",
+          "pass": true,
+          "extra": "overflow 0, outside 0, overlaps 0, clipped 0"
+        },
+        {
+          "name": "create dialog fits the viewport",
+          "pass": true,
+          "extra": "361×809"
+        },
+        {
+          "name": "no console errors",
+          "pass": true,
+          "extra": ""
+        }
+      ]
+    }
+  ]
+}

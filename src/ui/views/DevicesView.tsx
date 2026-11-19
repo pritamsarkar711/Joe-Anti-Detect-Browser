@@ -1,62 +1,103 @@
+import {
+  Box, Stack, Grid, Typography, Paper, Switch, Chip, Divider, useMediaQuery, useTheme,
+} from '@mui/material';
 import { useStore } from '@/state/store';
-import { Icon } from '@/ui/Icons';
-import { Button, Badge, Toggle, Stat } from '@/ui/Primitives';
 import { DEVICE_LABEL } from './labels';
+import { Icon } from '../Icons';
+import { Official } from '../Brand';
+import { Btn, SectionHead, Panel, StatCard, Tag } from '../Primitives';
 
 export function DevicesView() {
   const s = useStore();
+  const theme = useTheme();
+  const mobile = useMediaQuery(theme.breakpoints.down('md'));
   const running = s.profiles.filter((p) => p.status === 'running').length;
 
   return (
-    <div className="view">
-      <div className="stat-row">
-        <Stat label="Connected" value={s.devices.filter((d) => d.online).length} icon="devices" />
-        <Stat label="Running profiles" value={running} icon="play" tone="teal" />
-        <Stat label="Messages" value={s.syncEvents.length} icon="activity" tone="blue" />
-        <Stat label="Channel" value="joe-sync" icon="link" tone="amber" />
-      </div>
+    <Box>
+      <SectionHead kicker="SYNC" title="Devices" hint="Desktop, Android and control plane." />
 
-      <div className="device-grid">
+      <Grid container spacing={2} sx={{ mb: 2.5 }}>
+        {[
+          { icon: 'devices' as const, label: 'Connected', value: s.devices.filter((d) => d.online).length },
+          { icon: 'play' as const, label: 'Running profiles', value: running },
+          { icon: 'sync' as const, label: 'Messages', value: s.syncEvents.length },
+          { icon: 'cloud' as const, label: 'Channel', value: 'Joe sync' },
+        ].map((c) => <Grid item xs={6} md={3} key={c.label}><StatCard icon={c.icon} label={c.label} value={c.value} /></Grid>)}
+      </Grid>
+
+      <Grid container spacing={2} sx={{ mb: 2.5 }}>
         {s.devices.map((d) => (
-          <div className={`device-card ${d.online ? '' : 'offline'}`} key={d.kind}>
-            <div className="dc-top">
-              <span className="dc-icon"><Icon name={d.kind === 'android-apk' ? 'phone' : 'monitor'} size={22} /></span>
-              <Badge tone={d.online ? 'ok' : 'neutral'} dot>{d.online ? 'online' : 'offline'}</Badge>
-            </div>
-            <h3>{d.name}</h3><p>{DEVICE_LABEL[d.kind]} · {d.platform} · v{d.appVersion}</p>
-            <div className="dc-foot"><span>{d.profiles} running profiles</span><Toggle checked={d.online} onChange={(v) => s.setDeviceOnline(d.kind, v)} label={`Toggle ${d.name}`} /></div>
-          </div>
+          <Grid item xs={12} sm={6} lg={4} key={d.kind}>
+            <Paper variant="outlined" sx={{ p: 2, height: '100%' }}>
+              <Stack direction="row" alignItems="center" spacing={1.2} sx={{ mb: 1.6 }}>
+                <Box sx={{ width: 38, height: 38, borderRadius: '50%', display: 'grid', placeItems: 'center', bgcolor: 'rgba(216,27,96,0.10)', color: 'primary.main', flex: 'none' }}>
+                  <Icon name={d.kind === 'android-apk' ? 'phone' : d.kind === 'web-dashboard' ? 'web' : 'monitor'} size={22} />
+                </Box>
+                <Box sx={{ minWidth: 0, flex: 1 }}><Typography sx={{ fontWeight: 600, fontSize: '0.86rem' }}>{d.name}</Typography><Typography variant="caption" color="text.secondary">{DEVICE_LABEL[d.kind]} · {d.platform}</Typography></Box>
+                <Tag tone={d.online ? 'primary' : 'neutral'}>{d.online ? 'online' : 'offline'}</Tag>
+              </Stack>
+              <Divider sx={{ mb: 1.4 }} />
+              <Stack direction="row" alignItems="center" justifyContent="space-between">
+                <Typography variant="caption" color="text.secondary">{d.profiles} running · v{d.appVersion}</Typography>
+                <Switch size="small" checked={d.online} onChange={(e) => s.setDeviceOnline(d.kind, e.target.checked)} inputProps={{ 'aria-label': `Toggle ${d.name}` }} />
+              </Stack>
+            </Paper>
+          </Grid>
         ))}
-        <div className="device-card cloud">
-          <div className="dc-top"><span className="dc-icon"><Icon name="globe" size={22} /></span><Badge tone="violet" dot>ready</Badge></div>
-          <h3>Control plane</h3><p>Vercel · Supabase Realtime · Postgres</p>
-          <div className="dc-foot"><span>{s.settings.workspace} workspace</span><Icon name="check" size={16} className="ok-icon" /></div>
-        </div>
-      </div>
+        <Grid item xs={12} sm={6} lg={4}>
+          <Paper variant="outlined" sx={{ p: 2, height: '100%' }}>
+            <Stack direction="row" alignItems="center" spacing={1.2} sx={{ mb: 1.6 }}>
+              <Box sx={{ width: 38, height: 38, borderRadius: '50%', display: 'grid', placeItems: 'center', bgcolor: 'rgba(216,27,96,0.10)', flex: 'none' }}><Official name="supabase" size={22} color="#D81B60" /></Box>
+              <Box sx={{ minWidth: 0, flex: 1 }}><Typography sx={{ fontWeight: 600, fontSize: '0.86rem' }}>Control plane</Typography><Typography variant="caption" color="text.secondary">Realtime · Postgres</Typography></Box>
+              <Tag tone="primary">ready</Tag>
+            </Stack>
+            <Divider sx={{ mb: 1.4 }} />
+            <Stack direction="row" alignItems="center" spacing={0.9}>
+              <Official name="vercel" size={17} color="#D81B60" />
+              <Typography variant="caption" color="text.secondary">{s.settings.workspace} workspace</Typography>
+            </Stack>
+          </Paper>
+        </Grid>
+      </Grid>
 
-      <div className="panel">
-        <div className="toolbar">
-          <div className="toolbar-left"><div className="panel-title"><Icon name="bolt" size={17} /><h2>Send command</h2></div></div>
-          <div className="toolbar-right">
-            <Button icon="play" size="sm" onClick={() => { void s.send('command:launch', { profileIds: s.profiles.slice(0, 1).map((p) => p.id) }, 'android-apk'); s.toast('Launch command sent'); }}>Launch on APK</Button>
-            <Button icon="refresh" size="sm" onClick={() => { void s.send('profiles:changed', { count: s.profiles.length }); s.toast('Reload broadcast'); }}>Reload profiles</Button>
-            <Button icon="activity" size="sm" onClick={() => { void s.send('presence:heartbeat', { online: true }); s.toast('Heartbeat sent'); }}>Heartbeat</Button>
-          </div>
-        </div>
-        <div className="sync-flow"><span className="flow-node"><Icon name="monitor" size={15} />EXE</span><i /><span className="flow-node mid"><Icon name="globe" size={15} />Supabase Realtime</span><i /><span className="flow-node"><Icon name="phone" size={15} />APK</span></div>
-        <div className="event-log">
-          <div className="event-head"><span>Time</span><span>Topic</span><span>Route</span><span>Payload</span></div>
-          {s.syncEvents.length === 0 && <div className="event-empty">No messages yet — send a command above.</div>}
-          {s.syncEvents.slice(0, 24).map((e) => (
-            <div className="event-row" key={e.id}>
-              <time>{new Date(e.sentAt).toLocaleTimeString()}</time>
-              <code className="topic">{e.topic}</code>
-              <span>{DEVICE_LABEL[e.from]} → {e.to ? DEVICE_LABEL[e.to] : 'all'}</span>
-              <code>{JSON.stringify(e.payload).slice(0, 60)}</code>
-            </div>
+      <Panel title="Commands" action={<Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 0.8 }}>
+        <Btn size="small" icon="play" onClick={() => { void s.send('command:launch', { profileIds: s.profiles.slice(0, 1).map((p) => p.id) }, 'android-apk'); s.toast('Launch command sent'); }}>Launch on APK</Btn>
+        <Btn size="small" icon="refresh" onClick={() => { void s.send('command:reload', { count: s.profiles.length }); s.toast('Reload broadcast'); }}>Reload</Btn>
+        <Btn size="small" icon="sync" onClick={() => { void s.send('presence:heartbeat', { online: true }); s.toast('Heartbeat sent'); }}>Heartbeat</Btn>
+      </Stack>}>
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 0.8 }}>
+          {[
+            { icon: 'monitor' as const, label: 'Desktop', mark: 'electron' },
+            { icon: 'globe' as const, label: 'Supabase', mark: 'supabase' },
+            { icon: 'phone' as const, label: 'Android', mark: 'android' },
+          ].map((n, i) => (
+            <Stack direction="row" alignItems="center" spacing={1} key={n.label}>
+              {i > 0 && <Icon name="arrow" size={18} color="#D81B60" />}
+              <Paper variant="outlined" sx={{ px: 1.2, py: 0.8, display: 'flex', alignItems: 'center', gap: 0.8 }}>
+                <Official name={n.mark} size={17} color="#D81B60" /><Typography variant="caption">{n.label}</Typography>
+              </Paper>
+            </Stack>
           ))}
-        </div>
-      </div>
-    </div>
+        </Stack>
+        <Box sx={{ overflowX: 'auto', border: '1px solid', borderColor: 'divider' }}>
+          <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr><th>Time</th><th>Topic</th><th>Route</th><th>Payload</th></tr></thead>
+            <tbody>
+              {s.syncEvents.length === 0 && <tr><td colSpan={4}><Typography variant="caption" color="text.secondary" sx={{ p: 2, display: 'block', textAlign: 'center' }}>No messages yet. Send a command above.</Typography></td></tr>}
+              {s.syncEvents.slice(0, 24).map((e) => (
+                <tr key={e.id}>
+                  <td><Typography variant="caption">{new Date(e.sentAt).toLocaleTimeString()}</Typography></td>
+                  <td><Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{e.topic}</Typography></td>
+                  <td><Typography variant="caption">{DEVICE_LABEL[e.from]} to {e.to ? DEVICE_LABEL[e.to] : 'all'}</Typography></td>
+                  <td><Typography variant="caption" sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>{JSON.stringify(e.payload).slice(0, 72)}</Typography></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Box>
+        {mobile && <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>Swipe the table horizontally to inspect every column.</Typography>}
+      </Panel>
+    </Box>
   );
 }

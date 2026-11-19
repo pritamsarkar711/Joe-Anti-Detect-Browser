@@ -18,3 +18,4 @@ coverage/
 *.tsbuildinfo
 .DS_Store
 /probe/
+image-search/

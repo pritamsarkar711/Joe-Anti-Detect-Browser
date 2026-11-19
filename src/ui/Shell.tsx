@@ -1,149 +1,214 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  AppBar, Toolbar, Box, Drawer, List, ListItemButton, ListItemIcon, ListItemText,
+  Typography, Stack, Badge, Avatar, BottomNavigation, BottomNavigationAction,
+  Dialog, DialogContent, TextField, InputAdornment, Divider, Chip, useMediaQuery,
+  useTheme, IconButton, Tooltip,
+} from '@mui/material';
 import { useStore, type View } from '@/state/store';
-import { Icon, Logo, type IconName } from './Icons';
-import { Button, IconButton, Badge } from './Primitives';
+import { Icon, type IconName } from './Icons';
+import { Logo } from './Brand';
+import { Btn } from './Primitives';
 
 const NAV: Array<{ id: View; label: string; icon: IconName }> = [
-  { id: 'profiles', label: 'Profiles', icon: 'grid' },
+  { id: 'profiles', label: 'Profiles', icon: 'layers' },
   { id: 'proxies', label: 'Proxies', icon: 'globe' },
   { id: 'devices', label: 'Devices', icon: 'devices' },
-  { id: 'fingerprints', label: 'Fingerprints', icon: 'fingerprint' },
+  { id: 'fingerprints', label: 'Fingerprints', icon: 'fingerprints' },
+  { id: 'tests', label: 'Leak check', icon: 'factcheck' },
   { id: 'activity', label: 'Activity', icon: 'activity' },
   { id: 'settings', label: 'Settings', icon: 'settings' },
 ];
 
+const MOBILE_NAV: View[] = ['profiles', 'proxies', 'devices', 'fingerprints'];
+const DRAWER_W = 232;
+
+function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
+  const s = useStore();
+  const [groupsOpen, setGroupsOpen] = useState(true);
+  return (
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ px: 2.5, py: 2.25, borderBottom: '1px solid', borderColor: 'divider' }}>
+        <Logo size={30} />
+      </Box>
+      <Box sx={{ flex: 1, overflowY: 'auto', px: 1.25, py: 1.5 }}>
+        <Typography variant="overline" color="text.secondary" sx={{ px: 1.5, display: 'block', mb: 0.6 }}>Workspace</Typography>
+        <List disablePadding>
+          {NAV.map((n) => (
+            <ListItemButton
+              key={n.id} selected={s.view === n.id}
+              onClick={() => { s.setView(n.id); onNavigate?.(); }}
+              sx={{ mb: 0.35, '&.Mui-selected': { bgcolor: 'rgba(216,27,96,0.10)', color: 'primary.main' } }}
+            >
+              <ListItemIcon sx={{ minWidth: 36, color: 'inherit' }}><Icon name={n.icon} size={22} /></ListItemIcon>
+              <ListItemText primary={n.label} primaryTypographyProps={{ fontSize: '0.84rem', fontWeight: s.view === n.id ? 600 : 500 }} />
+              {n.id === 'profiles' && <Chip label={s.profiles.length} size="small" sx={{ height: 19, fontSize: '0.66rem' }} />}
+              {n.id === 'proxies' && <Chip label={s.proxies.length} size="small" sx={{ height: 19, fontSize: '0.66rem' }} />}
+            </ListItemButton>
+          ))}
+        </List>
+
+        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1.5, mt: 2.5, mb: 0.5 }}>
+          <Typography variant="overline" color="text.secondary">Groups</Typography>
+          <Tooltip title="Toggle groups"><span>
+            <IconButton size="small" onClick={() => setGroupsOpen((v) => !v)}>
+              <Icon name={groupsOpen ? 'chevronDown' : 'chevronRight'} size={18} />
+            </IconButton>
+          </span></Tooltip>
+        </Stack>
+        {groupsOpen && (
+          <List disablePadding>
+            {s.groups.slice(0, 9).map((g) => (
+              <ListItemButton key={g} sx={{ mb: 0.2, py: 0.45 }} onClick={() => { s.setView('profiles'); onNavigate?.(); }}>
+                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: g === 'Default' ? 'primary.main' : 'text.disabled', mr: 1.5, flex: 'none' }} />
+                <ListItemText primary={g} primaryTypographyProps={{ fontSize: '0.79rem' }} />
+                <Typography variant="caption" color="text.secondary">{s.profiles.filter((p) => p.group === g).length}</Typography>
+              </ListItemButton>
+            ))}
+          </List>
+        )}
+      </Box>
+      <Box sx={{ px: 2.25, py: 1.6, borderTop: '1px solid', borderColor: 'divider' }}>
+        <Stack direction="row" alignItems="center" spacing={1}>
+          <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: 'primary.main' }} />
+          <Typography variant="caption" color="text.secondary">Sync active</Typography>
+          <Box sx={{ flex: 1 }} />
+          <Typography variant="caption" color="text.secondary">v{s.appVersion}</Typography>
+        </Stack>
+      </Box>
+    </Box>
+  );
+}
+
+function Palette() {
+  const s = useStore();
+  const [q, setQ] = useState('');
+  const results = useMemo(() => {
+    const items: Array<{ label: string; hint: string; icon: IconName; run: () => void }> = [
+      ...NAV.map((n) => ({ label: n.label, hint: 'Go to', icon: n.icon, run: () => s.setView(n.id) })),
+      { label: 'New profile', hint: 'Create', icon: 'plus', run: () => s.setCreateOpen(true) },
+      { label: 'Toggle theme', hint: 'Appearance', icon: s.settings.theme === 'dark' ? 'sun' : 'moon', run: () => s.setSetting('theme', s.settings.theme === 'dark' ? 'light' : 'dark') },
+      { label: 'Export workspace', hint: 'Data', icon: 'download', run: () => { const d = s.exportData(); void d; s.toast('Workspace exported'); } },
+    ];
+    const needle = q.trim().toLowerCase();
+    return needle ? items.filter((i) => i.label.toLowerCase().includes(needle)) : items;
+  }, [q, s]);
+  return (
+    <Dialog open={s.paletteOpen} onClose={() => s.setPaletteOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { alignSelf: 'flex-start', mt: '10vh' } }}>
+      <DialogContent sx={{ p: 0 }}>
+        <TextField
+          autoFocus fullWidth variant="standard" placeholder="Search profiles and actions"
+          value={q} onChange={(e) => setQ(e.target.value)}
+          InputProps={{ startAdornment: <InputAdornment position="start"><Icon name="search" size={22} /></InputAdornment>, disableUnderline: true, sx: { px: 2, py: 1.5 } }}
+        />
+        <Divider />
+        <List sx={{ p: 1, maxHeight: 340, overflowY: 'auto' }}>
+          {results.map((r) => (
+            <ListItemButton key={r.label} onClick={() => { r.run(); s.setPaletteOpen(false); setQ(''); }} sx={{ borderRadius: 1 }}>
+              <ListItemIcon sx={{ minWidth: 38 }}><Icon name={r.icon} size={21} /></ListItemIcon>
+              <ListItemText primary={r.label} primaryTypographyProps={{ fontSize: '0.86rem' }} />
+              <Typography variant="caption" color="text.secondary">{r.hint}</Typography>
+            </ListItemButton>
+          ))}
+        </List>
+        <Box sx={{ px: 2, py: 1.2, borderTop: '1px solid', borderColor: 'divider' }}>
+          <Typography variant="caption" color="text.secondary">Enter to open · Esc to close</Typography>
+        </Box>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function Shell({ children }: { children: ReactNode }) {
   const s = useStore();
-  const [collapsed, setCollapsed] = useState(false);
-  const [palette, setPalette] = useState(false);
-  const [query, setQuery] = useState('');
-  const [groupFilter, setGroupFilter] = useState('All');
-  const searchRef = useRef<HTMLInputElement>(null);
+  const theme = useTheme();
+  const mobile = useMediaQuery(theme.breakpoints.down('md'));
+  const [drawer, setDrawer] = useState(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette(true); }
-      if (e.key === 'Escape') { setPalette(false); s.setSelectedId(null); s.setCreateOpen(false); }
-      if ((e.metaKey || e.ctrlKey) && e.key === '\\') { e.preventDefault(); setCollapsed((v) => !v); }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault(); s.setPaletteOpen(true);
+      }
+      if (e.key === 'Escape') { s.setPaletteOpen(false); setDrawer(false); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [s]);
 
-  useEffect(() => { if (palette) setTimeout(() => searchRef.current?.focus(), 20); }, [palette]);
-
-  const results = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const nav = NAV.filter((n) => !q || n.label.toLowerCase().includes(q)).map((n) => ({ kind: 'nav' as const, id: n.id, label: n.label, icon: n.icon, meta: 'Go to' }));
-    const profiles = (q ? s.profiles.filter((p) => p.name.toLowerCase().includes(q) || p.group.toLowerCase().includes(q)).slice(0, 8) : s.profiles.slice(0, 5))
-      .map((p) => ({ kind: 'profile' as const, id: p.id, label: p.name, icon: 'grid' as IconName, meta: `${p.group} · ${p.fingerprint.uaClientHints.platform}` }));
-    const actions = [{ kind: 'action' as const, id: 'new', label: 'New profile', icon: 'plus' as IconName, meta: 'Create' },
-      { kind: 'action' as const, id: 'gen', label: 'Bulk generate profiles', icon: 'layers' as IconName, meta: 'Create' }]
-      .filter((a) => !q || a.label.toLowerCase().includes(q));
-    return [...nav, ...actions, ...profiles].slice(0, 14);
-  }, [query, s.profiles]);
-
-  const running = s.profiles.filter((p) => p.status === 'running').length;
+  const bottomValue = MOBILE_NAV.includes(s.view) ? s.view : 'profiles';
 
   return (
-    <div className={`shell ${collapsed ? 'collapsed' : ''}`}>
-      <aside className="sidebar">
-        <div className="side-brand">
-          <Logo size={32} />
-          <div className="side-brand-text"><strong>Joe Browser</strong><span>Workspace</span></div>
-          <IconButton icon="panel" label="Collapse sidebar" className="collapse-btn" onClick={() => setCollapsed((v) => !v)} />
-        </div>
+    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
+      <AppBar position="fixed" color="inherit" sx={{ borderBottom: '1px solid', borderColor: 'divider', zIndex: (t) => t.zIndex.drawer + 1 }}>
+        <Toolbar sx={{ gap: 1, minHeight: { xs: 56, md: 62 }, px: { xs: 1, md: 2 } }}>
+          {mobile && (
+            <IconButton aria-label="Open navigation" onClick={() => setDrawer(true)} sx={{ mr: 0.25 }}>
+              <Icon name="menu" size={24} />
+            </IconButton>
+          )}
+          {!mobile && <Box sx={{ width: DRAWER_W - 16, flex: 'none' }} />}
+          {mobile && <Logo size={26} compact />}
 
-        <nav className="side-nav">
-          <span className="side-label">Workspace</span>
-          {NAV.map((n) => (
-            <button key={n.id} className={`nav-item ${s.view === n.id ? 'active' : ''}`} onClick={() => { s.setView(n.id); s.setSelectedId(null); }} title={n.label}>
-              <Icon name={n.icon} size={18} /><span>{n.label}</span>
-              {n.id === 'profiles' && <em>{s.profiles.length}</em>}
-              {n.id === 'proxies' && <em>{s.proxies.length}</em>}
-              {n.id === 'devices' && <em className={running ? 'hot' : ''}>{s.devices.filter((d) => d.online).length}</em>}
-            </button>
-          ))}
-        </nav>
+          <Box sx={{ flex: 1 }} />
+          <Tooltip title="Search (Ctrl K)"><span>
+            <IconButton aria-label="Search" onClick={() => s.setPaletteOpen(true)} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 1.2, mr: 0.5 }}>
+              <Icon name="search" size={21} />
+            </IconButton>
+          </span></Tooltip>
+          <Tooltip title="Sync status"><span>
+            <IconButton aria-label="Sync status" onClick={() => s.setView('devices')} size="small">
+              <Badge color="primary" variant="dot" invisible={!s.settings.autoSync}><Icon name="sync" size={21} /></Badge>
+            </IconButton>
+          </span></Tooltip>
+          <Tooltip title="Toggle theme"><span>
+            <IconButton aria-label="Toggle theme" onClick={() => s.setSetting('theme', s.settings.theme === 'dark' ? 'light' : 'dark')} size="small">
+              <Icon name={s.settings.theme === 'dark' ? 'sun' : 'moon'} size={21} />
+            </IconButton>
+          </span></Tooltip>
+          <Btn variant="primary" icon="plus" size="small" onClick={() => s.setCreateOpen(true)}>New profile</Btn>
+          <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main', fontSize: 12, fontWeight: 700, ml: 0.5, display: { xs: 'none', sm: 'flex' } }}>JB</Avatar>
+        </Toolbar>
+      </AppBar>
 
-        <div className="side-groups">
-          <span className="side-label">Groups</span>
-          <button className={`group-item ${groupFilter === 'All' ? 'active' : ''}`} onClick={() => { setGroupFilter('All'); s.setView('profiles'); window.dispatchEvent(new CustomEvent('joe:group', { detail: 'All' })); }}>
-            <i className="group-dot all" /><span>All profiles</span><em>{s.profiles.length}</em>
-          </button>
-          {s.groups.slice(0, 9).map((g, i) => (
-            <button key={g} className={`group-item ${groupFilter === g ? 'active' : ''}`} onClick={() => { setGroupFilter(g); s.setView('profiles'); window.dispatchEvent(new CustomEvent('joe:group', { detail: g })); }}>
-              <i className="group-dot" style={{ background: ['#8b93ff', '#4ad9b6', '#f0b45e', '#f0789a', '#69b7ff', '#b18cff', '#7ed1a0', '#d9a2f0', '#e9c46a'][i % 9] }} />
-              <span>{g}</span><em>{s.profiles.filter((p) => p.group === g).length}</em>
-            </button>
-          ))}
-        </div>
-
-        <div className="side-foot">
-          <div className="sync-chip"><i className="pulse" /><span>Sync active</span><Badge tone="ok" dot>Live</Badge></div>
-          <div className="side-version">v{s.appVersion} · local-first</div>
-        </div>
-      </aside>
-
-      <div className="main">
-        <header className="topbar">
-          <div className="topbar-left">
-            <IconButton icon="panel" label="Toggle sidebar" onClick={() => setCollapsed((v) => !v)} />
-            <div className="crumb"><span>Workspace</span><Icon name="chevron" size={13} /><strong>{NAV.find((n) => n.id === s.view)?.label}</strong></div>
-          </div>
-          <div className="topbar-right">
-            <button className="search-trigger" onClick={() => setPalette(true)}>
-              <Icon name="search" size={15} /><span>Search profiles, actions…</span><kbd>⌘K</kbd>
-            </button>
-            <div className="top-devices" title="Connected devices">
-              <Icon name="monitor" size={15} className={s.devices[0]?.online ? 'on' : ''} />
-              <Icon name="phone" size={14} className={s.devices[1]?.online ? 'on' : ''} />
-            </div>
-            <IconButton icon={s.settings.theme === 'dark' ? 'sun' : 'moon'} label="Toggle theme" onClick={() => s.setSetting('theme', s.settings.theme === 'dark' ? 'light' : 'dark')} />
-            <Button icon="plus" variant="primary" size="sm" onClick={() => s.setCreateOpen(true)}>New profile</Button>
-            <div className="avatar" title="Local workspace">JB</div>
-          </div>
-        </header>
-
-        <main className="content">{children}</main>
-      </div>
-
-      {palette && (
-        <div className="overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setPalette(false); }}>
-          <div className="palette" role="dialog" aria-label="Command palette">
-            <div className="palette-input"><Icon name="search" size={17} /><input ref={searchRef} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search or jump to…" /><kbd>ESC</kbd></div>
-            <div className="palette-list">
-              {results.length === 0 && <div className="palette-empty">No matches</div>}
-              {results.map((r, i) => (
-                <button key={`${r.kind}-${r.id}-${i}`} className="palette-row" onClick={() => {
-                  setPalette(false); setQuery('');
-                  if (r.kind === 'nav') s.setView(r.id as View);
-                  else if (r.kind === 'profile') { s.setView('profiles'); s.setSelectedId(r.id); }
-                  else s.setCreateOpen(true);
-                }}>
-                  <Icon name={r.icon} size={16} /><span>{r.label}</span><em>{r.meta}</em>
-                </button>
-              ))}
-            </div>
-            <div className="palette-foot"><span>↑↓ navigate</span><span>↵ open</span><span>esc close</span></div>
-          </div>
-        </div>
+      {!mobile && (
+        <Drawer variant="permanent" sx={{ width: DRAWER_W, flexShrink: 0, '& .MuiDrawer-paper': { width: DRAWER_W, boxSizing: 'border-box', borderRight: '1px solid', borderColor: 'divider' } }}>
+          <Toolbar sx={{ minHeight: 62 }} />
+          <SidebarContent />
+        </Drawer>
       )}
-    </div>
-  );
-}
+      {mobile && (
+        <Drawer open={drawer} onClose={() => setDrawer(false)} PaperProps={{ sx: { width: 280 } }}>
+          <SidebarContent onNavigate={() => setDrawer(false)} />
+        </Drawer>
+      )}
 
-export function Toasts() {
-  const s = useStore();
-  return (
-    <div className="toasts">
-      {s.toasts.map((t) => (
-        <div key={t.id} className={`toast toast-${t.kind}`}>
-          <Icon name={t.kind === 'err' ? 'warn' : t.kind === 'warn' ? 'info' : 'check'} size={16} />
-          <span>{t.text}</span>
-          <button onClick={() => s.dismissToast(t.id)} aria-label="Dismiss"><Icon name="close" size={13} /></button>
-        </div>
-      ))}
-    </div>
+      <Box component="main" sx={{
+        ml: { md: `${DRAWER_W}px` }, pt: { xs: '56px', md: '62px' },
+        px: { xs: 1.5, sm: 2.5, md: 3 }, pb: { xs: 10, md: 4 },
+        maxWidth: '100%', minWidth: 0, overflowX: 'hidden',
+      }}>
+        <Box sx={{ maxWidth: 1480, mx: 'auto', py: { xs: 2, md: 3 }, minWidth: 0, overflowX: 'hidden' }}>{children}</Box>
+      </Box>
+
+      {mobile && (
+        <BottomNavigation
+          value={bottomValue} showLabels
+          onChange={(_, v) => {
+            if (v === 'more') setDrawer(true);
+            else s.setView(v as View);
+          }}
+          sx={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: (t) => t.zIndex.appBar - 1, bgcolor: 'background.paper' }}
+        >
+          {MOBILE_NAV.map((v) => {
+            const n = NAV.find((x) => x.id === v)!;
+            return <BottomNavigationAction key={v} value={v} label={n.label} icon={<Icon name={n.icon} size={22} />} />;
+          })}
+          <BottomNavigationAction value="more" label="More" icon={<Icon name="more" size={22} />} />
+        </BottomNavigation>
+      )}
+
+      <Palette />
+    </Box>
   );
 }

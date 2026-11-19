@@ -40,6 +40,9 @@ function startRestApi({ port, api }) {
         if (parts[2] === 'launch' && req.method === 'POST') return json(res, 200, await api.launch(id));
         if (parts[2] === 'stop' && req.method === 'POST') return json(res, 200, await api.stop(id));
         if (parts[2] === 'consistency') return json(res, 200, await api.consistency(id));
+        if (parts[2] === 'quality') return json(res, 200, await api.quality(id));
+        if (parts[2] === 'surfaces') return json(res, 200, await api.surfaces(id));
+        if (parts[2] === 'script') return json(res, 200, { script: await api.script(id) });
         if (parts.length === 2 && req.method === 'GET') return json(res, 200, await api.get(id));
       }
       return json(res, 404, { ok: false, error: 'not found' });

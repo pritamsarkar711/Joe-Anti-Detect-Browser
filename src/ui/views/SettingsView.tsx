@@ -1,8 +1,13 @@
 import { useRef, useState } from 'react';
+import {
+  Box, Stack, Grid, Typography, Paper, Switch, ToggleButton, ToggleButtonGroup,
+  Select, MenuItem, Divider, Alert,
+} from '@mui/material';
 import { useStore } from '@/state/store';
 import { downloadFile } from '@joe/core';
-import { Icon } from '@/ui/Icons';
-import { Button, Badge, Toggle, Field, Segmented, Stat } from '@/ui/Primitives';
+import { Icon } from '../Icons';
+import { Official } from '../Brand';
+import { Btn, Field, SectionHead, Panel, StatCard, Tag } from '../Primitives';
 
 export function SettingsView() {
   const s = useStore();
@@ -16,50 +21,100 @@ export function SettingsView() {
   };
 
   return (
-    <div className="view">
-      <div className="stat-row">
-        <Stat label="Profiles" value={s.profiles.length} icon="layers" />
-        <Stat label="Storage" value="local" icon="shield" tone="teal" />
-        <Stat label="Sync" value={s.settings.autoSync ? 'on' : 'off'} icon="refresh" tone="blue" />
-        <Stat label="Build" value={`v${s.appVersion}`} icon="cpu" tone="amber" />
-      </div>
+    <Box>
+      <SectionHead kicker="PREFERENCES" title="Settings" hint="Appearance, sync, data and scope." />
 
-      <div className="settings-grid">
-        <div className="panel settings-card">
-          <div className="panel-head"><div className="panel-title"><Icon name="sliders" size={17} /><h2>Appearance</h2></div></div>
-          <div className="setting-row"><div><strong>Theme</strong><span>Dark or light workspace</span></div><Segmented value={s.settings.theme} onChange={(v) => s.setSetting('theme', v)} options={[{ value: 'dark', label: 'Dark', icon: 'moon' }, { value: 'light', label: 'Light', icon: 'sun' }]} /></div>
-          <div className="setting-row"><div><strong>Table density</strong><span>Row height in the profile table</span></div><Segmented value={s.settings.density} onChange={(v) => s.setSetting('density', v)} options={[{ value: 'comfortable', label: 'Comfortable' }, { value: 'compact', label: 'Compact' }]} /></div>
-          <div className="setting-row"><div><strong>Default device</strong><span>Where profiles launch from this UI</span></div><select className="input compact" value={s.settings.defaultDevice} onChange={(e) => s.setSetting('defaultDevice', e.target.value as 'desktop-exe' | 'android-apk')}><option value="desktop-exe">Desktop EXE</option><option value="android-apk">Android APK</option></select></div>
-        </div>
+      <Grid container spacing={2} sx={{ mb: 2.5 }}>
+        {[
+          { icon: 'layers' as const, label: 'Profiles', value: s.profiles.length },
+          { icon: 'shield' as const, label: 'Storage', value: 'Local' },
+          { icon: 'sync' as const, label: 'Sync', value: s.settings.autoSync ? 'On' : 'Off' },
+          { icon: 'cpu' as const, label: 'Build', value: `v${s.appVersion}` },
+        ].map((c) => <Grid item xs={6} md={3} key={c.label}><StatCard icon={c.icon} label={c.label} value={c.value} /></Grid>)}
+      </Grid>
 
-        <div className="panel settings-card">
-          <div className="panel-head"><div className="panel-title"><Icon name="link" size={17} /><h2>Supabase sync</h2></div><Badge tone="ok" dot>connected</Badge></div>
-          <Field label="Project URL"><input className="input" value={s.settings.supabaseUrl} onChange={(e) => s.setSetting('supabaseUrl', e.target.value)} /></Field>
-          <Field label="Anon / publishable key" hint="Never store service-role keys in a client app"><input className="input" type="password" value={s.settings.anonKey} onChange={(e) => s.setSetting('anonKey', e.target.value)} placeholder="eyJ…" /></Field>
-          <Field label="Workspace"><input className="input" value={s.settings.workspace} onChange={(e) => s.setSetting('workspace', e.target.value)} /></Field>
-          <div className="setting-row"><div><strong>Auto sync</strong><span>Realtime channel joe-sync</span></div><Toggle checked={s.settings.autoSync} onChange={(v) => s.setSetting('autoSync', v)} label="Auto sync" /></div>
-        </div>
+      <Grid container spacing={2}>
+        <Grid item xs={12} md={6}>
+          <Panel title="Appearance">
+            <Stack spacing={2}>
+              <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+                <Box><Typography sx={{ fontSize: '0.84rem', fontWeight: 600 }}>Theme</Typography><Typography variant="caption" color="text.secondary">Light or dark workspace</Typography></Box>
+                <ToggleButtonGroup size="small" exclusive value={s.settings.theme} onChange={(_, v) => v && s.setSetting('theme', v)}>
+                  <ToggleButton value="light" sx={{ px: 1.2 }}><Icon name="sun" size={19} /></ToggleButton>
+                  <ToggleButton value="dark" sx={{ px: 1.2 }}><Icon name="moon" size={19} /></ToggleButton>
+                </ToggleButtonGroup>
+              </Stack>
+              <Divider />
+              <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+                <Box><Typography sx={{ fontSize: '0.84rem', fontWeight: 600 }}>Density</Typography><Typography variant="caption" color="text.secondary">Row height in tables</Typography></Box>
+                <ToggleButtonGroup size="small" exclusive value={s.settings.density} onChange={(_, v) => v && s.setSetting('density', v)}>
+                  <ToggleButton value="comfortable" sx={{ px: 1.2, fontSize: '0.74rem' }}>Comfortable</ToggleButton>
+                  <ToggleButton value="compact" sx={{ px: 1.2, fontSize: '0.74rem' }}>Compact</ToggleButton>
+                </ToggleButtonGroup>
+              </Stack>
+              <Divider />
+              <Box>
+                <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 0.6 }}>Default device</Typography>
+                <Select fullWidth size="small" value={s.settings.defaultDevice} onChange={(e) => s.setSetting('defaultDevice', e.target.value as 'desktop-exe' | 'android-apk')}>
+                  <MenuItem value="desktop-exe"><Stack direction="row" alignItems="center" spacing={1}><Official name="electron" size={17} color="#D81B60" />Desktop EXE</Stack></MenuItem>
+                  <MenuItem value="android-apk"><Stack direction="row" alignItems="center" spacing={1}><Official name="android" size={17} color="#D81B60" />Android APK</Stack></MenuItem>
+                </Select>
+              </Box>
+              <Field label="Start page" value={s.settings.startPage} onChange={(v) => s.setSetting('startPage', v)} placeholder="https://example.com" />
+            </Stack>
+          </Panel>
+        </Grid>
 
-        <div className="panel settings-card">
-          <div className="panel-head"><div className="panel-title"><Icon name="shield" size={17} /><h2>Data</h2></div></div>
-          <p className="card-hint">Profiles are stored locally in your browser. Export a workspace file to move them between the desktop app, Android app and this control plane.</p>
-          <div className="button-row wrap">
-            <Button icon="download" onClick={exportAll}>Export workspace</Button>
-            <Button icon="upload" onClick={() => fileRef.current?.click()}>Import workspace</Button>
-            <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void onFile(f); e.target.value = ''; }} />
-            {confirmReset ? <Button icon="refresh" variant="danger" onClick={() => { s.reset(); setConfirmReset(false); }}>Confirm reset</Button> : <Button icon="trash" variant="ghost" onClick={() => setConfirmReset(true)}>Restore demo data</Button>}
-          </div>
-        </div>
+        <Grid item xs={12} md={6}>
+          <Panel title="Supabase sync" action={<Tag tone="primary">ready</Tag>}>
+            <Stack spacing={1.6}>
+              <Stack direction="row" alignItems="center" spacing={0.9}><Official name="supabase" size={20} color="#D81B60" /><Typography variant="caption" color="text.secondary">Realtime and Postgres</Typography></Stack>
+              <Field label="Project URL" value={s.settings.supabaseUrl} onChange={(v) => s.setSetting('supabaseUrl', v)} />
+              <Field label="Publishable key" value={s.settings.anonKey} onChange={(v) => s.setSetting('anonKey', v)} type="password" helper="Never store service keys in a client app" />
+              <Field label="Workspace" value={s.settings.workspace} onChange={(v) => s.setSetting('workspace', v)} />
+              <Stack direction="row" alignItems="center" justifyContent="space-between">
+                <Box><Typography sx={{ fontSize: '0.84rem', fontWeight: 600 }}>Auto sync</Typography><Typography variant="caption" color="text.secondary">Realtime channel Joe sync</Typography></Box>
+                <Switch checked={s.settings.autoSync} onChange={(e) => s.setSetting('autoSync', e.target.checked)} inputProps={{ 'aria-label': 'Auto sync' }} />
+              </Stack>
+            </Stack>
+          </Panel>
+        </Grid>
 
-        <div className="panel settings-card">
-          <div className="panel-head"><div className="panel-title"><Icon name="info" size={17} /><h2>About & scope</h2></div></div>
-          <div className="about-row"><span>Version</span><strong>v{s.appVersion}</strong></div>
-          <div className="about-row"><span>Desktop</span><strong>Electron · Windows x64</strong></div>
-          <div className="about-row"><span>Android</span><strong>WebView shell · minSdk 28</strong></div>
-          <div className="about-row"><span>License</span><strong>MIT</strong></div>
-          <div className="notice"><Icon name="shield" size={15} /><span>Built for legitimate privacy, QA and account-separation work. Profile isolation removes linkability between your own sessions; it is not a guarantee of invisibility to any detection system. No telemetry is collected.</span></div>
-        </div>
-      </div>
-    </div>
+        <Grid item xs={12} md={6}>
+          <Panel title="Data">
+            <Stack spacing={1.6}>
+              <Typography variant="body2" color="text.secondary">Profiles are stored locally. Export a workspace file to move them between desktop, Android and the control plane.</Typography>
+              <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 0.8 }}>
+                <Btn icon="download" onClick={exportAll}>Export workspace</Btn>
+                <Btn icon="upload" onClick={() => fileRef.current?.click()}>Import workspace</Btn>
+                <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void onFile(f); e.target.value = ''; }} />
+                {confirmReset
+                  ? <Btn icon="refresh" variant="danger" onClick={() => { s.reset(); setConfirmReset(false); }}>Confirm reset</Btn>
+                  : <Btn icon="restart" onClick={() => setConfirmReset(true)}>Restore demo data</Btn>}
+              </Stack>
+            </Stack>
+          </Panel>
+        </Grid>
+
+        <Grid item xs={12} md={6}>
+          <Panel title="About and scope">
+            <Stack spacing={1.2}>
+              {[
+                ['Version', `v${s.appVersion}`],
+                ['Desktop', 'Electron · Windows x64'],
+                ['Android', 'WebView · minSdk 28'],
+                ['License', 'MIT with additional notices'],
+              ].map(([k, v]) => <Stack key={k} direction="row" justifyContent="space-between"><Typography variant="caption" color="text.secondary">{k}</Typography><Typography variant="caption" sx={{ fontWeight: 600 }}>{v}</Typography></Stack>)}
+              <Stack direction="row" spacing={0.8} sx={{ flexWrap: 'wrap', gap: 0.6 }}>
+                {['react', 'typescript', 'mui', 'github', 'vercel'].map((n) => <Paper key={n} variant="outlined" sx={{ width: 28, height: 28, borderRadius: '50%', display: 'grid', placeItems: 'center' }}><Official name={n} size={16} color="#D81B60" /></Paper>)}
+              </Stack>
+              <Alert severity="info" variant="outlined" icon={<Icon name="shield" size={21} />}>
+                Built for legitimate privacy, QA and account separation work. Profile isolation reduces linkability between your own sessions. It is not a guarantee of invisibility to any detection system. No telemetry is collected.
+              </Alert>
+            </Stack>
+          </Panel>
+        </Grid>
+      </Grid>
+    </Box>
   );
 }

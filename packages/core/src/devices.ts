@@ -1,14 +1,19 @@
 /**
- * Coherent device templates.
+ * Coherent device templates backed by observed browser traffic.
  *
- * Research takeaway from Camoufox / ShardBrowser: never combine random values.
- * A "Windows UA + Apple GPU + mobile screen + US locale + Dhaka timezone"
- * profile is *more* detectable than no spoofing at all, because modern engines
- * hash the whole fingerprint and compare it to real-device datasets.
+ * Research takeaway from Camoufox, ShardBrowser, Donut Browser and the Apify
+ * fingerprint-suite: never combine random values. A "Windows UA + Apple GPU +
+ * mobile screen + US locale + Dhaka timezone" profile is *more* detectable than
+ * no spoofing at all, because detectors hash the whole fingerprint and compare
+ * it against real-device corpora.
  *
- * Every template below is an internally consistent device class. Variation is
- * applied only within the fields that genuinely vary for that device class.
+ * Every template below is enriched from ONE real sample drawn from the
+ * Apify / BrowserForge Bayesian network of observed traffic (Apache-2.0).
+ * User agent, Client Hints, GPU renderer, screen, CPU, memory and font list
+ * therefore come from the same device class. Variation is applied only inside
+ * fields that genuinely vary for that class.
  */
+import { REAL_FINGERPRINTS, FINGERPRINT_DATA_SOURCE, type RealFingerprint } from './data/realFingerprints';
 
 export type OSType = 'Windows' | 'macOS' | 'Android' | 'Linux';
 
@@ -33,7 +38,12 @@ export interface DeviceTemplate {
   timezones: string[];
   locales: string[];
   languages: string[];
+  brands: Array<{ brand: string; version: string }>;
+  secChUaPlatform: string;
   gl: { maxTextureSize: number; maxRenderbufferSize: number; maxViewport: [number, number]; maxVertexAttribs: number };
+  /** provenance: id of the observed-traffic sample this template derives from */
+  realId?: string;
+  realLabel?: string;
 }
 
 const WIN_FONTS = ['Arial', 'Calibri', 'Cambria', 'Consolas', 'Courier New', 'Georgia', 'Microsoft YaHei', 'Segoe UI', 'Tahoma', 'Times New Roman', 'Verdana'];
@@ -41,96 +51,166 @@ const MAC_FONTS = ['Arial', 'Helvetica', 'Helvetica Neue', 'Menlo', 'Monaco', 'S
 const ANDROID_FONTS = ['Roboto', 'Noto Sans', 'Noto Sans Bengali', 'Droid Sans', 'Droid Serif', 'Arial', 'Georgia'];
 const LINUX_FONTS = ['Arial', 'DejaVu Sans', 'DejaVu Serif', 'Liberation Sans', 'Noto Sans', 'Ubuntu', 'Verdana'];
 
-function winUA(major: number, build: number): string {
-  return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.${build}.0 Safari/537.36`;
-}
-function macUA(major: number, build: number): string {
-  return `Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.${build}.0 Safari/537.36`;
-}
-function androidUA(major: number, build: number, device: string): string {
-  return `Mozilla/5.0 (Linux; Android 14; ${device}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.${build}.0 Mobile Safari/537.36`;
-}
-function linuxUA(major: number, build: number): string {
-  return `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.${build}.0 Safari/537.36`;
+const GL_DESKTOP = { maxTextureSize: 16384, maxRenderbufferSize: 16384, maxViewport: [32767, 32767] as [number, number], maxVertexAttribs: 16 };
+const GL_MOBILE = { maxTextureSize: 8192, maxRenderbufferSize: 8192, maxViewport: [8192, 8192] as [number, number], maxVertexAttribs: 16 };
+
+function fallbackFonts(os: OSType): string[] {
+  return os === 'Windows' ? WIN_FONTS : os === 'macOS' ? MAC_FONTS : os === 'Android' ? ANDROID_FONTS : LINUX_FONTS;
 }
 
-export const DEVICE_TEMPLATES: DeviceTemplate[] = [
+function gpuFromReal(r: RealFingerprint): GpuSpec {
+  const vendor = r.gpu.vendor || 'Google Inc.';
+  const renderer = r.gpu.renderer || 'WebKit WebGL';
+  return { vendor, renderer, unmaskedVendor: vendor, unmaskedRenderer: renderer };
+}
+
+/** Build a coherent template directly from one observed-traffic sample. */
+export function templateFromReal(r: RealFingerprint): DeviceTemplate {
+  const os = r.os;
+  return {
+    id: r.id,
+    label: r.label,
+    os,
+    osVersion: os === 'Windows' ? '10.0 (11)' : os === 'macOS' ? '14.6' : os === 'Android' ? '14' : '6.8',
+    chromeMajor: r.chromeMajor,
+    mobile: r.mobile,
+    touchPoints: r.touchPoints,
+    ua: r.userAgent,
+    platform: r.platform || (os === 'Windows' ? 'Win32' : os === 'macOS' ? 'MacIntel' : os === 'Android' ? 'Linux armv8l' : 'Linux x86_64'),
+    screens: [r.screen],
+    cores: [r.cores],
+    memoryGb: [r.memoryGb],
+    gpus: [gpuFromReal(r)],
+    fonts: r.fonts.length >= 3 ? r.fonts : fallbackFonts(os),
+    timezones: os === 'Windows' ? ['America/New_York', 'America/Chicago', 'Europe/London'] : os === 'macOS' ? ['America/Los_Angeles', 'Europe/London'] : os === 'Android' ? ['Asia/Dhaka', 'Asia/Singapore', 'Europe/Berlin'] : ['Europe/Berlin', 'Europe/London'],
+    locales: [r.locale, 'en-US', 'en-GB'],
+    languages: r.languages.length ? r.languages : [r.locale, 'en'],
+    brands: r.brands,
+    secChUaPlatform: r.secChUaPlatform || (os === 'Windows' ? 'Windows' : os === 'macOS' ? 'macOS' : os === 'Android' ? 'Android' : 'Linux'),
+    gl: r.mobile ? GL_MOBILE : GL_DESKTOP,
+    realId: r.id,
+    realLabel: r.label,
+  };
+}
+
+/** Stable hand-curated device classes; each is enriched with a real sample below. */
+interface Curated extends Omit<DeviceTemplate, 'brands' | 'secChUaPlatform' | 'realId' | 'realLabel'> {
+  match: (r: RealFingerprint) => boolean;
+}
+
+const CURATED: Curated[] = [
   {
-    id: 'win11-intel', label: 'Windows 11 · Intel', os: 'Windows', osVersion: '10.0 (11)', chromeMajor: 131,
-    mobile: false, touchPoints: 0, ua: winUA(131, 6778), platform: 'Win32',
-    screens: [{ width: 1920, height: 1080, dpr: 1 }, { width: 2560, height: 1440, dpr: 1 }, { width: 1366, height: 768, dpr: 1 }],
-    cores: [4, 8, 12, 16], memoryGb: [8, 16, 32],
-    gpus: [{ vendor: 'Google Inc. (Intel)', renderer: 'ANGLE (Intel, Intel(R) UHD Graphics 770 Direct3D11 vs_5_0 ps_5_0, D3D11)', unmaskedVendor: 'Google Inc. (Intel)', unmaskedRenderer: 'ANGLE (Intel, Intel(R) UHD Graphics 770 Direct3D11 vs_5_0 ps_5_0, D3D11)' }],
-    fonts: WIN_FONTS, timezones: ['America/New_York', 'America/Chicago', 'America/Los_Angeles', 'Europe/London'], locales: ['en-US'], languages: ['en-US', 'en'],
-    gl: { maxTextureSize: 16384, maxRenderbufferSize: 16384, maxViewport: [32767, 32767], maxVertexAttribs: 16 },
+    id: 'win11-intel', label: 'Windows 11 · Intel', os: 'Windows', osVersion: '10.0 (11)', chromeMajor: 156,
+    mobile: false, touchPoints: 0, ua: '', platform: 'Win32',
+    screens: [{ width: 1920, height: 1080, dpr: 1 }], cores: [8, 12], memoryGb: [8, 16], gpus: [],
+    fonts: WIN_FONTS, timezones: ['America/New_York', 'America/Chicago', 'America/Los_Angeles', 'Europe/London'],
+    locales: ['en-US', 'en-GB'], languages: ['en-US', 'en'], gl: GL_DESKTOP,
+    match: (r) => r.os === 'Windows' && /intel|uhd|iris/i.test(r.gpu.renderer),
   },
   {
-    id: 'win11-nvidia', label: 'Windows 11 · NVIDIA', os: 'Windows', osVersion: '10.0 (11)', chromeMajor: 131,
-    mobile: false, touchPoints: 0, ua: winUA(131, 6778), platform: 'Win32',
-    screens: [{ width: 1920, height: 1080, dpr: 1 }, { width: 2560, height: 1440, dpr: 1 }, { width: 3440, height: 1440, dpr: 1 }],
-    cores: [8, 12, 16, 24], memoryGb: [16, 32, 64],
-    gpus: [{ vendor: 'Google Inc. (NVIDIA)', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)', unmaskedVendor: 'Google Inc. (NVIDIA)', unmaskedRenderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)' }],
-    fonts: WIN_FONTS, timezones: ['Europe/Berlin', 'Europe/Paris', 'Europe/Amsterdam'], locales: ['de-DE', 'fr-FR', 'en-GB'], languages: ['de-DE', 'de', 'en-US', 'en'],
-    gl: { maxTextureSize: 16384, maxRenderbufferSize: 16384, maxViewport: [32767, 32767], maxVertexAttribs: 16 },
+    id: 'win11-nvidia', label: 'Windows 11 · NVIDIA', os: 'Windows', osVersion: '10.0 (11)', chromeMajor: 156,
+    mobile: false, touchPoints: 0, ua: '', platform: 'Win32',
+    screens: [{ width: 1920, height: 1080, dpr: 1 }], cores: [12, 16], memoryGb: [16, 32], gpus: [],
+    fonts: WIN_FONTS, timezones: ['Europe/Berlin', 'Europe/Paris', 'Europe/Amsterdam'],
+    locales: ['de-DE', 'fr-FR', 'en-GB'], languages: ['de-DE', 'de', 'en-US', 'en'], gl: GL_DESKTOP,
+    match: (r) => r.os === 'Windows' && /nvidia|geforce|rtx/i.test(r.gpu.renderer),
   },
   {
-    id: 'win10-amd', label: 'Windows 10 · AMD', os: 'Windows', osVersion: '10.0', chromeMajor: 130,
-    mobile: false, touchPoints: 0, ua: winUA(130, 6723), platform: 'Win32',
-    screens: [{ width: 1366, height: 768, dpr: 1 }, { width: 1920, height: 1080, dpr: 1 }, { width: 1600, height: 900, dpr: 1 }],
-    cores: [4, 6, 8], memoryGb: [8, 16],
-    gpus: [{ vendor: 'Google Inc. (AMD)', renderer: 'ANGLE (AMD, AMD Radeon(TM) Vega 8 Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)', unmaskedVendor: 'Google Inc. (AMD)', unmaskedRenderer: 'ANGLE (AMD, AMD Radeon(TM) Vega 8 Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)' }],
-    fonts: WIN_FONTS, timezones: ['Asia/Dhaka', 'Asia/Kolkata', 'Asia/Singapore'], locales: ['bn-BD', 'en-US', 'en-SG'], languages: ['en-US', 'en', 'bn-BD'],
-    gl: { maxTextureSize: 16384, maxRenderbufferSize: 16384, maxViewport: [16384, 16384], maxVertexAttribs: 16 },
+    id: 'win10-amd', label: 'Windows 10 · AMD', os: 'Windows', osVersion: '10.0', chromeMajor: 155,
+    mobile: false, touchPoints: 0, ua: '', platform: 'Win32',
+    screens: [{ width: 1366, height: 768, dpr: 1 }], cores: [4, 8], memoryGb: [8, 16], gpus: [],
+    fonts: WIN_FONTS, timezones: ['Asia/Dhaka', 'Asia/Kolkata', 'Asia/Singapore'],
+    locales: ['bn-BD', 'en-US', 'en-SG'], languages: ['en-US', 'en', 'bn-BD'], gl: GL_DESKTOP,
+    match: (r) => r.os === 'Windows' && /amd|radeon/i.test(r.gpu.renderer),
   },
   {
-    id: 'mac-sonoma-m1', label: 'macOS Sonoma · M1', os: 'macOS', osVersion: '14.6', chromeMajor: 131,
-    mobile: false, touchPoints: 0, ua: macUA(131, 6778), platform: 'MacIntel',
-    screens: [{ width: 1440, height: 900, dpr: 2 }, { width: 1728, height: 1117, dpr: 2 }, { width: 1512, height: 982, dpr: 2 }],
-    cores: [8, 10], memoryGb: [8, 16],
-    gpus: [{ vendor: 'Google Inc. (Apple)', renderer: 'ANGLE (Apple, ANGLE Metal Renderer: Apple M1, Unspecified Version)', unmaskedVendor: 'Google Inc. (Apple)', unmaskedRenderer: 'ANGLE (Apple, ANGLE Metal Renderer: Apple M1, Unspecified Version)' }],
-    fonts: MAC_FONTS, timezones: ['America/Los_Angeles', 'America/New_York'], locales: ['en-US'], languages: ['en-US', 'en'],
-    gl: { maxTextureSize: 16384, maxRenderbufferSize: 16384, maxViewport: [16384, 16384], maxVertexAttribs: 16 },
+    id: 'mac-sonoma-m1', label: 'macOS Sonoma · M1', os: 'macOS', osVersion: '14.6', chromeMajor: 156,
+    mobile: false, touchPoints: 0, ua: '', platform: 'MacIntel',
+    screens: [{ width: 1440, height: 900, dpr: 2 }], cores: [8, 10], memoryGb: [8, 16], gpus: [],
+    fonts: MAC_FONTS, timezones: ['America/Los_Angeles', 'America/New_York'],
+    locales: ['en-US'], languages: ['en-US', 'en'], gl: GL_DESKTOP,
+    match: (r) => r.os === 'macOS' && /metal|apple m/i.test(r.gpu.renderer),
   },
   {
-    id: 'mac-ventura-intel', label: 'macOS Ventura · Intel', os: 'macOS', osVersion: '13.5', chromeMajor: 129,
-    mobile: false, touchPoints: 0, ua: macUA(129, 6668), platform: 'MacIntel',
-    screens: [{ width: 1920, height: 1080, dpr: 2 }, { width: 2560, height: 1440, dpr: 2 }],
-    cores: [4, 8], memoryGb: [16, 32],
-    gpus: [{ vendor: 'Google Inc. (Intel)', renderer: 'ANGLE (Intel, Intel(R) Iris Plus Graphics 645, OpenGL 4.1)', unmaskedVendor: 'Google Inc. (Intel)', unmaskedRenderer: 'ANGLE (Intel, Intel(R) Iris Plus Graphics 645, OpenGL 4.1)' }],
-    fonts: MAC_FONTS, timezones: ['Europe/London', 'Europe/Dublin'], locales: ['en-GB'], languages: ['en-GB', 'en'],
-    gl: { maxTextureSize: 16384, maxRenderbufferSize: 16384, maxViewport: [16384, 16384], maxVertexAttribs: 16 },
+    id: 'mac-ventura-intel', label: 'macOS Ventura · Intel', os: 'macOS', osVersion: '13.5', chromeMajor: 152,
+    mobile: false, touchPoints: 0, ua: '', platform: 'MacIntel',
+    screens: [{ width: 1920, height: 1080, dpr: 2 }], cores: [8, 14], memoryGb: [16, 32], gpus: [],
+    fonts: MAC_FONTS, timezones: ['Europe/London', 'Europe/Dublin'],
+    locales: ['en-GB'], languages: ['en-GB', 'en'], gl: GL_DESKTOP,
+    match: (r) => r.os === 'macOS',
   },
   {
-    id: 'android-pixel8', label: 'Android 14 · Pixel 8', os: 'Android', osVersion: '14', chromeMajor: 131,
-    mobile: true, touchPoints: 5, ua: androidUA(131, 6778, 'Pixel 8'), platform: 'Linux armv8l',
-    screens: [{ width: 412, height: 915, dpr: 2.625 }, { width: 412, height: 892, dpr: 2.625 }],
-    cores: [8], memoryGb: [8],
-    gpus: [{ vendor: 'Google Inc. (Google)', renderer: 'ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)', unmaskedVendor: 'Google Inc. (Google)', unmaskedRenderer: 'ANGLE (Google, Mali-G715, OpenGL ES 3.2)' }],
-    fonts: ANDROID_FONTS, timezones: ['Asia/Dhaka', 'Asia/Kolkata', 'Europe/London', 'America/New_York'], locales: ['bn-BD', 'en-GB', 'en-US'], languages: ['en-US', 'en', 'bn-BD'],
-    gl: { maxTextureSize: 8192, maxRenderbufferSize: 8192, maxViewport: [8192, 8192], maxVertexAttribs: 16 },
+    id: 'android-pixel8', label: 'Android 14 · Pixel 8', os: 'Android', osVersion: '14', chromeMajor: 156,
+    mobile: true, touchPoints: 5, ua: '', platform: 'Linux armv8l',
+    screens: [{ width: 412, height: 915, dpr: 2.625 }], cores: [8], memoryGb: [4, 8], gpus: [],
+    fonts: ANDROID_FONTS, timezones: ['Asia/Dhaka', 'Asia/Kolkata', 'Europe/London', 'America/New_York'],
+    locales: ['bn-BD', 'en-GB', 'en-US'], languages: ['en-US', 'en', 'bn-BD'], gl: GL_MOBILE,
+    match: (r) => r.os === 'Android' && /pixel/i.test(r.label),
   },
   {
-    id: 'android-samsung-s23', label: 'Android 14 · Galaxy S23', os: 'Android', osVersion: '14', chromeMajor: 130,
-    mobile: true, touchPoints: 5, ua: androidUA(130, 6723, 'SM-S911B'), platform: 'Linux aarch64',
-    screens: [{ width: 360, height: 780, dpr: 3 }, { width: 360, height: 800, dpr: 3 }],
-    cores: [8], memoryGb: [8, 12],
-    gpus: [{ vendor: 'Google Inc. (ARM)', renderer: 'ANGLE (ARM, Adreno (TM) 740, OpenGL ES 3.2)', unmaskedVendor: 'Google Inc. (ARM)', unmaskedRenderer: 'ANGLE (ARM, Adreno (TM) 740, OpenGL ES 3.2)' }],
-    fonts: ANDROID_FONTS, timezones: ['Asia/Dubai', 'Asia/Singapore', 'Europe/Berlin'], locales: ['en-SG', 'de-DE', 'ar-AE'], languages: ['en-SG', 'en', 'de-DE'],
-    gl: { maxTextureSize: 16384, maxRenderbufferSize: 16384, maxViewport: [16384, 16384], maxVertexAttribs: 16 },
+    id: 'android-samsung-s23', label: 'Android 14 · Galaxy S23', os: 'Android', osVersion: '14', chromeMajor: 155,
+    mobile: true, touchPoints: 5, ua: '', platform: 'Linux aarch64',
+    screens: [{ width: 360, height: 780, dpr: 3 }], cores: [8], memoryGb: [8, 12], gpus: [],
+    fonts: ANDROID_FONTS, timezones: ['Asia/Dubai', 'Asia/Singapore', 'Europe/Berlin'],
+    locales: ['en-SG', 'de-DE', 'ar-AE'], languages: ['en-SG', 'en', 'de-DE'], gl: GL_MOBILE,
+    match: (r) => r.os === 'Android' && /galaxy/i.test(r.label),
   },
   {
-    id: 'linux-ubuntu', label: 'Linux · Ubuntu 24.04', os: 'Linux', osVersion: '6.8', chromeMajor: 130,
-    mobile: false, touchPoints: 0, ua: linuxUA(130, 6723), platform: 'Linux x86_64',
-    screens: [{ width: 1920, height: 1080, dpr: 1 }, { width: 2560, height: 1440, dpr: 1 }],
-    cores: [4, 8, 16], memoryGb: [8, 16, 32],
-    gpus: [{ vendor: 'Google Inc. (Mesa)', renderer: 'ANGLE (Mesa, llvmpipe (LLVM 15.0.7, 256 bits), OpenGL 4.5)', unmaskedVendor: 'Google Inc. (Mesa)', unmaskedRenderer: 'ANGLE (Mesa, llvmpipe (LLVM 15.0.7, 256 bits), OpenGL 4.5)' }],
-    fonts: LINUX_FONTS, timezones: ['Europe/Berlin', 'Europe/London', 'Asia/Kolkata'], locales: ['en-GB', 'de-DE'], languages: ['en-GB', 'en'],
-    gl: { maxTextureSize: 16384, maxRenderbufferSize: 16384, maxViewport: [16384, 16384], maxVertexAttribs: 16 },
+    id: 'linux-ubuntu', label: 'Linux · Ubuntu 24.04', os: 'Linux', osVersion: '6.8', chromeMajor: 156,
+    mobile: false, touchPoints: 0, ua: '', platform: 'Linux x86_64',
+    screens: [{ width: 1920, height: 1080, dpr: 1 }], cores: [8, 16], memoryGb: [8, 32], gpus: [],
+    fonts: LINUX_FONTS, timezones: ['Europe/Berlin', 'Europe/London', 'Asia/Kolkata'],
+    locales: ['en-GB', 'de-DE'], languages: ['en-GB', 'en'], gl: GL_DESKTOP,
+    match: (r) => r.os === 'Linux',
   },
 ];
 
+function enrich(c: Curated): DeviceTemplate {
+  const byMatch = REAL_FINGERPRINTS.find(c.match);
+  const sameOs = REAL_FINGERPRINTS.find((r) => r.os === c.os && r.mobile === c.mobile);
+  const real = byMatch ?? sameOs;
+  if (!real) {
+    return {
+      ...c, brands: [], secChUaPlatform: c.os === 'Windows' ? 'Windows' : c.os,
+      gpus: [{ vendor: 'Google Inc.', renderer: 'WebKit WebGL', unmaskedVendor: 'Google Inc.', unmaskedRenderer: 'WebKit WebGL' }],
+    } as DeviceTemplate;
+  }
+  const g = gpuFromReal(real);
+  const fonts = real.fonts.length >= 3 ? real.fonts : c.fonts;
+  const screens = [{ ...real.screen }, ...c.screens.filter((s) => s.width !== real.screen.width || s.height !== real.screen.height)];
+  return {
+    ...c,
+    chromeMajor: real.chromeMajor,
+    ua: real.userAgent,
+    platform: real.platform || c.platform,
+    screens,
+    cores: [real.cores, ...c.cores.filter((n) => n !== real.cores)],
+    memoryGb: [real.memoryGb, ...c.memoryGb.filter((n) => n !== real.memoryGb)],
+    gpus: [g],
+    fonts,
+    brands: real.brands,
+    secChUaPlatform: real.secChUaPlatform || c.os,
+    realId: real.id,
+    realLabel: real.label,
+  } as DeviceTemplate;
+}
+
+export const DEVICE_TEMPLATES: DeviceTemplate[] = CURATED.map(enrich);
+
+/** Observed-device presets, grouped by OS, with provenance. */
+export const REAL_DEVICE_PRESETS: RealFingerprint[] = REAL_FINGERPRINTS;
+export { FINGERPRINT_DATA_SOURCE };
+
 export function getTemplate(id: string): DeviceTemplate {
-  return DEVICE_TEMPLATES.find((t) => t.id === id) ?? DEVICE_TEMPLATES[0];
+  const curated = DEVICE_TEMPLATES.find((t) => t.id === id);
+  if (curated) return curated;
+  const real = REAL_FINGERPRINTS.find((r) => r.id === id);
+  if (real) return templateFromReal(real);
+  return DEVICE_TEMPLATES[0];
+}
+
+export function getRealPreset(id: string): RealFingerprint | undefined {
+  return REAL_FINGERPRINTS.find((r) => r.id === id);
 }
 
 export const TEMPLATE_GROUPS: Array<{ os: OSType; items: DeviceTemplate[] }> = (['Windows', 'macOS', 'Android', 'Linux'] as OSType[]).map((os) => ({

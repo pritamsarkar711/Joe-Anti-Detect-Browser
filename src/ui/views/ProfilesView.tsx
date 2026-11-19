@@ -1,166 +1,218 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import {
+  Box, Stack, Grid, Typography, Paper, Table, TableBody, TableCell, TableHead, TableRow,
+  Checkbox, Chip, Select, MenuItem, TextField, InputAdornment, useMediaQuery, useTheme, Divider, Tooltip,
+} from '@mui/material';
 import { useStore } from '@/state/store';
-import { DEVICE_TEMPLATES, countryCode, checkProfile, exportWorkspace, downloadFile, type BrowserProfile } from '@joe/core';
-import { Icon } from '@/ui/Icons';
-import { Button, IconButton, Badge, Empty, Stat } from '@/ui/Primitives';
+import { checkProfile, profileQuality, exportWorkspace, downloadFile, profilesToCsv, REAL_DEVICE_PRESETS, type BrowserProfile } from '@joe/core';
+import { Icon } from '../Icons';
+import { Official, CountryFlag } from '../Brand';
+import { Btn, IconBtn, Empty, StatCard, ScoreRing, SectionHead, Panel, Tag } from '../Primitives';
 
 const PAGE_SIZE = 25;
-type Sort = 'name' | 'created' | 'launched' | 'score';
+
+function osMark(os: string): string {
+  return os === 'Windows' ? 'windows' : os === 'macOS' ? 'apple' : os === 'Android' ? 'android' : 'linux';
+}
+
+function ProfileCard({ p, selected, onSelect, onOpen }: {
+  p: BrowserProfile; selected: boolean; onSelect: () => void; onOpen: () => void;
+}) {
+  const s = useStore();
+  const px = s.proxies.find((x) => x.id === p.proxyId);
+  const report = checkProfile(p);
+  return (
+    <Paper variant="outlined" sx={{ p: 1.6, mb: 1.2 }}>
+      <Stack direction="row" alignItems="flex-start" spacing={1.2}>
+        <Checkbox size="small" checked={selected} onChange={onSelect} sx={{ mt: -0.6 }} />
+        <Box sx={{ minWidth: 0, flex: 1 }} onClick={onOpen}>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <Box sx={{ width: 34, height: 34, borderRadius: '50%', display: 'grid', placeItems: 'center', bgcolor: 'rgba(216,27,96,0.10)', flex: 'none' }}>
+              <Official name={osMark(p.os)} size={19} color="#D81B60" />
+            </Box>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography sx={{ fontWeight: 600, fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</Typography>
+              <Typography variant="caption" color="text.secondary">{p.group} · Chrome {p.fingerprint.chromeMajor}</Typography>
+            </Box>
+          </Stack>
+          <Stack direction="row" alignItems="center" spacing={0.8} sx={{ mt: 1.3, flexWrap: 'wrap', gap: 0.7 }}>
+            {px ? <><CountryFlag code={px.country} size={16} /><Typography variant="caption">{px.host}:{px.port}</Typography></> : <Typography variant="caption" color="text.secondary">Direct</Typography>}
+            <Box sx={{ flex: 1 }} />
+            <Tag tone={p.status === 'error' ? 'err' : p.status === 'running' ? 'primary' : 'neutral'}>{p.status}</Tag>
+          </Stack>
+        </Box>
+        <ScoreRing value={report.score} size={44} />
+        <IconBtn icon="play" label="Launch" onClick={() => s.setStatus([p.id], 'running')} size={20} />
+      </Stack>
+    </Paper>
+  );
+}
 
 export function ProfilesView() {
   const s = useStore();
-  const [search, setSearch] = useState('');
-  const [group, setGroup] = useState('All');
+  const theme = useTheme();
+  const mobile = useMediaQuery(theme.breakpoints.down('md'));
+  const [q, setQ] = useState('');
+  const [group, setGroup] = useState('all');
   const [status, setStatus] = useState('all');
-  const [sort, setSort] = useState<Sort>('created');
+  const [sort, setSort] = useState('newest');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(0);
 
-  useEffect(() => {
-    const h = (e: Event) => { setGroup((e as CustomEvent<string>).detail); setPage(0); };
-    window.addEventListener('joe:group', h);
-    return () => window.removeEventListener('joe:group', h);
-  }, []);
+  const rows = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    let out = s.profiles.filter((p) =>
+      (!needle || `${p.name} ${p.group} ${p.tags.join(' ')}`.toLowerCase().includes(needle)) &&
+      (group === 'all' || p.group === group) && (status === 'all' || p.status === status));
+    out = [...out].sort((a, b) => sort === 'name' ? a.name.localeCompare(b.name) : sort === 'score'
+      ? checkProfile(b).score - checkProfile(a).score : b.createdAt.localeCompare(a.createdAt));
+    return out;
+  }, [s.profiles, q, group, status, sort]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const out = s.profiles.filter((p) =>
-      (!q || p.name.toLowerCase().includes(q) || p.group.toLowerCase().includes(q) || p.tags.some((t) => t.includes(q)) || p.templateId.includes(q)) &&
-      (group === 'All' || p.group === group) &&
-      (status === 'all' || p.status === status));
-    const cmp: Record<Sort, (a: BrowserProfile, b: BrowserProfile) => number> = {
-      name: (a, b) => a.name.localeCompare(b.name),
-      created: (a, b) => b.createdAt.localeCompare(a.createdAt),
-      launched: (a, b) => (b.lastLaunchedAt ?? '').localeCompare(a.lastLaunchedAt ?? ''),
-      score: (a, b) => checkProfile(b).score - checkProfile(a).score,
-    };
-    return [...out].sort(cmp[sort]);
-  }, [s.profiles, search, group, status, sort]);
-
-  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const cur = Math.min(page, pages - 1);
-  const rows = filtered.slice(cur * PAGE_SIZE, cur * PAGE_SIZE + PAGE_SIZE);
-  const allOnPage = rows.length > 0 && rows.every((p) => selected.has(p.id));
-
-  const toggle = (id: string) => setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const toggleAll = () => setSelected((prev) => {
-    const n = new Set(prev);
-    rows.forEach((p) => allOnPage ? n.delete(p.id) : n.add(p.id));
-    return n;
-  });
-  const clearSel = () => setSelected(new Set());
+  const pageRows = rows.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+  const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const avg = s.profiles.length ? Math.round(s.profiles.reduce((a, p) => a + checkProfile(p).score, 0) / s.profiles.length) : 0;
+  const running = s.profiles.filter((p) => p.status === 'running').length;
   const ids = [...selected];
-  const bulk = (fn: () => void, msg: string) => { fn(); s.toast(msg); clearSel(); };
+  const toggle = (id: string) => setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const clear = () => setSelected(new Set());
 
-  const launch = (list: string[]) => bulk(() => s.setStatus(list, 'running', s.settings.defaultDevice), `${list.length} launched`);
-  const stop = (list: string[]) => bulk(() => s.setStatus(list, 'stopped', null), `${list.length} stopped`);
-  const remove = (list: string[]) => bulk(() => s.deleteProfiles(list), `${list.length} deleted`);
-  const exportSel = (list: string[]) => {
-    const chosen = s.profiles.filter((p) => list.includes(p.id));
-    downloadFile(`joe-profiles-${list.length}.json`, JSON.stringify(exportWorkspace(chosen, [], []), null, 2));
-    s.toast(`${list.length} exported`); clearSel();
-  };
-
-  const stats = useMemo(() => ({
-    total: s.profiles.length,
-    running: s.profiles.filter((p) => p.status === 'running').length,
-    groups: new Set(s.profiles.map((p) => p.group)).size,
-    avg: Math.round(s.profiles.reduce((a, p) => a + checkProfile(p).score, 0) / Math.max(1, s.profiles.length)),
-  }), [s.profiles]);
+  const exportJson = () => { downloadFile('joe-workspace.json', JSON.stringify(exportWorkspace(s.profiles, s.proxies, s.groups), null, 2)); s.toast('Workspace exported'); };
+  const exportCsv = () => { downloadFile('joe-profiles.csv', profilesToCsv(s.profiles), 'text/csv'); s.toast('CSV exported'); };
 
   return (
-    <div className="view">
-      <div className="stat-row">
-        <Stat label="Profiles" value={stats.total} icon="layers" />
-        <Stat label="Running" value={stats.running} icon="play" tone="teal" />
-        <Stat label="Groups" value={stats.groups} icon="folder" tone="blue" />
-        <Stat label="Avg. consistency" value={`${stats.avg}%`} icon="shield" tone="amber" />
-      </div>
+    <Box>
+      <SectionHead
+        kicker="WORKSPACE" title="Profiles"
+        hint="Isolated identities with coherent fingerprints."
+        action={<Btn icon="upload" onClick={() => { const el = document.createElement('input'); el.type = 'file'; el.accept = '.json,.csv'; el.onchange = () => { const f = el.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => { const text = String(r.result); if (f.name.endsWith('.csv')) { const n = s.importCsv(text); s.toast(n ? `${n} profiles imported` : 'No profiles found', n ? 'ok' : 'warn'); } else { try { const n = s.importData(text); s.toast(`${n} profiles imported`); } catch { s.toast('Invalid workspace file', 'err'); } } }; r.readAsText(f); }; el.click(); }}>Import</Btn>}
+      />
 
-      <div className="panel">
-        <div className="toolbar">
-          <div className="toolbar-left">
-            <div className="search-box"><Icon name="search" size={15} /><input value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} placeholder="Search" aria-label="Search profiles" /></div>
-            <div className="select-wrap"><Icon name="folder" size={14} /><select value={group} onChange={(e) => { setGroup(e.target.value); setPage(0); }} aria-label="Group">
-              <option value="All">All groups</option>{s.groups.map((g) => <option key={g}>{g}</option>)}
-            </select><Icon name="chevronDown" size={13} /></div>
-            <div className="select-wrap"><Icon name="filter" size={14} /><select value={status} onChange={(e) => { setStatus(e.target.value); setPage(0); }} aria-label="Status">
-              <option value="all">All status</option><option value="ready">Ready</option><option value="running">Running</option><option value="stopped">Stopped</option><option value="error">Error</option>
-            </select><Icon name="chevronDown" size={13} /></div>
-            <div className="select-wrap"><Icon name="sliders" size={14} /><select value={sort} onChange={(e) => setSort(e.target.value as Sort)} aria-label="Sort">
-              <option value="created">Newest</option><option value="name">Name</option><option value="launched">Last launch</option><option value="score">Consistency</option>
-            </select><Icon name="chevronDown" size={13} /></div>
-          </div>
-          <div className="toolbar-right">
-            {selected.size > 0 ? (
-              <>
-                <span className="sel-count">{selected.size} selected</span>
-                <Button icon="play" size="sm" onClick={() => launch(ids)}>Launch</Button>
-                <Button icon="stop" size="sm" onClick={() => stop(ids)}>Stop</Button>
-                <Button icon="download" size="sm" onClick={() => exportSel(ids)}>Export</Button>
-                <Button icon="trash" size="sm" variant="danger" onClick={() => remove(ids)}>Delete</Button>
-                <IconButton icon="close" label="Clear selection" onClick={clearSel} />
-              </>
-            ) : (
-              <>
-                <span className="result-count">{filtered.length} results</span>
-                <IconButton icon="refresh" label="Refresh" onClick={() => s.toast('Workspace up to date', 'info')} />
-                <Button icon="upload" size="sm" onClick={() => s.setView('settings')}>Import</Button>
-                <Button icon="plus" size="sm" variant="primary" onClick={() => s.setCreateOpen(true)}>Create</Button>
-              </>
-            )}
-          </div>
-        </div>
+      <Grid container spacing={2} sx={{ mb: 2.5 }}>
+        {[
+          { icon: 'layers' as const, label: 'Profiles', value: s.profiles.length },
+          { icon: 'play' as const, label: 'Running', value: running },
+          { icon: 'folder' as const, label: 'Groups', value: s.groups.length },
+          { icon: 'verified' as const, label: 'Avg. consistency', value: `${avg}%` },
+        ].map((c) => <Grid item xs={6} md={3} key={c.label}><StatCard icon={c.icon} label={c.label} value={c.value} /></Grid>)}
+      </Grid>
 
-        {rows.length === 0 ? (
-          <Empty icon="grid" title="No profiles here" hint="Adjust the filters, or create a new profile." action={<Button icon="plus" variant="primary" onClick={() => s.setCreateOpen(true)}>Create profile</Button>} />
+      <Panel pad={0} sx={{ overflow: 'hidden' }}>
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ p: 1.6, flexWrap: 'wrap', gap: 1 }}>
+          <TextField
+            size="small" placeholder="Search profiles" value={q} onChange={(e) => { setQ(e.target.value); setPage(0); }}
+            sx={{ minWidth: { xs: '100%', md: 220 }, flex: 1 }}
+            InputProps={{ startAdornment: <InputAdornment position="start"><Icon name="search" size={20} /></InputAdornment> }}
+          />
+          <Select size="small" value={group} onChange={(e) => { setGroup(e.target.value); setPage(0); }} sx={{ minWidth: 130 }}>
+            <MenuItem value="all">All groups</MenuItem>
+            {s.groups.map((g) => <MenuItem key={g} value={g}>{g}</MenuItem>)}
+          </Select>
+          <Select size="small" value={status} onChange={(e) => { setStatus(e.target.value); setPage(0); }} sx={{ minWidth: 120 }}>
+            <MenuItem value="all">All status</MenuItem>
+            {['ready', 'running', 'stopped', 'error'].map((v) => <MenuItem key={v} value={v}>{v}</MenuItem>)}
+          </Select>
+          <Select size="small" value={sort} onChange={(e) => setSort(e.target.value)} sx={{ minWidth: 120 }}>
+            <MenuItem value="newest">Newest</MenuItem>
+            <MenuItem value="name">Name</MenuItem>
+            <MenuItem value="score">Score</MenuItem>
+          </Select>
+          <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center', px: 0.5, whiteSpace: 'nowrap', width: { xs: '100%', md: 'auto' }, textAlign: { xs: 'center', md: 'left' } }}>{rows.length} results</Typography>
+          <Box sx={{ flex: 1, display: { xs: 'none', md: 'block' } }} />
+          <Stack direction="row" spacing={0.8} sx={{ width: { xs: '100%', md: 'auto' }, justifyContent: { xs: 'flex-start', md: 'flex-end' } }}>
+            <IconBtn icon="download" label="Export CSV" onClick={exportCsv} />
+            <IconBtn icon="save" label="Export workspace" onClick={exportJson} />
+          </Stack>
+        </Stack>
+
+        {selected.size > 0 && (
+          <Stack direction="row" spacing={1} sx={{ px: 1.6, pb: 1.4, flexWrap: 'wrap', gap: 0.8, alignItems: 'center' }}>
+            <Chip label={`${selected.size} selected`} size="small" color="primary" />
+            <Btn size="small" icon="play" onClick={() => { s.setStatus(ids, 'running'); clear(); }}>Launch</Btn>
+            <Btn size="small" icon="stop" onClick={() => { s.setStatus(ids, 'stopped'); clear(); }}>Stop</Btn>
+            <Btn size="small" icon="copy" onClick={() => { s.duplicateProfiles(ids); clear(); }}>Duplicate</Btn>
+            <Btn size="small" icon="globe" onClick={() => { s.geoMatch(ids); clear(); }}>Geo match</Btn>
+            <Btn size="small" icon="spark" onClick={() => { const r = s.profiles.length % REAL_DEVICE_PRESETS.length; s.applyPreset(ids, REAL_DEVICE_PRESETS[r].id); clear(); }}>Apply real device</Btn>
+            <Btn size="small" variant="danger" icon="trash" onClick={() => { s.deleteProfiles(ids); clear(); }}>Delete</Btn>
+          </Stack>
+        )}
+        <Divider />
+
+        {pageRows.length === 0 ? <Empty icon="layers" title="No profiles" hint="Create one or import a workspace." action={<Btn variant="primary" icon="plus" onClick={() => s.setCreateOpen(true)}>New profile</Btn>} /> : mobile ? (
+          <Box sx={{ p: 1.4 }}>
+            {pageRows.map((p) => <ProfileCard key={p.id} p={p} selected={selected.has(p.id)} onSelect={() => toggle(p.id)} onOpen={() => s.setSelectedId(p.id)} />)}
+          </Box>
         ) : (
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead><tr>
-                <th className="col-check"><input type="checkbox" checked={allOnPage} onChange={toggleAll} aria-label="Select page" /></th>
-                <th>Profile</th><th>Device</th><th>Proxy</th><th>Score</th><th>Status</th><th>Last launch</th><th className="col-actions" />
-              </tr></thead>
-              <tbody>
-                {rows.map((p) => {
-                  const rep = checkProfile(p);
+          <Box sx={{ overflowX: 'auto' }}>
+            <Table size="small" className="data-table">
+              <TableHead>
+                <TableRow>
+                  <TableCell padding="checkbox"><Checkbox size="small" checked={selected.size === pageRows.length && pageRows.length > 0} onChange={() => setSelected(selected.size === pageRows.length ? new Set() : new Set(pageRows.map((p) => p.id)))} /></TableCell>
+                  <TableCell>Profile</TableCell><TableCell>Device</TableCell><TableCell>Proxy</TableCell>
+                  <TableCell>Consistency</TableCell><TableCell>Status</TableCell><TableCell align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {pageRows.map((p) => {
                   const px = s.proxies.find((x) => x.id === p.proxyId);
-                  const tpl = DEVICE_TEMPLATES.find((t) => t.id === p.templateId);
+                  const report = checkProfile(p);
+                  const quality = profileQuality(p, s.profiles);
                   return (
-                    <tr key={p.id} className={selected.has(p.id) ? 'row-sel' : ''} onClick={() => s.setSelectedId(p.id)}>
-                      <td className="col-check" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selected.has(p.id)} onChange={() => toggle(p.id)} aria-label={`Select ${p.name}`} /></td>
-                      <td>
-                        <div className="cell-profile">
-                          <span className={`os-badge os-${p.os.toLowerCase()}`}>{p.os === 'Windows' ? '⊞' : p.os === 'macOS' ? '⌘' : p.os === 'Android' ? '◧' : '◇'}</span>
-                          <div><strong>{p.name}</strong><span>{p.group}{p.tags.length ? ` · ${p.tags.join(', ')}` : ''}</span></div>
-                        </div>
-                      </td>
-                      <td><div className="cell-device"><span>{tpl?.label ?? p.templateId}</span><em>Chrome {p.fingerprint.chromeMajor} · {p.fingerprint.screen.width}×{p.fingerprint.screen.height}</em></div></td>
-                      <td>{px ? <span className="cell-proxy"><span className="country-code">{countryCode(px.country)}</span> {px.host}:{px.port}</span> : <span className="muted">Direct</span>}</td>
-                      <td><div className="score"><span className={`score-dot g${rep.grade}`} />{rep.score}</div></td>
-                      <td><Badge tone={p.status === 'running' ? 'ok' : p.status === 'error' ? 'err' : 'neutral'} dot>{p.status}</Badge></td>
-                      <td className="muted nowrap">{p.lastLaunchedAt ? new Date(p.lastLaunchedAt).toLocaleDateString() : '—'}</td>
-                      <td className="col-actions" onClick={(e) => e.stopPropagation()}>
-                        <IconButton icon={p.status === 'running' ? 'stop' : 'play'} label={p.status === 'running' ? 'Stop' : 'Launch'} onClick={() => p.status === 'running' ? stop([p.id]) : launch([p.id])} />
-                        <IconButton icon="chevron" label="Details" onClick={() => s.setSelectedId(p.id)} />
-                      </td>
-                    </tr>
+                    <TableRow key={p.id} hover sx={{ cursor: 'pointer' }} onClick={() => s.setSelectedId(p.id)}>
+                      <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}><Checkbox size="small" checked={selected.has(p.id)} onChange={() => toggle(p.id)} /></TableCell>
+                      <TableCell>
+                        <Stack direction="row" alignItems="center" spacing={1.2}>
+                          <Box sx={{ width: 32, height: 32, borderRadius: '50%', display: 'grid', placeItems: 'center', bgcolor: 'rgba(216,27,96,0.10)', flex: 'none' }}>
+                            <Official name={osMark(p.os)} size={18} color="#D81B60" />
+                          </Box>
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography sx={{ fontWeight: 600, fontSize: '0.84rem' }}>{p.name}</Typography>
+                            <Typography variant="caption" color="text.secondary">{p.group}{p.tags.length ? ` · ${p.tags.join(', ')}` : ''}</Typography>
+                          </Box>
+                        </Stack>
+                      </TableCell>
+                      <TableCell>
+                        <Typography sx={{ fontSize: '0.82rem' }}>{p.fingerprint.uaClientHints.platform}</Typography>
+                        <Typography variant="caption" color="text.secondary">Chrome {p.fingerprint.chromeMajor} · {p.fingerprint.screen.width}×{p.fingerprint.screen.height}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        {px ? <Stack direction="row" alignItems="center" spacing={0.8}><CountryFlag code={px.country} size={17} /><Typography variant="caption">{px.host}:{px.port}</Typography></Stack>
+                          : <Typography variant="caption" color="text.secondary">Direct</Typography>}
+                      </TableCell>
+                      <TableCell>
+                        <Stack direction="row" alignItems="center" spacing={1}>
+                          <ScoreRing value={report.score} size={36} />
+                          <Box>
+                            <Typography sx={{ fontWeight: 700, fontSize: '0.82rem' }}>{report.score} · {report.grade}</Typography>
+                            <Tooltip title={`Unique in ${quality.uniqueness}% of comparisons`}><span><Typography variant="caption" color="text.secondary">Unique {quality.uniqueness}%</Typography></span></Tooltip>
+                          </Box>
+                        </Stack>
+                      </TableCell>
+                      <TableCell><Tag tone={p.status === 'error' ? 'err' : p.status === 'running' ? 'primary' : 'neutral'}>{p.status}</Tag></TableCell>
+                      <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                        <Stack direction="row" spacing={0.3} justifyContent="flex-end">
+                          <IconBtn icon={p.status === 'running' ? 'stop' : 'play'} label={p.status === 'running' ? 'Stop' : 'Launch'} onClick={() => s.setStatus([p.id], p.status === 'running' ? 'stopped' : 'running')} size={19} />
+                          <IconBtn icon="copy" label="Duplicate" onClick={() => s.duplicateProfiles([p.id])} size={19} />
+                          <IconBtn icon="chevronRight" label="Details" onClick={() => s.setSelectedId(p.id)} size={19} />
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
+              </TableBody>
+            </Table>
+          </Box>
         )}
 
-        <div className="pager">
-          <span>Page {cur + 1} of {pages} · {filtered.length} profiles</span>
-          <div>
-            <IconButton icon="arrowLeft" label="Previous page" disabled={cur === 0} onClick={() => setPage(cur - 1)} />
-            <span className="page-num">{cur + 1}</span>
-            <IconButton icon="chevron" label="Next page" disabled={cur >= pages - 1} onClick={() => setPage(cur + 1)} />
-          </div>
-        </div>
-      </div>
-    </div>
+        <Divider />
+        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ p: 1.4, flexWrap: 'wrap', gap: 1 }}>
+          <Typography variant="caption" color="text.secondary">Page {page + 1} of {pages} · {rows.length} profiles</Typography>
+          <Stack direction="row" spacing={1}>
+            <Btn size="small" icon="back" onClick={() => setPage((p) => Math.max(0, p - 1))}>Prev</Btn>
+            <Btn size="small" onClick={() => setPage((p) => Math.min(pages - 1, p + 1))}>Next</Btn>
+          </Stack>
+        </Stack>
+      </Panel>
+    </Box>
   );
 }

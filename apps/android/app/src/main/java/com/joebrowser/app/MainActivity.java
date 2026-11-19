@@ -51,7 +51,7 @@ public class MainActivity extends Activity {
         settings.setLoadWithOverviewMode(true);
         settings.setUseWideViewPort(true);
         settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
-        settings.setUserAgentString("JoeBrowser/1.0 (Android; ControlPlane)");
+        settings.setUserAgentString("JoeBrowser/2.0 (Android; ControlPlane)");
         settings.setMediaPlaybackRequiresUserGesture(true);
 
         web.setWebViewClient(new WebViewClient() {
@@ -124,7 +124,7 @@ public class MainActivity extends Activity {
                 o.put("kind", "android-apk");
                 o.put("name", Build.MODEL);
                 o.put("platform", "Android " + Build.VERSION.RELEASE);
-                o.put("appVersion", "1.0.0");
+                o.put("appVersion", "2.0.0");
                 o.put("sdk", Build.VERSION.SDK_INT);
             } catch (JSONException ignored) {}
             return o.toString();
@@ -138,12 +138,14 @@ public class MainActivity extends Activity {
                 String ua = p.optJSONObject("fingerprint") == null
                         ? "" : p.optJSONObject("fingerprint").optString("userAgent", "");
                 String url = p.optString("startUrl", "https://example.com");
+                String cookies = p.optString("cookies", "");
 
                 writeSuffix(id);
                 Intent i = new Intent(MainActivity.this, BrowserActivity.class);
                 i.putExtra("profileId", id);
                 i.putExtra("userAgent", ua);
                 i.putExtra("url", url);
+                i.putExtra("cookies", cookies);
                 startActivity(i);
                 return "{\"ok\":true}";
             } catch (Exception e) {

@@ -1,9 +1,9 @@
 {
   "name": "joe-browser-desktop",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "main": "main.js",
-  "description": "Joe Browser — Electron desktop shell (Windows EXE)",
+  "description": "Joe Browser 2 — Electron desktop shell (Windows EXE)",
   "author": "Joe Browser",
   "license": "MIT",
   "scripts": {
@@ -21,12 +21,31 @@
     "appId": "com.joebrowser.desktop",
     "productName": "Joe Browser",
     "copyright": "Copyright © 2026 Joe Browser",
-    "directories": { "output": "release" },
-    "files": ["main.js", "preload.js", "rest.js", "core.cjs", "web-dist/**/*", "package.json"],
-    "win": {
-      "target": ["nsis", "portable"]
+    "directories": {
+      "output": "release"
     },
-    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true, "artifactName": "JoeBrowser-Setup-${version}.${ext}" },
-    "portable": { "artifactName": "JoeBrowser-Portable-${version}.${ext}" }
+    "files": [
+      "main.js",
+      "preload.js",
+      "rest.js",
+      "core.cjs",
+      "web-dist/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "artifactName": "JoeBrowser-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "JoeBrowser-Portable-${version}.${ext}"
+    }
   }
 }

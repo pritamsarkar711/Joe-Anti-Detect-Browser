@@ -6,9 +6,13 @@ import android.content.Context;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Process;
+import android.webkit.CookieManager;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -66,6 +70,8 @@ public class BrowserActivity extends Activity {
         final String profileId = getIntent().getStringExtra("profileId");
         final String ua = getIntent().getStringExtra("userAgent");
         final String url = getIntent().getStringExtra("url");
+        final String cookies = getIntent().getStringExtra("cookies");
+        final String pageUrl = url == null || url.isEmpty() ? "https://example.com" : url;
         injection = readAsset("injection/" + (profileId == null ? "default" : profileId) + ".js");
 
         web = new WebView(this);
@@ -92,7 +98,54 @@ public class BrowserActivity extends Activity {
             }
         });
 
-        web.loadUrl(url == null || url.isEmpty() ? "https://example.com" : url);
+        seedCookies(cookies, pageUrl);
+        web.loadUrl(pageUrl);
+    }
+
+    /** Seed a profile cookie jar. JSON arrays and name=value pairs are accepted. */
+    private void seedCookies(String text, String pageUrl) {
+        if (text == null || text.trim().isEmpty()) return;
+        CookieManager manager = CookieManager.getInstance();
+        manager.setAcceptCookie(true);
+        String trimmed = text.trim();
+        try {
+            if (trimmed.startsWith("[")) {
+                JSONArray list = new JSONArray(trimmed);
+                for (int i = 0; i < list.length(); i++) {
+                    JSONObject c = list.optJSONObject(i);
+                    if (c == null) continue;
+                    String name = c.optString("name", "");
+                    if (name.isEmpty()) continue;
+                    String value = c.optString("value", "");
+                    String domain = c.optString("domain", "");
+                    String path = c.optString("path", "/");
+                    boolean secure = c.optBoolean("secure", false);
+                    String cookieUrl = domain.isEmpty() ? pageUrl
+                            : (secure ? "https://" : "http://") + domain.replaceFirst("^\\.", "") + path;
+                    StringBuilder cookie = new StringBuilder();
+                    cookie.append(name).append("=").append(value);
+                    if (!domain.isEmpty()) cookie.append("; Domain=").append(domain);
+                    cookie.append("; Path=").append(path);
+                    if (secure) cookie.append("; Secure");
+                    if (c.optBoolean("httpOnly", false)) cookie.append("; HttpOnly");
+                    long expires = c.optLong("expires", 0);
+                    if (expires > 0) {
+                        long age = expires - (System.currentTimeMillis() / 1000);
+                        if (age > 0) cookie.append("; Max-Age=").append(age);
+                    }
+                    manager.setCookie(cookieUrl, cookie.toString());
+                }
+            } else {
+                String[] parts = trimmed.split(";");
+                for (int i = 0; i < parts.length; i++) {
+                    String part = parts[i].trim();
+                    if (part.indexOf('=') > 0) manager.setCookie(pageUrl, part);
+                }
+            }
+            manager.flush();
+        } catch (Exception ignored) {
+            // Invalid cookie text must never prevent a profile from opening.
+        }
     }
 
     private String readAsset(String name) {

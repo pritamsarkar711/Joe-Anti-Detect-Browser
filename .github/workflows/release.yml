@@ -3,9 +3,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag (e.g. v1.0.0)'
+        description: 'Release tag (e.g. v2.0.0)'
         required: true
-        default: 'v1.0.0'
+        default: 'v2.0.0'
   push:
     tags: ['v*']
 
@@ -29,6 +29,9 @@ jobs:
       - run: npm run build:android-ui
       - run: npm run build:assets
       - run: npm run build:site
+      - run: npm run test:site
+      - run: npm run test:java
+      - run: npm run test:fingerprint
       - uses: actions/upload-artifact@v4
         with: { name: web-dist, path: dist/, retention-days: 7 }
       - uses: actions/upload-artifact@v4
@@ -136,23 +139,33 @@ jobs:
           prerelease: false
           files: release-assets/*
           body: |
-            ## Joe Browser — desktop + Android
+            ## Joe Browser 2.0 — Windows + Android
 
-            Download the Windows installer (`JoeBrowser-Setup-*.exe`), the portable build
-            (`JoeBrowser-Portable-*.exe`) or the Android app (`JoeBrowser.apk`).
-            `SHA256SUMS.txt` contains checksums for every binary.
+            Download the Windows installer (`JoeBrowser-Setup-2.0.0.exe`), the portable
+            build (`JoeBrowser-Portable-2.0.0.exe`) or the Android app (`JoeBrowser.apk`).
+            `SHA256SUMS.txt` contains a checksum for every binary — verify it before running.
 
-            **What's inside**
-            - Unlimited isolated browser profiles (cookies, cache, storage per profile)
-            - 8 coherent device templates with a fingerprint consistency checker
-            - Per-profile proxies (HTTP / HTTPS / SOCKS4 / SOCKS5), bulk import
-            - Bulk profile creation, groups, tags, import/export, activity log
+            **Highlights in 2.0**
+            - New Material UI workspace: one pink accent, 2px radii, IBM Plex Sans, flat surfaces
+            - 29 observed-device bundles from Apache-2.0 Apify/BrowserForge data, coherence-filtered
+            - 30 region presets with DST-correct timezones and proxy-to-locale matching
+            - Coherent UA / Client Hints / GPU / screen / fonts / locale / touch specification
+            - Per-profile cookies, cache and storage isolation on Windows and Android
+            - Cookie JSON and CSV profile import, per-profile proxy parsing
+            - Quality metrics, a local 22-check JavaScript probe, and explicit engine-level limits
+            - Desktop ⇄ Android commands through Supabase Realtime with RLS-scoped Postgres
             - Local REST API on the desktop build (`127.0.0.1:9333`)
-            - EXE ⇄ APK sync through Supabase Realtime / Postgres
-            - Shared React control-plane UI on desktop, Android and Vercel
 
-            **Honest scope**: fingerprint consistency is applied at the JS layer.
-            TLS/JA4, HTTP/2 and font rasterisation are engine-level surfaces that
-            require a patched Chromium fork — see `docs/ARCHITECTURE.md`.
+            **Validation**: `npm test` 29/29, `test:fingerprint` 29/29 with 100% internal
+            consistency and grade B, `test:ui` 31/31, `test:devices` 75/75 across five
+            Android families, `test:site` 15/15. Details in `docs/VALIDATION.md`.
 
-            Built by GitHub Actions from source in this repository.
+            **Honest scope**: JavaScript-visible surfaces are made coherent per profile.
+            Joe Browser does not ship a patched Chromium or Firefox kernel, so TLS/JA4,
+            HTTP/2 frame order, QUIC, font rasterisation, GPU driver behaviour and CDP
+            side channels remain engine-controlled. It is not undetectable, and no
+            third-party detector score is claimed. Intended for legitimate QA, testing,
+            ad verification, privacy research and management of your own accounts.
+
+            Built by GitHub Actions from tagged source in this repository.
+            Source: MIT · docs and brand assets: CC BY-ND 4.0 · see NOTICE and TRADEMARK.md.
