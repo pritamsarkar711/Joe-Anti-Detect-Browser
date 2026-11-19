@@ -6,7 +6,7 @@ import {
 import { useStore } from '@/state/store';
 import {
   DEVICE_TEMPLATES, TEMPLATE_GROUPS as GROUPS, REAL_DEVICE_PRESETS, DEFAULT_START_PAGE,
-  generateProfiles, parseCookies, FINGERPRINT_DATA_SOURCE, FAMILY_LABEL,
+  generateProfiles, parseCookies,
   type BrowserProfile, type BrowserFamily,
 } from '@joe/core';
 import { Icon } from '../Icons';
@@ -21,12 +21,12 @@ const osMark = (os: string) =>
           : 'linux';
 
 /** Browsers the app ships itself. No host browser is ever used. */
-const FAMILIES: Array<{ id: BrowserFamily; label: string; mark: string | null; note: string }> = [
-  { id: 'joe', label: 'Joe Browser', mark: null, note: 'Bundled engine' },
-  { id: 'chrome', label: 'Chrome', mark: 'chrome', note: 'Chromium engine' },
-  { id: 'edge', label: 'Edge', mark: null, note: 'Chromium engine' },
-  { id: 'brave', label: 'Brave', mark: 'brave', note: 'Chromium engine' },
-  { id: 'firefox', label: 'Firefox', mark: 'firefox', note: 'Gecko-family UA' },
+const FAMILIES: Array<{ id: BrowserFamily; label: string; mark: string | null }> = [
+  { id: 'joe', label: 'Joe Browser', mark: null },
+  { id: 'chrome', label: 'Chrome', mark: 'chrome' },
+  { id: 'edge', label: 'Edge', mark: 'edge' },
+  { id: 'brave', label: 'Brave', mark: 'brave' },
+  { id: 'firefox', label: 'Firefox', mark: 'firefox' },
 ];
 
 export function CreateProfile() {
@@ -90,7 +90,6 @@ export function CreateProfile() {
     <Modal
       open={s.createOpen} onClose={close} width={680}
       title="New profile"
-      subtitle="A coherent device, its own storage and its own exit."
       actions={
         <>
           <Btn onClick={close}>Cancel</Btn>
@@ -127,19 +126,13 @@ export function CreateProfile() {
                   }}
                 >
                   {f.mark ? <Official name={f.mark} size={17} /> : <Icon name="stealth" size={17} color="#D81B60" />}
-                  <Box sx={{ minWidth: 0, flex: 1 }}>
-                    <Typography noWrap sx={{ fontSize: '0.76rem', fontWeight: 600 }}>{f.label}</Typography>
-                    <Typography noWrap variant="caption" color="text.secondary" sx={{ fontSize: '0.62rem' }}>{locked ? 'Premium' : f.note}</Typography>
-                  </Box>
+                  <Typography noWrap sx={{ fontSize: '0.78rem', fontWeight: 600, minWidth: 0, flex: 1 }}>{f.label}</Typography>
                   {locked && <Icon name="lock" size={13} />}
                 </Paper>
               </Grid>
               );
             })}
           </Grid>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.6 }}>
-            Engines ship inside the app — nothing is borrowed from browsers installed on this computer.
-          </Typography>
         </Box>
 
         {/* 3 — device */}
@@ -282,9 +275,6 @@ export function CreateProfile() {
           </AccordionDetails>
         </Accordion>
 
-        <Typography variant="caption" color="text.secondary">
-          {FINGERPRINT_DATA_SOURCE} · {FAMILY_LABEL[family]} · new profiles open {DEFAULT_START_PAGE.replace('https://', '')}
-        </Typography>
       </Stack>
     </Modal>
   );

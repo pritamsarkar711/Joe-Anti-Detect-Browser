@@ -142,8 +142,15 @@ public class BrowserActivity extends Activity {
         view.evaluateJavascript(injection, null);
         if (injected.add(pageUrl) && retries < 3) {
             retries++;
-            view.postDelayed(() -> {
-                if (web == view) view.evaluateJavascript(injection, null);
+            // Not a lambda: the APK is compiled with `javac -source 8 -target 8`
+            // against a bare android.jar, which has no LambdaMetafactory.
+            final WebView target = view;
+            final String payload = injection;
+            view.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    if (web == target) target.evaluateJavascript(payload, null);
+                }
             }, 350L * retries);
         }
     }

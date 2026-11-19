@@ -128,6 +128,10 @@ JavaScript injection cannot reach C++ engine internals. The following remain eng
 
 Commercial products and projects such as Donut/Wayfern, ShardBrowser, Camoufox and OVO modify Chromium or Firefox source to control these surfaces. Joe Browser does not ship a patched engine and does not claim parity with them or "undetectability". It aims to be coherent, inspectable and honest within the JS/WebView layer.
 
+The four-layer model behind that boundary, the projects that operate at each
+layer, and exactly which techniques were adopted from which are recorded in
+[`RESEARCH.md`](RESEARCH.md).
+
 ## Security model
 
 - Supabase RLS scopes every table to workspace membership.

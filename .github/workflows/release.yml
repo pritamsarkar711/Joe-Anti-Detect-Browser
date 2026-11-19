@@ -5,7 +5,7 @@ on:
       tag:
         description: 'Release tag (e.g. v2.0.0)'
         required: true
-        default: 'v3.0.0'
+        default: 'v3.1.0'
   push:
     tags: ['v*']
 
@@ -141,24 +141,35 @@ jobs:
           body: |
             ## Joe Browser 2.0 — Windows + Android
 
-            Download the Windows installer (`JoeBrowser-Setup-3.0.0.exe`), the portable
-            build (`JoeBrowser-Portable-3.0.0.exe`) or the Android app (`JoeBrowser.apk`).
+            Download the Windows installer (`JoeBrowser-Setup-3.1.0.exe`), the portable
+            build (`JoeBrowser-Portable-3.1.0.exe`) or the Android app (`JoeBrowser.apk`).
             `SHA256SUMS.txt` contains a checksum for every binary — verify it before running.
 
-            **Highlights in 2.0**
-            - New Material UI workspace: one pink accent, 2px radii, IBM Plex Sans, flat surfaces
-            - 29 observed-device bundles from Apache-2.0 Apify/BrowserForge data, coherence-filtered
-            - 30 region presets with DST-correct timezones and proxy-to-locale matching
-            - Coherent UA / Client Hints / GPU / screen / fonts / locale / touch specification
-            - Per-profile cookies, cache and storage isolation on Windows and Android
-            - Cookie JSON and CSV profile import, per-profile proxy parsing
-            - Quality metrics, a local 22-check JavaScript probe, and explicit engine-level limits
-            - Desktop ⇄ Android commands through Supabase Realtime with RLS-scoped Postgres
-            - Local REST API on the desktop build (`127.0.0.1:9333`)
+            **Highlights in 3.1**
+            - The Android build compiles again: a Java lambda the APK toolchain cannot
+              desugar is gone, and `test:java` now fails the build if one returns
+            - Correct official Microsoft Edge mark in the browser picker, with the
+              other engine marks re-verified against their sources
+            - New identity: a "J" monogram on a squircle, from one geometry shared by
+              the app, favicon, site, installer icon and Android adaptive icon
+            - Extensions install through the app into its own folder, with zip-slip
+              protection and a real integrity digest; no store round-trip required
+            - Less text throughout: engine notes, helper sentences and provenance
+              footers removed where they repeated what the control already said
+            - Stability: relative bundle base so the installed build does not white-
+              screen, an error boundary instead of a blank window, and per-frame
+              fingerprint re-injection on Android with a real offline page
+            - One scroll container, grouped navigation, Ctrl K palette, and a layout
+              that holds from 360 px to 1440 px
+            - New profiles open `browserscan.net` first; engines are bundled and never
+              borrowed from browsers installed on the machine
+            - Plans: 2 profiles free for life; premium adds Brave, Edge, Firefox,
+              Joe Browser, bulk create, import and the advanced tools
 
-            **Validation**: `npm test` 29/29, `test:fingerprint` 29/29 with 100% internal
-            consistency and grade B, `test:ui` 31/31, `test:devices` 75/75 across five
-            Android families, `test:site` 15/15. Details in `docs/VALIDATION.md`.
+            **Validation**: `tsc` clean; `npm test` 51/51, `test:fingerprint` 29/29,
+            `test:devices` 75/75, `test:ui` 35/35, `test:site` 15/15, `test:java` 4/4.
+            The Android APK, the NSIS installer and the portable EXE are built by this
+            workflow from this tag. Details in `docs/VALIDATION.md`.
 
             **Honest scope**: JavaScript-visible surfaces are made coherent per profile.
             Joe Browser does not ship a patched Chromium or Firefox kernel, so TLS/JA4,

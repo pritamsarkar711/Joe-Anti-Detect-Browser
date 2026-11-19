@@ -1,18 +1,41 @@
 /**
  * Joe Browser brand mark — the single source of truth.
  *
- * Geometry: an open shield-arc wrapping a solid "J" core with a light pupil.
- * It reads at 16px (favicon) and at 96px (installer icon) because it uses only
- * three shapes, one colour and generous negative space. Every placement in the
- * app, the favicon, the site, the Electron icon and the Android adaptive icon
- * derives from these same numbers.
+ * The mark is a monogram: a rounded "J" inside a squircle. It replaced the
+ * earlier ring-and-dot, which read as a router or record glyph at small sizes.
  *
- * Flat, single pink (#D81B60), no gradients, no rounded-square container.
+ * Why this shape:
+ * - One glyph, two colours, no gradients — legible at 16px (favicon) and 512px
+ *   (store icon) from the same geometry.
+ * - The squircle and the letterform share an optical weight, so it holds on a
+ *   white tile, a dark tile and the Android adaptive-icon mask.
+ * - Nothing about it depends on text, so it survives translation and scaling.
+ *
+ * Every placement (app chrome, favicon, site, Electron icon, Android adaptive
+ * icon, splash) derives from MARK_GEOMETRY below. Never redraw it elsewhere.
  */
 import { BRAND_MARKS } from './brandPaths';
 import { FLAG_DATA } from './flagData';
 
 export const MARK_COLOR = '#D81B60';
+
+/**
+ * Canonical geometry on a 48-unit grid.
+ *
+ * `tile` is the squircle; `j` is the stroke path; the stroke width is tuned so
+ * the glyph's counter (the hook) stays open at 16px.
+ */
+export const MARK_GEOMETRY = {
+  /** corner radius of the squircle, 48-grid */
+  radius: 11.5,
+  /** vertical stem start, and the baseline the hook curves from */
+  stem: { x: 29.4, top: 12.5 },
+  /** hook radius */
+  hook: { r: 8.4 },
+  stroke: 5,
+} as const;
+
+const J_PATH = 'M29.4 12.5v15.4a8.4 8.4 0 0 1-16.8 0';
 
 export interface MarkProps {
   size?: number;
@@ -26,8 +49,17 @@ export interface MarkProps {
  * The canonical mark. `id` suffixes keep gradient-free SVG ids unique when the
  * mark appears several times on one page (no <defs> collisions).
  */
-export function JoeMark({ size = 32, tone = 'color', color = MARK_COLOR, title = 'Joe Browser' }: MarkProps) {
-  const stroke = tone === 'mono' ? color : MARK_COLOR;
+export function JoeMark({
+  size = 32,
+  tone = 'color',
+  color = MARK_COLOR,
+  title = 'Joe Browser',
+  tile = false,
+}: MarkProps & { tile?: boolean }) {
+  // `tile` draws the filled squircle behind the glyph (favicon, launcher,
+  // installer). `tile: false` is the transparent glyph for app chrome, where
+  // the surrounding surface already provides the background.
+  const ink = tone === 'mono' ? color : MARK_COLOR;
   return (
     <svg
       width={size}
@@ -39,18 +71,14 @@ export function JoeMark({ size = 32, tone = 'color', color = MARK_COLOR, title =
       style={{ flex: 'none', display: 'block' }}
     >
       <title>{title}</title>
-      {/* Outer arc — an open ring, the profile "container" */}
+      {tile && <rect width="48" height="48" rx={MARK_GEOMETRY.radius} fill={ink} />}
       <path
-        d="M39.75 13.38A19 19 0 1 1 31.73 6.64"
+        d={J_PATH}
         fill="none"
-        stroke={stroke}
-        strokeWidth="3.6"
+        stroke={tile ? '#FFFFFF' : ink}
+        strokeWidth={MARK_GEOMETRY.stroke}
         strokeLinecap="round"
       />
-      {/* Core disc — the isolated identity */}
-      <circle cx="24" cy="24" r="10.2" fill={stroke} />
-      {/* Pupil — keeps the mark legible as small as 16px */}
-      <circle cx="24" cy="24" r="3.8" fill="#FFFFFF" />
     </svg>
   );
 }

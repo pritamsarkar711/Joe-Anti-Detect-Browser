@@ -69,7 +69,10 @@ try {
   await page.waitForSelector('.data-table tbody tr', { timeout: 15000 });
   await page.getByRole('button', { name: 'New profile' }).first().click();
   await page.waitForSelector('.MuiDialog-root', { timeout: 4000 });
-  ok('create dialog opens', await page.getByText('A coherent device, its own storage and its own exit.').isVisible());
+  // Assert the dialog's real content, not a subtitle that copy edits may remove.
+  // Labels are CSS-uppercased, so match the DOM text ("Browser", "Device").
+  ok('create dialog opens', await page.locator('.MuiDialog-root').getByText('Browser', { exact: true }).first().isVisible());
+  ok('create dialog offers browser and device steps', (await page.locator('.MuiDialog-root').getByText(/^(Browser|Device)$/).count()) >= 2);
   ok('browser family picker is present', (await page.locator('.MuiDialog-root').getByText('Joe Browser').first().isVisible()));
   // Every bundled engine is offered; which ones are locked depends on the
   // account, so assert the full picker rather than the lock state.

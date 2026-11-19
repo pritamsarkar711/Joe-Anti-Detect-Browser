@@ -86,3 +86,36 @@ export function nativeDeviceName(): string {
   }
   return 'Desktop';
 }
+
+/* ------------------------------------------------------------------ *
+ * Extensions.
+ *
+ * On the desktop build these reach the real installer in
+ * apps/desktop/extensions.cjs (download/unpack into the app's own
+ * extensions folder). Anywhere else — web preview, Android — there is no
+ * folder to install into, so `nativeExtensions()` returns null and the UI
+ * must fall back to the store link rather than claiming an install.
+ * ------------------------------------------------------------------ */
+
+export interface InstalledExtension {
+  dir: string;
+  name: string;
+  version: string;
+  manifestVersion: number;
+}
+
+interface ExtBridge {
+  list(): Promise<InstalledExtension[]>;
+  install(zipPath: string, id: string): Promise<InstalledExtension>;
+  attach(profileId: string, dir: string): Promise<unknown>;
+  detach(profileId: string, dir: string): Promise<unknown>;
+}
+
+export function nativeExtensions(): ExtBridge | null {
+  const w = globalThis as unknown as { joe?: { extensions?: ExtBridge; isDesktop?: boolean } };
+  return w.joe?.isDesktop && w.joe.extensions ? w.joe.extensions : null;
+}
+
+export function nativeCanInstallExtensions(): boolean {
+  return nativeExtensions() !== null;
+}

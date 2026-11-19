@@ -174,7 +174,10 @@ describe('v2 provenance and licensing', () => {
 
   it('keeps the release workflow current and publishing checksums', () => {
     const workflow = file('.github/workflows/release.yml');
-    expect(workflow).toContain("default: 'v3.0.0'");
+    // Derive the expected tag from package.json so a version bump cannot break
+    // this test and tempt anyone into "fixing" it by pinning an old number.
+    const { version } = JSON.parse(file('package.json')) as { version: string };
+    expect(workflow).toContain(`default: 'v${version}'`);
     expect(workflow).toContain('SHA256SUMS.txt');
     expect(workflow).toContain('npm run test:site');
     expect(workflow).toMatch(/not undetectable/i);

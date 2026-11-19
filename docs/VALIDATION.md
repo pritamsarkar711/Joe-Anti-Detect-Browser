@@ -1,4 +1,4 @@
-# Validation report — v3.0.0
+# Validation report — v3.1.0
 
 Every number below comes from a command in this repository. Nothing here is a third-party detector score, and no result is claimed for surfaces the project does not control.
 
@@ -9,11 +9,11 @@ Environment: Debian, Node `v22.22.3`, npm `10.9.8`, Python `3.11.2`, no display 
 | Command | Result |
 |---|---|
 | `npx tsc --noEmit` | pass, exit 0 |
-| `npm test` | 5 files, 43 tests passed |
+| `npm test` | 6 files, 51 tests passed |
 | `npm run test:fingerprint` | 29/29 injection self-tests, exit 0 |
-| `npm run test:ui` | 34/34 real-browser checks, no console errors |
+| `npm run test:ui` | 35/35 real-browser checks, no console errors |
 | `npm run test:devices` | 75/75 checks on five Android families |
-| `npm run test:java` | 4/4 Java sources parsed cleanly (parse only, not compilation) |
+| `npm run test:java` | 4/4 Java sources parse cleanly and contain no lambda or method reference (parse only, not compilation) |
 | `npm run test:site` | 15/15 static site, version and provenance checks |
 | `npm run build` | typecheck + production bundle |
 | `npm run build:core` | `apps/desktop/core.cjs`, 58 exports |
@@ -70,6 +70,37 @@ Highlights from the 34 passing checks:
 ### Device matrix (`npm run test:devices`)
 
 `75/75` checks across Google Pixel 8, Xiaomi 13, Samsung Galaxy S23, OPPO Find X6 and Vivo X90. Each device is checked for horizontal overflow, controls outside the viewport, clipped text, overlapping tap targets, bottom navigation (four destinations plus a working **More** drawer), dialog fit, table scrolling and console errors. Report: [`assets/screenshots/devices/report.json`](../assets/screenshots/devices/report.json).
+
+## Extension installation
+
+Extensions are installed by the app itself, into the app's own folder
+(`userData/extensions`), not borrowed from the machine's browser profiles. The
+installer in `apps/desktop/extensions.cjs` is covered by 8 tests built on real
+zip archives generated in the test:
+
+| Case | Expected | Verified |
+|---|---|---|
+| Valid package | unpacks, manifest read, name and version reported | yes |
+| Package wrapped in one folder | inner folder detected | yes |
+| No `manifest.json` | rejected, nothing left on disk | yes |
+| Not a zip | rejected, nothing left on disk | yes |
+| Missing file | rejected, no directory created | yes |
+| Entry escaping the directory (`../../x`) | refused as an unsafe path, nothing written outside | yes |
+| Listing | only directories with a readable manifest are offered | yes |
+| Digest | SHA-256 is stable for the same package | yes |
+
+`tar -xf` was the first implementation and was abandoned: it reads zip with
+bsdtar (Windows, macOS) but not with GNU tar, which made installation silently
+platform-dependent. The committed reader parses the central directory and
+inflates with Node's own zlib, so behaviour is identical on every host and there
+is no native dependency in the installer.
+
+**Not claimed:** the app does not silently install from a store URL. Store
+packages are signed for the store's own update channel and loading an arbitrary
+CRX at runtime needs engine flags that would break the "bundled engine, nothing
+borrowed" rule and are a code-execution hazard. The store link stays visible as
+an explicit fallback, and the button says `Get` rather than `Install` when there
+is no filesystem to install into (web preview, Android).
 
 ## Visual verification
 

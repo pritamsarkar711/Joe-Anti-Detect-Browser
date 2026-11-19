@@ -11,7 +11,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-D81B60.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Android-D81B60)](#download)
 
-[Download EXE & APK](https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser/releases/latest) · [Live control plane](https://joe-browser-control.vercel.app) · [Validation](docs/VALIDATION.md) · [Architecture](docs/ARCHITECTURE.md) · [Screenshots](#screenshots)
+[Download EXE & APK](https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser/releases/latest) · [Live control plane](https://joe-browser-control.vercel.app) · [Validation](docs/VALIDATION.md) · [Architecture](docs/ARCHITECTURE.md) · [Research](docs/RESEARCH.md) · [Screenshots](#screenshots)
 
 <br/>
 
