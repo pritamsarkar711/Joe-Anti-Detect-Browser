@@ -177,6 +177,10 @@ try {
     return 'error shown to the user';
   });
 
+  // Capture before the file:// step: the sandbox Chromium is --single-process,
+  // so opening another page evicts this one and a later screenshot throws.
+  await page.screenshot({ path: path.join(os.tmpdir(), 'joe-ui-smoke.png') }).catch(() => {});
+
   await check('the built bundle loads from file:// as Electron serves it', async () => {
     // `file:` behaves differently from http: absolute asset paths, module scripts
     // and fetch all change meaning. The installed app loads index.html this way,
@@ -207,7 +211,7 @@ try {
   });
 
 
-  await page.screenshot({ path: path.join(os.tmpdir(), 'joe-ui-smoke.png') });
+
 } finally {
   if (browser) await browser.close().catch(() => {});
   if (server) server.close();
