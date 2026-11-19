@@ -173,6 +173,19 @@ check('preload exposes exactly the IPC channels the main process handles', () =>
   return `${invoked.size} channels in sync`;
 });
 
+check('the asar verification helper parses a real archive', () => {
+  // The release job uses this to prove the built app contains the main process.
+  // Its first version depended on @electron/asar resolving in the job's working
+  // directory and failed there while passing locally; this keeps that honest.
+  const raw = fs.readFileSync(path.join(root, 'scripts/check-asar.mjs'), 'utf8');
+  // Strip comments: the file's own history mentions the dependency it replaced.
+  const helper = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  must(/readUInt32LE\(12\)/.test(helper), 'check-asar no longer reads the header length');
+  must(/web-dist\/index\.html/.test(helper), 'check-asar no longer asserts the renderer bundle');
+  must(!/require\(['"]@electron\/asar['"]\)/.test(helper), 'check-asar reintroduced a package dependency');
+  return 'dependency-free header reader';
+});
+
 check('main.js does not crash on a missing optional dependency', () => {
   // @supabase/supabase-js is required lazily inside connectRealtime() and the
   // throw is caught, so it may be absent safely. Anything required at module

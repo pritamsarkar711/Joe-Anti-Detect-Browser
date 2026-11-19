@@ -71,27 +71,16 @@ jobs:
       - name: Verify the built binaries contain the main process
         shell: bash
         working-directory: apps/desktop
-        env:
-          NODE_PATH: ${{ github.workspace }}/apps/desktop/node_modules
         run: |
           # The EXE is only useful if it can start. v3.1.0 shipped without
-          # extensions.cjs and every install died on launch, so assert against
-          # the artifact electron-builder actually produced, not the source tree.
+          # extensions.cjs and every install died on launch, so assert against the
+          # artifact electron-builder actually produced, not the source tree.
+          # scripts/check-asar.mjs reads the archive header directly, so it needs
+          # no dependencies and cannot fail for a reason unrelated to packaging.
           set -e
-          node -e "
-            const fs = require('fs');
-            const path = require('path');
-            const asar = require('@electron/asar');
-            const dir = 'release/win-unpacked/resources';
-            const file = fs.readdirSync(dir).find((f) => f.endsWith('.asar'));
-            if (!file) { console.error('no app.asar in ' + dir); process.exit(1); }
-            const list = asar.listPackage(path.join(dir, file)).map((p) => p.replace(/^\\/, '').replace(/\\\\/g, '/'));
-            const must = ['main.js', 'preload.js', 'rest.js', 'extensions.cjs', 'core.cjs', 'web-dist/index.html'];
-            const missing = must.filter((m) => !list.some((p) => p === m || p.endsWith('/' + m)));
-            console.log('app.asar contains', list.length, 'entries');
-            if (missing.length) { console.error('MISSING FROM PACKAGE:', missing.join(', ')); process.exit(1); }
-            console.log('all runtime modules present in app.asar');
-          "
+          ls -la release
+          ls -la release/win-unpacked/resources || true
+          node ../../scripts/check-asar.mjs release/win-unpacked/resources
       - name: List binaries
         shell: bash
         run: ls -lh apps/desktop/release/*.exe
