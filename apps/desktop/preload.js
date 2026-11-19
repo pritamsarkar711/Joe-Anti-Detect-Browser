@@ -26,6 +26,13 @@ contextBridge.exposeInMainWorld('joe', {
     parse: (line) => invoke('proxies:parse', line),
     import: (lines) => invoke('proxies:import', lines),
   },
+  extensions: {
+    list: () => invoke('extensions:list'),
+    install: (zipPath, id) => invoke('extensions:install', zipPath, id),
+    digest: (filePath) => invoke('extensions:digest', filePath),
+    attach: (profileId, dir) => invoke('extensions:attach', profileId, dir),
+    detach: (profileId, dir) => invoke('extensions:detach', profileId, dir),
+  },
   workspace: { export: () => invoke('workspace:export'), import: (json) => invoke('workspace:import', json) },
   sync: { send: (topic, payload, to) => invoke('sync:send', topic, payload, to) },
   on: (channel, callback) => {

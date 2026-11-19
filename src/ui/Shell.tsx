@@ -126,7 +126,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
               onClick={() => { s.setGroupFilter(g); s.setView('profiles'); onNavigate?.(); }}
               sx={{ minHeight: 30, px: 1.25, borderRadius: 1, '&.Mui-selected': { bgcolor: 'rgba(216,27,96,0.09)', color: 'primary.main' } }}
             >
-              <ListItemIcon sx={{ minWidth: 28, color: 'inherit' }}><Icon name="tag" size={15} /></ListItemIcon>
+              <ListItemIcon sx={{ minWidth: 28, color: 'inherit' }}><Icon name="folder" size={15} /></ListItemIcon>
               <ListItemText primary={g} primaryTypographyProps={{ fontSize: '0.78rem', noWrap: true }} />
               <Typography variant="caption" color="text.secondary">{counts.get(g) ?? 0}</Typography>
             </ListItemButton>

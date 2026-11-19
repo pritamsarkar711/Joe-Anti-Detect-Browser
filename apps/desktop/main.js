@@ -16,8 +16,15 @@ const fs = require('node:fs');
 const core = require('./core.cjs');
 const { startRestApi, readOrCreateToken } = require('./rest');
 
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '3.1.0';
 const DATA_FILE = () => path.join(app.getPath('userData'), 'workspace.json');
+
+/**
+ * Extensions live beside the workspace, inside this app's own userData. Nothing
+ * is read from the machine's Chrome/Firefox profile directories.
+ */
+const EXT_ROOT = () => path.join(app.getPath('userData'), 'extensions');
+const ext = require('./extensions.cjs');
 const windows = new Map(); // profileId -> BrowserWindow
 
 let managerWindow = null;
@@ -146,9 +153,12 @@ async function seedCookies(ses, profile) {
 
 async function loadExtensions(ses, profile) {
   if (!Array.isArray(profile.extensions) || !ses.extensions?.loadExtension) return;
-  for (const dir of profile.extensions) {
+  const installed = new Map(ext.listInstalled(EXT_ROOT()).map((e) => [path.basename(e.dir), e.dir]));
+  for (const entry of profile.extensions) {
+    // Accept either an absolute directory or a bare id of an installed extension.
+    const dir = path.isAbsolute(entry) ? entry : installed.get(entry);
+    if (!dir || !fs.existsSync(dir)) { console.error('extension missing', entry); continue; }
     try {
-      if (!fs.existsSync(dir)) continue;
       await ses.extensions.loadExtension(dir, { allowFileAccess: true });
     } catch (e) { console.error('extension load failed', e.message); }
   }
@@ -335,6 +345,35 @@ function registerIpc() {
   handle('profiles:quality', (id) => { const p = findProfile(id); return p ? core.profileQuality(p, workspace.profiles) : null; });
   handle('profiles:surfaces', (id) => { const p = findProfile(id); return p ? core.surfaces(p.fingerprint) : null; });
   handle('profiles:script', (id) => { const p = findProfile(id); return p ? core.buildInjectionScript(p.fingerprint, { selfTestHook: true }) : null; });
+  // --- extensions -------------------------------------------------------
+  handle('extensions:list', () => ext.listInstalled(EXT_ROOT()));
+  handle('extensions:install', async (zipPath, id) => {
+    const safeId = String(id || '').replace(/[^a-z0-9._-]/gi, '-').slice(0, 64);
+    if (!safeId) throw new Error('An extension id is required.');
+    const info = await ext.installZip({ root: EXT_ROOT(), zipPath, id: safeId });
+    return info;
+  });
+  handle('extensions:digest', (filePath) => ext.digest(filePath));
+  handle('extensions:attach', (profileId, dir) => {
+    const p = findProfile(profileId);
+    if (!p) return null;
+    const list = Array.isArray(p.extensions) ? p.extensions : [];
+    if (!list.includes(dir)) list.push(dir);
+    p.extensions = list;
+    p.revision += 1;
+    p.updatedAt = new Date().toISOString();
+    saveWorkspace();
+    return p;
+  });
+  handle('extensions:detach', (profileId, dir) => {
+    const p = findProfile(profileId);
+    if (!p) return null;
+    p.extensions = (p.extensions || []).filter((d) => d !== dir);
+    p.revision += 1;
+    p.updatedAt = new Date().toISOString();
+    saveWorkspace();
+    return p;
+  });
   handle('proxies:list', () => workspace.proxies);
   handle('proxies:add', (p) => { workspace.proxies.unshift(p); saveWorkspace(); return p; });
   handle('proxies:parse', (line) => core.parseProxy(line));

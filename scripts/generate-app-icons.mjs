@@ -7,8 +7,8 @@
  * which is why the logo differed between places.
  *
  * Rendering is done with a tiny supersampling rasteriser (no native deps), so
- * the icon is pixel-identical to the SVG in src/ui/Brand.tsx: an open arc,
- * a solid core and a white pupil on a white rounded tile.
+ * the icon matches MARK_GEOMETRY in src/ui/Brand.tsx: a "J" monogram in white
+ * on a #D81B60 squircle.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -22,32 +22,59 @@ const SIZES = [16, 24, 32, 48, 64, 128, 256];
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
-/** Signed distance from point to a rounded rect border. */
-function roundRectAlpha(x, y, w, h, r) {
+/** Signed distance from point to a rounded rect (negative inside). */
+function sdRoundRect(x, y, w, h, r) {
   const dx = Math.abs(x - w / 2) - (w / 2 - r);
   const dy = Math.abs(y - h / 2) - (h / 2 - r);
-  const d = Math.min(Math.max(dx, dy), 0) + Math.hypot(Math.max(dx, 0), Math.max(dy, 0)) - r;
-  return clamp(0.5 - d, 0, 1); // 1 inside
+  return Math.min(Math.max(dx, dy), 0) + Math.hypot(Math.max(dx, 0), Math.max(dy, 0)) - r;
 }
 
-/** Anti-aliased circle coverage. */
-function circleAlpha(x, y, cx, cy, r) {
-  const d = Math.hypot(x - cx, y - cy) - r;
-  return clamp(0.5 - d, 0, 1);
+/** Coverage of a rounded rect: 1 inside, anti-aliased at the edge. */
+function roundRectAlpha(x, y, w, h, r) {
+  return clamp(0.5 - sdRoundRect(x, y, w, h, r), 0, 1);
 }
 
-/** Coverage for the open arc: ring minus a wedge centred on -50deg (upper right). */
-const GAP_CENTER = -50;
-const GAP_HALF = 16;
-function arcAlpha(x, y, cx, cy, r, half) {
-  const dist = Math.hypot(x - cx, y - cy);
-  const ring = clamp(half / 2 + 0.5 - Math.abs(dist - r), 0, 1);
-  if (ring <= 0) return 0;
-  const ang = (Math.atan2(y - cy, x - cx) * 180) / Math.PI; // -180..180
-  let delta = Math.abs(ang - GAP_CENTER);
-  if (delta > 180) delta = 360 - delta;
-  if (delta < GAP_HALF) return 0;
-  return ring;
+/**
+ * Coverage of the "J" monogram.
+ *
+ * The path is two primitives, mirroring MARK_GEOMETRY in src/ui/Brand.tsx:
+ *   1. a vertical stem from (29.4, 12.5) down to (29.4, 27.9)
+ *   2. a half-circle hook of radius 8.4 centred at (21.0, 27.9), covering the
+ *      lower half (the SVG arc sweeps 0deg -> 180deg through +y)
+ * Distance to the union of those two is the exact stroke distance, so the
+ * anti-aliased result matches the vector mark.
+ */
+const J = {
+  stemX: 29.4, stemTop: 12.5, stemBottom: 27.9,
+  hookCx: 21.0, hookCy: 27.9, hookR: 8.4,
+  stroke: 5,
+};
+
+/** Distance from (x,y) to the segment (ax,ay)-(bx,by). */
+function sdSegment(x, y, ax, ay, bx, by) {
+  const vx = bx - ax;
+  const vy = by - ay;
+  const wx = x - ax;
+  const wy = y - ay;
+  const len2 = vx * vx + vy * vy;
+  const t = len2 === 0 ? 0 : clamp((wx * vx + wy * vy) / len2, 0, 1);
+  return Math.hypot(wx - vx * t, wy - vy * t);
+}
+
+/** Distance from (x,y) to the lower half-circle hook. */
+function sdHook(x, y) {
+  const dx = x - J.hookCx;
+  const dy = y - J.hookCy;
+  if (dy >= 0) return Math.abs(Math.hypot(dx, dy) - J.hookR);
+  // Upper half is not part of the glyph: nearest point is an arc endpoint.
+  return Math.min(Math.hypot(x - (J.hookCx + J.hookR), dy), Math.hypot(x - (J.hookCx - J.hookR), dy));
+}
+
+/** 1 inside the stroke, 0 outside, anti-aliased across one pixel. */
+function jAlpha(x, y, px) {
+  const d = Math.min(sdSegment(x, y, J.stemX, J.stemTop, J.stemX, J.stemBottom), sdHook(x, y));
+  const edge = J.stroke / 2;
+  return clamp((edge - d) / px + 0.5, 0, 1);
 }
 
 function renderRGBA(size) {
@@ -61,18 +88,17 @@ function renderRGBA(size) {
         for (let sx = 0; sx < ss; sx++) {
           const vx = (px + (sx + 0.5) / ss) * scale;
           const vy = (py + (sy + 0.5) / ss) * scale;
-          // tile
-          let cr = 255, cg = 255, cb = 255, ca = roundRectAlpha(vx, vy, 48, 48, size <= 32 ? 4 : 9);
-          if (ca <= 0) continue;
-          // arc
-          const arc = arcAlpha(vx, vy, 24, 24, 19, 3.6);
-          if (arc > 0) { cr = cr * (1 - arc) + PINK[0] * arc; cg = cg * (1 - arc) + PINK[1] * arc; cb = cb * (1 - arc) + PINK[2] * arc; }
-          // core
-          const core = circleAlpha(vx, vy, 24, 24, 10.2);
-          if (core > 0) { cr = cr * (1 - core) + PINK[0] * core; cg = cg * (1 - core) + PINK[1] * core; cb = cb * (1 - core) + PINK[2] * core; }
-          // pupil
-          const pupil = circleAlpha(vx, vy, 24, 24, 3.8);
-          if (pupil > 0) { cr = cr * (1 - pupil) + 255 * pupil; cg = cg * (1 - pupil) + 255 * pupil; cb = cb * (1 - pupil) + 255 * pupil; }
+          // squircle tile in #D81B60, then the white glyph over it
+          const tileA = roundRectAlpha(vx, vy, 48, 48, 11.5);
+          if (tileA <= 0) continue;
+          let cr = PINK[0], cg = PINK[1], cb = PINK[2];
+          const j = jAlpha(vx, vy, scale);
+          if (j > 0) {
+            cr = cr * (1 - j) + 255 * j;
+            cg = cg * (1 - j) + 255 * j;
+            cb = cb * (1 - j) + 255 * j;
+          }
+          const ca = tileA;
           r += cr * ca; g += cg * ca; b += cb * ca; a += ca;
         }
       }

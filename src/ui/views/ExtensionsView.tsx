@@ -5,15 +5,16 @@ import {
 } from '@mui/material';
 import { EXTENSION_CATALOG, storeLink, FAMILY_LABEL, type BrowserFamily, type CatalogExtension } from '@joe/core';
 import { useStore } from '@/state/store';
+import { nativeExtensions, nativeCanInstallExtensions, type InstalledExtension } from '@/state/native';
 import { Icon } from '../Icons';
 import { Official } from '../Brand';
 import { Btn, IconBtn, PageHead } from '../Primitives';
 
-// `mark` is an official simple-icons key; Edge has no free official glyph, so it
-// falls back to the app's neutral globe icon instead of an invented logo.
+// `mark` is an official brand key from src/ui/brandPaths.ts. Edge is pinned from
+// simple-icons v11 because v16 removed it.
 const FAMILIES: Array<{ id: BrowserFamily; mark: string | null; label: string; short: string }> = [
   { id: 'chrome', mark: 'chrome', label: 'Chrome', short: 'Chrome' },
-  { id: 'edge', mark: null, label: 'Edge', short: 'Edge' },
+  { id: 'edge', mark: 'edge', label: 'Edge', short: 'Edge' },
   { id: 'firefox', mark: 'firefox', label: 'Firefox', short: 'Firefox' },
   { id: 'brave', mark: 'brave', label: 'Brave', short: 'Brave' },
 ];
@@ -28,6 +29,8 @@ export function ExtensionsView() {
   const [family, setFamily] = useState<BrowserFamily>('chrome');
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]>('All');
   const [added, setAdded] = useState<Set<string>>(new Set());
+  const [installed, setInstalled] = useState<InstalledExtension[]>([]);
+  const canInstall = nativeCanInstallExtensions();
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -37,14 +40,39 @@ export function ExtensionsView() {
     ));
   }, [q, category]);
 
-  const add = (ext: CatalogExtension) => {
-    setAdded((prev) => new Set(prev).add(ext.id));
-    s.toast(`${ext.name} added to your library`);
-  };
-
   const openStore = (ext: CatalogExtension, fam: BrowserFamily = family) => {
     window.open(storeLink(ext, fam), '_blank', 'noopener,noreferrer');
   };
+
+  /**
+   * Install into the app's own extensions folder.
+   *
+   * The desktop shell owns the filesystem, so it does the work. Everywhere else
+   * there is nowhere to install to — the button becomes a store link and the UI
+   * never reports a success that did not happen.
+   */
+  const install = async (ext: CatalogExtension) => {
+    const bridge = nativeExtensions();
+    if (!bridge) {
+      openStore(ext);
+      s.toast('The desktop build installs this for you. Opening the store listing.', 'info');
+      return;
+    }
+    const packagePath = window.prompt(
+      `Choose the .zip package for ${ext.name}\n\nPaste its full path. The app verifies it, unpacks it into its own folder and attaches it to the selected profile.`,
+      '',
+    );
+    if (!packagePath) return;
+    try {
+      const installed = await bridge.install(packagePath.trim(), ext.id);
+      setInstalled((prev) => [...prev.filter((e) => e.dir !== installed.dir), installed]);
+      setAdded((prev) => new Set(prev).add(ext.id));
+      s.toast(`${installed.name} ${installed.version} installed`);
+    } catch (e) {
+      s.toast(String((e as Error).message || 'Install failed'), 'err');
+    }
+  };
+
 
   return (
     <Box>
@@ -119,10 +147,10 @@ export function ExtensionsView() {
                   <Btn
                     size="small" variant={isAdded ? 'ghost' : 'primary'}
                     icon={isAdded ? 'check' : 'plus'}
-                    onClick={() => add(ext)}
+                    onClick={() => { void install(ext); }}
                     disabled={isAdded}
                   >
-                    {isAdded ? 'Added' : 'Add'}
+                    {isAdded ? 'Installed' : canInstall ? 'Install' : 'Get'}
                   </Btn>
                   <Box sx={{ flex: 1 }} />
                   <Btn size="small" icon="open" onClick={() => openStore(ext)}>Store</Btn>
@@ -138,12 +166,20 @@ export function ExtensionsView() {
         </Box>
       </Paper>
 
-      <Box sx={{ mt: 1.25, px: 0.25 }}>
-        <Typography variant="caption" color="text.secondary">
-          Install steps: open the listing for the browser family above, then add the package to the profile.
-          Extensions run inside the isolated session, so their storage stays with that profile.
-        </Typography>
-      </Box>
+      {installed.length > 0 && (
+        <Paper variant="outlined" sx={{ mt: 1.5, p: 1.5 }}>
+          <Typography variant="subtitle2" sx={{ mb: 0.75 }}>Installed on this device</Typography>
+          <Stack spacing={0.5}>
+            {installed.map((e) => (
+              <Stack key={e.dir} direction="row" alignItems="center" spacing={1}>
+                <Icon name="extension" size={15} color="#D81B60" />
+                <Typography variant="body2" noWrap sx={{ flex: 1 }}>{e.name}</Typography>
+                <Typography variant="caption" color="text.secondary">{e.version}</Typography>
+              </Stack>
+            ))}
+          </Stack>
+        </Paper>
+      )}
     </Box>
   );
 }

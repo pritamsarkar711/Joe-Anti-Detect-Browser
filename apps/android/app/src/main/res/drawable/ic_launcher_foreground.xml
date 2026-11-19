@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Joe Browser mark: open shield-ring + solid core + pupil, on the 108dp grid. -->
+<!-- Joe Browser mark: the "J" monogram on the 108dp adaptive grid.
+     Mirrors MARK_GEOMETRY in src/ui/Brand.tsx; the tile comes from the
+     adaptive-icon background layer, so only the glyph is drawn here. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="48"
     android:viewportHeight="48">
-    <group android:scaleX="0.62" android:scaleY="0.62" android:translateX="9.12" android:translateY="9.12">
+    <group android:scaleX="0.60" android:scaleY="0.60" android:translateX="9.6" android:translateY="9.6">
         <path
             android:fillColor="#00000000"
-            android:strokeColor="#D81B60"
-            android:strokeWidth="3.6"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="5"
             android:strokeLineCap="round"
-            android:pathData="M39.75 13.38A19 19 0 1 1 31.73 6.64" />
-        <path android:fillColor="#D81B60" android:pathData="M24,13.8 A10.2,10.2 0 1 0 24,34.2 A10.2,10.2 0 1 0 24,13.8 Z" />
-        <path android:fillColor="#FFFFFF" android:pathData="M24,20.2 A3.8,3.8 0 1 0 24,27.8 A3.8,3.8 0 1 0 24,20.2 Z" />
+            android:pathData="M29.4 12.5v15.4a8.4 8.4 0 0 1-16.8 0" />
     </group>
 </vector>

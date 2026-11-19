@@ -44,9 +44,8 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, { error
         }}
       >
         <svg width="40" height="40" viewBox="0 0 48 48" aria-hidden="true">
-          <path d="M39.75 13.38A19 19 0 1 1 31.73 6.64" fill="none" stroke="#D81B60" strokeWidth="3.6" strokeLinecap="round" />
-          <circle cx="24" cy="24" r="10.2" fill="#D81B60" />
-          <circle cx="24" cy="24" r="3.8" fill={dark ? '#0e1015' : '#fff'} />
+          <rect width="48" height="48" rx="11.5" fill="#D81B60" />
+          <path d="M29.4 12.5v15.4a8.4 8.4 0 0 1-16.8 0" fill="none" stroke="#fff" strokeWidth="5" strokeLinecap="round" />
         </svg>
         <h1 style={{ margin: 0, fontSize: 18 }}>Something went wrong</h1>
         <p style={{ margin: 0, maxWidth: 460, color: dark ? '#9aa1b0' : '#666c7a' }}>
