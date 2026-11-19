@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useStore } from '@/state/store';
-import { checkProfile, DEVICE_TEMPLATES, COUNTRY_FLAG, proxyUrl, exportWorkspace, downloadFile } from '@joe/core';
+import { checkProfile, DEVICE_TEMPLATES, countryCode, proxyUrl, exportWorkspace, downloadFile } from '@joe/core';
 import { surfaces, buildInjectionScript } from '@joe/fingerprint';
 import { Icon } from '@/ui/Icons';
 import { Button, IconButton, Badge, Progress, Empty, Segmented } from '@/ui/Primitives';
@@ -103,7 +103,7 @@ export function ProfileDetail() {
             <div className="detail-stack">
               {px ? (
                 <div className="proxy-card">
-                  <div className="proxy-flag">{COUNTRY_FLAG[px.country] ?? '🌐'}</div>
+                  <div className="proxy-flag">{countryCode(px.country)}</div>
                   <div><strong>{px.name}</strong><code>{proxyUrl(px)}</code></div>
                   <Badge tone={px.status === 'ok' ? 'ok' : px.status === 'failed' ? 'err' : 'neutral'} dot>{px.status}</Badge>
                 </div>

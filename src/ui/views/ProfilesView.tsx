@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '@/state/store';
-import { DEVICE_TEMPLATES, COUNTRY_FLAG, checkProfile, exportWorkspace, downloadFile, type BrowserProfile } from '@joe/core';
+import { DEVICE_TEMPLATES, countryCode, checkProfile, exportWorkspace, downloadFile, type BrowserProfile } from '@joe/core';
 import { Icon } from '@/ui/Icons';
 import { Button, IconButton, Badge, Empty, Stat } from '@/ui/Primitives';
 
@@ -136,7 +136,7 @@ export function ProfilesView() {
                         </div>
                       </td>
                       <td><div className="cell-device"><span>{tpl?.label ?? p.templateId}</span><em>Chrome {p.fingerprint.chromeMajor} · {p.fingerprint.screen.width}×{p.fingerprint.screen.height}</em></div></td>
-                      <td>{px ? <span className="cell-proxy">{COUNTRY_FLAG[px.country] ?? '🌐'} {px.host}:{px.port}</span> : <span className="muted">Direct</span>}</td>
+                      <td>{px ? <span className="cell-proxy"><span className="country-code">{countryCode(px.country)}</span> {px.host}:{px.port}</span> : <span className="muted">Direct</span>}</td>
                       <td><div className="score"><span className={`score-dot g${rep.grade}`} />{rep.score}</div></td>
                       <td><Badge tone={p.status === 'running' ? 'ok' : p.status === 'error' ? 'err' : 'neutral'} dot>{p.status}</Badge></td>
                       <td className="muted nowrap">{p.lastLaunchedAt ? new Date(p.lastLaunchedAt).toLocaleDateString() : '—'}</td>

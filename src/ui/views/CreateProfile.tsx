@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useStore } from '@/state/store';
-import { DEVICE_TEMPLATES, TEMPLATE_GROUPS, createProfile, generateProfiles, checkConsistency, COUNTRY_FLAG, type OSType } from '@joe/core';
+import { DEVICE_TEMPLATES, TEMPLATE_GROUPS, createProfile, generateProfiles, checkConsistency, countryCode, type OSType } from '@joe/core';
 import { Icon } from '@/ui/Icons';
 import { Button, IconButton, Field, Badge, Toggle, Progress } from '@/ui/Primitives';
 
@@ -100,7 +100,7 @@ export function CreateProfile() {
               <Field label="Proxy">
                 <select className="input" value={proxyId} onChange={(e) => setProxyId(e.target.value)}>
                   <option value="">Direct connection</option>
-                  {s.proxies.map((p) => <option key={p.id} value={p.id}>{COUNTRY_FLAG[p.country] ?? '🌐'} {p.name} · {p.protocol}://{p.host}:{p.port}</option>)}
+                  {s.proxies.map((p) => <option key={p.id} value={p.id}>[{countryCode(p.country)}] {p.name} · {p.protocol}://{p.host}:{p.port}</option>)}
                 </select>
               </Field>
               <Field label="Notes"><input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional note" /></Field>

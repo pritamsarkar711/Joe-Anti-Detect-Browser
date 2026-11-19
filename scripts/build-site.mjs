@@ -5,7 +5,7 @@ import path from 'node:path';
 const root = process.cwd();
 const src = path.join(root, 'site');
 const out = path.join(root, 'dist-site');
-const siteUrl = (process.env.SITE_URL ?? 'https://joe-browser.vercel.app').replace(/\/+$/, '');
+const siteUrl = (process.env.SITE_URL ?? 'https://joe-browser-control.vercel.app').replace(/\/+$/, '');
 const branch = process.env.SITE_BRANCH ?? 'arena/b5fe5e24-joe-anti-detect-browser';
 
 fs.rmSync(out, { recursive: true, force: true });

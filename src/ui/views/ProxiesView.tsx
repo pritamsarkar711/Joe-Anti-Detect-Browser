@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useStore } from '@/state/store';
-import { COUNTRY_FLAG, parseProxy, proxyUrl, type ProxyConfig, type ProxyProtocol } from '@joe/core';
+import { countryCode, parseProxy, proxyUrl, type ProxyConfig, type ProxyProtocol } from '@joe/core';
 import { Icon } from '@/ui/Icons';
 import { Button, IconButton, Badge, Empty, Field, Stat } from '@/ui/Primitives';
 
@@ -74,7 +74,7 @@ export function ProxiesView() {
                 <td className="col-check"><input type="checkbox" checked={selected.has(p.id)} onChange={() => toggle(p.id)} aria-label={`Select ${p.name}`} /></td>
                 <td><strong>{p.name}</strong></td>
                 <td><code className="endpoint">{proxyUrl(p)}</code></td>
-                <td>{COUNTRY_FLAG[p.country] ?? '🌐'} <span className="muted">{p.country}</span></td>
+                <td><span className="country-code">{countryCode(p.country)}</span></td>
                 <td>{p.latencyMs ? `${p.latencyMs} ms` : '—'}</td>
                 <td><Badge tone={p.status === 'ok' ? 'ok' : p.status === 'failed' ? 'err' : 'neutral'} dot>{p.status}</Badge></td>
                 <td>{s.profiles.filter((x) => x.proxyId === p.id).length}</td>

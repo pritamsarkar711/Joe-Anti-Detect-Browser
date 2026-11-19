@@ -4,8 +4,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
-if [ -z "$SDK" ]; then echo "ANDROID_HOME is not set"; exit 1; fi
+SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+if [ ! -d "$SDK" ]; then echo "Android SDK not found at $SDK"; exit 1; fi
+export PATH="$SDK/cmdline-tools/latest/bin:$SDK/cmdline-tools/tools/bin:$SDK/tools/bin:$PATH"
 
 BT_DIR="$(ls -1 "$SDK/build-tools" | sort -V | tail -1)"
 BT="$SDK/build-tools/$BT_DIR"
@@ -50,8 +51,9 @@ javac -source 8 -target 8 -nowarn \
   @"$WORK/sources.txt"
 
 echo "== d8 =="
-find "$WORK/classes" -name '*.class' > "$WORK/classes.txt"
-"$D8" --lib "$ANDROID_JAR" --min-api 28 --output "$WORK/dex" @"$WORK/classes.txt"
+mapfile -t CLASSES < <(find "$WORK/classes" -name '*.class')
+echo "  ${#CLASSES[@]} class files"
+"$D8" --lib "$ANDROID_JAR" --min-api 28 --output "$WORK/dex" "${CLASSES[@]}"
 
 echo "== package =="
 cp "$WORK/base.apk" "$WORK/unsigned.apk"

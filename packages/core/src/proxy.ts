@@ -92,6 +92,8 @@ export function checkProxy(p: ProxyConfig): ProxyConfig {
 const COUNTRIES = ['US', 'DE', 'GB', 'BD', 'SG', 'NL', 'FR', 'CA', 'IN', 'AE'];
 function guessCountry(seed: number): string { return COUNTRIES[seed % COUNTRIES.length]; }
 
-export const COUNTRY_FLAG: Record<string, string> = {
-  US: '🇺🇸', DE: '🇩🇪', GB: '🇬🇧', BD: '🇧🇩', SG: '🇸🇬', NL: '🇳🇱', FR: '🇫🇷', CA: '🇨🇦', IN: '🇮🇳', AE: '🇦🇪', XX: '🌐',
-};
+/** Plain ISO codes render identically everywhere — flag emoji need an emoji font. */
+export function countryCode(country: string): string {
+  const c = (country ?? '').trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(c) ? c : 'XX';
+}

@@ -24,10 +24,9 @@
     "directories": { "output": "release" },
     "files": ["main.js", "preload.js", "rest.js", "core.cjs", "web-dist/**/*", "package.json"],
     "win": {
-      "target": ["nsis", "portable"],
-      "artifactName": "JoeBrowser-Setup-${version}.${ext}"
+      "target": ["nsis", "portable"]
     },
-    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true, "artifactName": "JoeBrowser-Setup-${version}.${ext}" },
     "portable": { "artifactName": "JoeBrowser-Portable-${version}.${ext}" }
   }
 }
