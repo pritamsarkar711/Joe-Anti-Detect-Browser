@@ -181,13 +181,19 @@ jobs:
               the package said 3.1.1)
 
             **Validation** (this environment: Debian, Node 22, no JDK/Android SDK/Electron/
-            Postgres): `tsc` clean; `npm test` 87/87; `test:ui` 35/35; `test:devices` 75/75;
+            Postgres): `tsc` clean; `npm test` 87/87; `test:ui` 37/37; `test:devices` 75/75;
+            `test:boot` pass (retry works when the entry script itself fails);
             `test:fingerprint` 29/29; `test:site` 15/15; `test:java` 4/4 (parse only);
             `test:icons` 8/8; `test:desktop` 10/10; `check:bridges` 6/6; `test:packaged` 4/4;
             `test:main` 14/14; `test:ui-desktop` 5/5. The migration is verified statically
             and is **not** executed here — it has no database. See `TEST_REPORT.md`,
             `SECURITY_AUDIT.md` and `PROJECT_AUDIT.md` for the full evidence and for every
             item that remains unverified.
+
+            **Engine**: one bundled Chromium engine with four compatible browser
+            identities (Joe Browser, Chrome, Edge, Brave). Firefox is **not** offered —
+            no Gecko runtime is bundled, so presenting a Firefox identity would be a
+            user-agent string on a Chromium engine. The picker says so.
 
             **Honest scope**: profile isolation, fingerprint coherence and history work as
             described for the surfaces the app controls. Joe Browser does not ship a patched
