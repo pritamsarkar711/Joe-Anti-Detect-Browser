@@ -20,7 +20,7 @@ Environment: Debian, Node `v22.22.3`, npm `10.9.8`, Python `3.11.2`, no display 
 | `npm run check:bridges` | 5/5 native-bridge checks (Java methods, intent extras, generated assets) |
 | `npm run test:packaged` | 4/4 packaged-app checks (stages `build.files`, boots the main process) |
 | `npm run test:main` | 14/14 main-process checks against a functional Electron stand-in |
-| `npm run test:ui-desktop` | 4/4 renderer checks against a stand-in preload bridge |
+| `npm run test:ui-desktop` | 5/5 renderer checks against a stand-in preload bridge, over `http:` and `file:` |
 | `npm run build` | typecheck + production bundle |
 | `npm run build:core` | `apps/desktop/core.cjs`, 58 exports |
 | `npm run build:android-ui` | Android web bundle (`dist-android/`) |
