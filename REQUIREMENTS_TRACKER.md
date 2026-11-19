@@ -28,11 +28,11 @@ marked verified here; it is marked implemented-but-not-verified with the reason.
 | 15 | Security audit | **COMPLETE AND VERIFIED** (for the code) | `SECURITY_AUDIT.md` | 16 findings, 14 fixed and regression-tested, 2 accepted with rationale. Secret scan and RLS invariants run in the test suite. |
 | 16 | Automated testing | **IMPLEMENTED AND PARTIALLY VERIFIED** | `tests/` (8 files, 87 tests), `scripts/*.mjs` | Unit + SSR + schema tests pass; 37 real-browser E2E checks pass; 75 device checks pass. **No integration test against a live database or a real Electron/Android process.** Full end-to-end workflows (install → run → login) are impossible here. |
 | 17 | GitHub Actions CI/CD | **IMPLEMENTED BUT NOT VERIFIED** | `.github/workflows/ci.yml`, `release.yml` | CI extended with the browser suites, a migration guard and the schema tests. Workflows were edited but **not executed** (no GitHub runner in this sandbox); the previous run's status is in the repo's Actions history, which is not visible here. |
-| 18 | Build and release | **BLOCKED BY TECHNICAL LIMITATION** (here) | `release.yml`, `scripts/build-apk.sh` | No JDK, Android SDK, Electron runtime or Windows host in this environment. The APK now requires an externally managed signing store (verified by its refusal without one); SDK compilation itself is unverified. Binaries are produced by the release workflow. Nothing was published. |
+| 18 | Build and release | **BLOCKED — APK signing key missing** | `release.yml`, `scripts/build-apk.sh` | No JDK, Android SDK, Electron runtime or Windows host in this environment. A tag-triggered run **built the Windows EXEs successfully** and **failed the APK** in under a second on the signing guard: the repository has no `JOE_SIGNING_STORE_B64` / `JOE_SIGNING_ALIAS` / `JOE_STORE_PASSWORD` / `JOE_KEY_PASSWORD` secrets. The release job is gated on the APK, so nothing was published. See the release-attempt section below. |
 | 19 | Documentation and presentation | **COMPLETE AND VERIFIED** | `README.md`, `docs/`, this file set, `CHANGELOG.md`, `SECURITY.md`, `NOTICE`, `TRADEMARK.md`, `docs/IP-POLICY.md` | README corrected (engine claim, account behaviour, download names, version); screenshots regenerated from the app; licence and trademark positions restated. |
 | 20 | Open-source research | **COMPLETE AND VERIFIED** | `OPEN_SOURCE_RESEARCH.md`, `docs/RESEARCH.md` | Existing survey retained and extended with the components this release needed (auth, RLS, testing), each with licence and a reuse decision. |
-| 21 | Final acceptance test | **PARTIALLY VERIFIED** | `TEST_REPORT.md` §5 | Every item that can be executed here passes. Items requiring a database, a native runtime or a device are listed as unverified rather than checked off. |
-| 22 | Pull request and publication | **IN PROGRESS** | branch `arena/2d9e313d-…` | Changes are committed and a PR is opened from this branch. Merge/release only after CI is green and permissions allow. |
+| 21 | Final acceptance test | **PARTIALLY VERIFIED** | `TEST_REPORT.md` §5 | Every item that can be executed here passes. Items requiring a database, a native runtime or a device are listed as unverified rather than checked off. CI `verify` is green on `main`; the Windows binaries were produced by CI but not installed. |
+| 22 | Pull request and publication | **PRs MERGED · RELEASE BLOCKED** | PRs #11, #12 · tag `v3.2.0` | PR #11 (security, honesty, docs) and PR #12 (release-body correction) are merged to `main` with `verify` green. Tag `v3.2.0` points at `e6de75d`; the release run built Windows but failed the APK on missing signing secrets and skipped publication. No release exists yet. |
 
 ---
 
@@ -62,8 +62,33 @@ No device or emulator was used. The device suite is headless Chromium with mobil
 emulation, and every document says so.
 
 ### "Do not publish unverified builds"
-Nothing was published. No tag was created and no release was opened from this
-session; the release workflow is updated and will run from a tag once CI is green.
+`v3.2.0` was tagged and the workflow ran, and it **refused to publish**: the APK
+failed its signing guard, the release job is gated on the APK, so there is no
+GitHub release and no unsigned APK. The Windows EXEs it built are an artifact of
+that run (7-day retention) that nobody has installed; they are not presented as a
+release. Nothing published claims hardware testing.
+
+### Release attempt — `v3.2.0`, run 44589773737
+
+| Job | Result | Evidence |
+|---|---|---|
+| Shared UI + core | **success** | build plus the shared UI/core artifact |
+| Windows EXE | **success** | installer + portable uploaded as `desktop-binaries` |
+| Android APK | **failure** | step "Compile, dex, package and sign the APK" started and ended in the same second, i.e. `scripts/build-apk.sh:6` `${JOE_SIGNING_STORE_B64:?Release signing store required}` |
+| GitHub Release | **skipped** | `needs: [desktop, android]` |
+
+**Decision:** publish nothing rather than a Windows-only release whose notes say
+"Windows + Android", or an APK signed by a throw-away key (that is BUG-018).
+Adding the owner's keystore is the only remaining step:
+
+```bash
+base64 -w0 release.keystore > store.b64
+gh secret set JOE_SIGNING_STORE_B64 < store.b64
+gh secret set JOE_SIGNING_ALIAS --body "joe-release"   # your alias
+gh secret set JOE_STORE_PASSWORD                        # prompts for the value
+gh secret set JOE_KEY_PASSWORD                          # prompts for the value
+gh workflow run "Build and publish binaries" -f tag=v3.2.0
+```
 
 ### Administrator email
 The brief said the owner would supply one and not to invent it. The repository

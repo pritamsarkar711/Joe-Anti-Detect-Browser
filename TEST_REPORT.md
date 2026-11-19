@@ -1,5 +1,20 @@
 # Test report — Joe Browser 3.2.0
 
+## Release pipeline observed (run 44589773737, tag v3.2.0)
+
+| Job | Result |
+|---|---|
+| Shared UI + core | success |
+| Windows EXE | success — installer + portable uploaded as `desktop-binaries` |
+| Android APK | **failure** — `JOE_SIGNING_STORE_B64` unset; the step failed in the same second on the signing guard |
+| GitHub Release | skipped (needs both binaries) |
+
+The Windows binaries were produced by CI and were **not installed** here. The
+Android APK was **not built**: refusing to publish an unsigned or throw-away-signed
+APK is intended behaviour, not a test failure. The Actions log download for this
+run returned `EOF` from the results service, so the cause is established from the
+step duration (0 s) and the script's first line rather than from log text.
+
 Everything in this file was executed in this session on this machine.
 
 **Environment.** Debian (container), Node `v22.22.3`, npm `10.9.8`, Python
