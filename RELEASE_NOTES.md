@@ -169,8 +169,10 @@ Full detail: [`TEST_REPORT.md`](TEST_REPORT.md),
 
 ## What was not verified
 
-- **No Windows or Android binary was built or installed** in the session that
-  wrote these notes; the release workflow does that on GitHub runners.
+- **Windows binaries were built by the release workflow** (run 44660935215) and
+  uploaded as a run artifact, but not installed anywhere. **No Android APK was
+  produced**: the build refuses to sign without the owner's keystore secrets,
+  and no release is published until both jobs succeed.
 - **Migration 0002 was executed against the live project** (version
   `20261119181923`) and its key properties verified there — backfilled
   entitlement rows, deny-all allowlist, anon write refusal — but no sign-up →

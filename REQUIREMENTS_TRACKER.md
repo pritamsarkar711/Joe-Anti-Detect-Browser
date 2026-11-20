@@ -71,6 +71,26 @@ GitHub release and no unsigned APK. The Windows EXEs it built are an artifact of
 that run (7-day retention) that nobody has installed; they are not presented as a
 release. Nothing published claims hardware testing.
 
+### Release attempt (2) — `v3.2.0`, run 44660935215 (2026-11-20)
+
+After the two audit threads merged (PR #13, `main` at `6009bc8`), the tag was
+moved to the merged commit — the earlier candidates predated the
+`window.joe` bridge fix and the joined design, so publishing from them would
+have shipped the vulnerability — and the workflow was re-triggered:
+
+| Job | Result | Evidence |
+|---|---|---|
+| Shared UI + core | **success** | 1m4s |
+| Windows EXE | **success** | installer + portable uploaded as `desktop-binaries` (353 MB); not installed (no Windows host) |
+| Android APK | **failure** | `scripts/build-apk.sh:6` `JOE_SIGNING_STORE_B64: Release signing store required` — the four signing secrets are not in the repository |
+| GitHub Release | **skipped** | `needs: [desktop, android]`; `gh release view v3.2.0` → "release not found" |
+
+**Blocked on owner-only secrets.** Fabricating a keystore is refused by design
+(BUG-018: a throw-away key breaks in-place updates). Once the owner adds
+`JOE_SIGNING_STORE_B64`, `JOE_SIGNING_ALIAS`, `JOE_STORE_PASSWORD`,
+`JOE_KEY_PASSWORD`, the single command in `PROJECT_AUDIT.md` finishes the
+release.
+
 ### Release attempt — `v3.2.0`, run 44589773737
 
 | Job | Result | Evidence |

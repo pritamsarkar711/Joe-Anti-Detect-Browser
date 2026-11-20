@@ -190,3 +190,31 @@ part of this release:
 
 See `BUG_REPORT.md` BUG-019…BUG-021 and the "merged audit thread" sections of
 `TEST_REPORT.md` / `SECURITY_AUDIT.md` for the evidence.
+
+## Release attempt (v3.2.0, run 44660935215 — 2026-11-20)
+
+The retagged `v3.2.0` (now at the merged `main` commit `6009bc8`, superseding
+the earlier `8c74f15`/`e6de75d` candidates that predated the bridge fix) ran
+the release workflow:
+
+- **Shared UI + core — success** (1m4s).
+- **Windows EXE — success** (1m58s): `JoeBrowser-Setup-3.2.0.exe` and
+  `JoeBrowser-Portable-3.2.0.exe` built and uploaded as the `desktop-binaries`
+  artifact (~353 MB with symbols). Not installed here — no Windows host.
+- **Android APK — failure** (9s): `scripts/build-apk.sh:6`
+  (`JOE_SIGNING_STORE_B64: Release signing store required`). The repository has
+  no signing secrets and the script deliberately refuses to fabricate a
+  keystore (BUG-018).
+- **GitHub Release — skipped** (gated on both build jobs). `gh release view
+  v3.2.0` reports "release not found". Nothing was published.
+
+Remaining step for the owner (keystore secrets only the owner holds):
+
+```bash
+base64 -w0 release.keystore > store.b64
+gh secret set JOE_SIGNING_STORE_B64 < store.b64
+gh secret set JOE_SIGNING_ALIAS --body "your-alias"
+gh secret set JOE_STORE_PASSWORD                        # prompts
+gh secret set JOE_KEY_PASSWORD                          # prompts
+gh workflow run "Build and publish binaries" -f tag=v3.2.0
+```
