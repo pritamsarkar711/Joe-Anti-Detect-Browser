@@ -24,7 +24,10 @@ const fs = require('node:fs');
 
 const say = (kind, message) => {
   console.log(message);
-  if (process.env.GITHUB_ACTIONS) console.log(`::${kind} title=boot-check::${message.replace(/\n/g, ' | ').slice(0, 400)}`);
+  if (process.env.GITHUB_ACTIONS) {
+    const safe = String(message).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A').slice(0, 300);
+    console.log(`::${kind} title=boot-check::${safe}`);
+  }
 };
 
 // CI runners (and containers) have no configured SUID sandbox; this is a local
