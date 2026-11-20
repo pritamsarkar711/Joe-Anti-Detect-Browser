@@ -43,7 +43,15 @@ for (const ev of ['uncaughtException', 'unhandledRejection']) {
   });
 }
 
-const ui = process.argv[2] ? path.resolve(process.argv[2]) : '';
+const ui = (() => {
+  // Electron keeps Chromium switches (e.g. --no-sandbox) in process.argv, so
+  // positional indexes shift. Take the first argument that is neither a switch
+  // nor this script.
+  const arg = process.argv
+    .slice(1)
+    .find((a) => !a.startsWith('--') && !a.endsWith('boot-check.cjs'));
+  return arg ? path.resolve(arg) : '';
+})();
 if (!ui || !fs.existsSync(ui)) {
   say('error', `usage: electron scripts/boot-check.cjs <path-to-index.html> — missing: ${ui}`);
   process.exit(2);
