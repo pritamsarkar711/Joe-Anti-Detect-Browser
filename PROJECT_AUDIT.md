@@ -218,3 +218,24 @@ gh secret set JOE_STORE_PASSWORD                        # prompts
 gh secret set JOE_KEY_PASSWORD                          # prompts
 gh workflow run "Build and publish binaries" -f tag=v3.2.0
 ```
+
+## Release attempt 3 (2026-11-20) — resolved: v3.2.0 published
+
+The third attempt fixed the release pipeline itself instead of waiting on
+secrets (PRs #19, #20):
+
+- the publish job no longer requires the Android job — it publishes whenever
+  the Windows build succeeds, and attaches `JoeBrowser.apk` whenever that job
+  succeeds (including a re-run of the same tag later);
+- the release notes are assembled from `docs/RELEASE-BODY.md` (reviewable,
+  versioned) plus a generated artifact list, with an explicit warning when the
+  APK is absent;
+- `tests/v2.test.ts` executes the real composition script against fixture
+  assets (with and without an APK) so the step cannot silently break again.
+
+Release run 44669778563: shared UI+core ✓ (53s), Windows EXE ✓ (1m47s),
+Android APK ✗ (15s, `JOE_SIGNING_STORE_B64` unset), **GitHub Release ✓ (34s)**.
+`v3.2.0` is published and marked *Latest* with `JoeBrowser-Setup-3.2.0.exe`,
+`JoeBrowser-Portable-3.2.0.exe` and `SHA256SUMS.txt`, and its notes carry the
+missing-APK warning verbatim. The owner finishing block above remains the path
+to attaching `JoeBrowser.apk` to the same release.

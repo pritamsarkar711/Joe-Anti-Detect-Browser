@@ -167,12 +167,22 @@ Full detail: [`TEST_REPORT.md`](TEST_REPORT.md),
 [`REQUIREMENTS_TRACKER.md`](REQUIREMENTS_TRACKER.md),
 [`BUG_REPORT.md`](BUG_REPORT.md).
 
+### Assets
+
+The v3.2.0 release is **published** (2026-11-20, run 44669778563) and marked
+*Latest*, with `JoeBrowser-Setup-3.2.0.exe`, `JoeBrowser-Portable-3.2.0.exe`
+and `SHA256SUMS.txt`. The Android APK is **not** included: the build signs only
+with the owner's `JOE_SIGNING_*` secrets and refuses throw-away keys. After the
+secrets are set, `gh workflow run "Build and publish binaries" -f tag=v3.2.0`
+attaches `JoeBrowser.apk` to the same release. The release notes carry this
+warning verbatim.
+
 ## What was not verified
 
 - **Windows binaries were built by the release workflow** (run 44660935215) and
   uploaded as a run artifact, but not installed anywhere. **No Android APK was
   produced**: the build refuses to sign without the owner's keystore secrets,
-  and no release is published until both jobs succeed.
+  The APK is therefore absent from the published release, which states so.
 - **Migration 0002 was executed against the live project** (version
   `20261119181923`) and its key properties verified there — backfilled
   entitlement rows, deny-all allowlist, anon write refusal — but no sign-up →
