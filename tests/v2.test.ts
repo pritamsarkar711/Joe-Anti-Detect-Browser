@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   REAL_DEVICE_PRESETS, DEVICE_TEMPLATES, TEMPLATE_GROUPS, FINGERPRINT_DATA_SOURCE,
   GEO, GEO_COUNTRIES, applyGeoToSpec, offsetForZone,
@@ -191,5 +194,40 @@ describe('v2 provenance and licensing', () => {
     expect(workflow + body).not.toContain("default: 'v1.0.0'");
     expect(workflow + body).not.toContain("default: 'v2.0.0'");
     expect(workflow + body).not.toContain('8 coherent device templates');
+  });
+
+  it('assembles release notes that list the real artifacts and stay honest without the APK', () => {
+    // Execute the actual "Compose release notes" script from the workflow —
+    // a broken script would otherwise only surface as a failed release run.
+    const workflow = file('.github/workflows/release.yml');
+    const marker = '- name: Compose release notes';
+    const step = workflow.slice(workflow.indexOf(marker));
+    const block = step.split('        run: |\n')[1].split('      - name:')[0];
+    const script = 'TAG=v3.2.0\n' + block.split('\n').map((l) => l.replace(/^ {10}/, '')).join('\n');
+    const run = (withApk: boolean) => {
+      const dir = mkdtempSync(join(tmpdir(), 'joe-notes-'));
+      try {
+        mkdirSync(join(dir, 'docs'));
+        mkdirSync(join(dir, 'release-assets'));
+        writeFileSync(join(dir, 'docs', 'RELEASE-BODY.md'), '## Joe Browser 3.2.0\n\nHonest body.\n');
+        writeFileSync(join(dir, 'release-assets', 'JoeBrowser-Setup-3.2.0.exe'), 'exe');
+        writeFileSync(join(dir, 'release-assets', 'JoeBrowser-Portable-3.2.0.exe'), 'exe');
+        writeFileSync(join(dir, 'release-assets', 'SHA256SUMS.txt'), 'sum');
+        if (withApk) writeFileSync(join(dir, 'release-assets', 'JoeBrowser.apk'), 'apk');
+        execFileSync('bash', ['-e', '-c', script], { cwd: dir });
+        return readFileSync(join(dir, 'release-notes.md'), 'utf8');
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    };
+    const withoutApk = run(false);
+    expect(withoutApk).toContain('Honest body.');
+    expect(withoutApk).toContain('JoeBrowser-Setup-3.2.0.exe');
+    expect(withoutApk).toContain('JoeBrowser-Portable-3.2.0.exe');
+    expect(withoutApk).toMatch(/not included in this release/i);
+    expect(withoutApk).toContain('JOE_SIGNING_STORE_B64');
+    const withApk = run(true);
+    expect(withApk).toContain('JoeBrowser.apk');
+    expect(withApk).not.toMatch(/not included in this release/i);
   });
 });

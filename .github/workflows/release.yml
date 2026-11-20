@@ -151,7 +151,7 @@ jobs:
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
           cat docs/RELEASE-BODY.md > release-notes.md
-          {
+          (
             echo ""
             echo "---"
             echo ""
@@ -172,7 +172,7 @@ jobs:
               echo ">"
               echo "> \`gh workflow run "Build and publish binaries" -f tag=$TAG\`"
             fi
-          } >> release-notes.md
+          ) >> release-notes.md
           cat release-notes.md
       - name: Create release with binaries
         uses: softprops/action-gh-release@v2
