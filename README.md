@@ -33,8 +33,15 @@ The Windows **EXE** and Android **APK** communicate through <img src="assets/bra
 
 | Platform | File | Notes |
 |---|---|---|
-| <img src="assets/brand/marks/windows.svg" alt="Windows" width="18" height="18" /> Windows 10/11 | `JoeBrowser-Setup-3.2.0.exe` | NSIS installer |
-| <img src="assets/brand/marks/windows.svg" alt="Windows" width="18" height="18" /> Windows 10/11 | `JoeBrowser-Portable-3.2.0.exe` | Portable, no install |
+| <img src="assets/brand/marks/windows.svg" alt="Windows" width="18" height="18" /> Windows 10/11 | `JoeBrowser-Setup-3.2.1.exe` | NSIS installer |
+| <img src="assets/brand/marks/windows.svg" alt="Windows" width="18" height="18" /> Windows 10/11 | `JoeBrowser-Portable-3.2.1.exe` | Portable, no install |
+
+> **3.2.0 is broken — use 3.2.1.** The 3.2.0 EXEs installed and opened but sat
+> forever on "Starting Joe Browser…": the release pipeline packaged the web
+> bundle (absolute `/assets/…` paths) instead of the desktop bundle, so no
+> script could load under `file://`. 3.2.1 packages the correct bundle and adds
+> boot gates (`npm run test:webdist`, `npm run test:boot-web`, an asar content
+> check and a real-Electron boot check) so this failure cannot ship again.
 | <img src="assets/brand/marks/android.svg" alt="Android" width="18" height="18" /> Android 9+ | `JoeBrowser.apk` | Signed debug build, sideload |
 
 Get all three from the [latest GitHub Release](https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser/releases/latest), together with `SHA256SUMS.txt`. Android users should enable installation from their file manager and verify the checksum before sideloading.

@@ -151,7 +151,7 @@ export interface Toast { id: string; text: string; kind: 'ok' | 'warn' | 'err' |
  */
 const STORAGE_KEY = 'joe-browser:v3';
 const LEGACY_KEYS = ['joe-browser:v2'];
-export const APP_VERSION = '3.2.0';
+export const APP_VERSION = '3.2.1';
 
 const DEFAULT_SETTINGS: Settings = {
   theme: 'light',
