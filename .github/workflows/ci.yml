@@ -82,8 +82,12 @@ jobs:
         run: npm run test:boot-web
       - name: Manager window boots the bundled UI (real Electron)
         run: |
-          npm install --prefix apps/desktop --no-audit --no-fund
-          xvfb-run -a apps/desktop/node_modules/.bin/electron scripts/boot-check.cjs apps/desktop/web-dist/index.html
+          npm install --prefix apps/desktop --no-audit --no-fund || { echo "::error title=boot-check::npm install for apps/desktop failed"; exit 1; }
+          if command -v xvfb-run >/dev/null 2>&1; then
+            xvfb-run -a apps/desktop/node_modules/.bin/electron scripts/boot-check.cjs apps/desktop/web-dist/index.html
+          else
+            apps/desktop/node_modules/.bin/electron scripts/boot-check.cjs apps/desktop/web-dist/index.html
+          fi
 
       - name: Exercise the desktop main process
         run: npm run test:main

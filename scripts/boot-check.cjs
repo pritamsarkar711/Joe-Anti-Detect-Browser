@@ -9,27 +9,49 @@
  *
  * This script opens a window with the manager's exact webPreferences, loads
  * the given index.html via file://, and fails unless React mounts and the boot
- * shell is dismissed. Run it against apps/desktop/web-dist:
+ * shell is dismissed:
  *
- *   node scripts/check-webdist.mjs          # static checks (no Electron)
- *   npx electron scripts/boot-check.cjs apps/desktop/web-dist/index.html
+ *   npx electron scripts/boot-check.cjs <path-to-index.html>
  *
- * Exits 0 when the app boots, 1 with the evidence when it does not.
+ * The window is shown (as in the real app) because the boot shell is dismissed
+ * via requestAnimationFrame, which a permanently hidden window never runs.
+ * Diagnostics surface as GitHub Actions annotations so a CI failure explains
+ * itself. Exits 0 when the app boots, 1 when it does not, 2 on a harness error.
  */
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 
+const say = (kind, message) => {
+  console.log(message);
+  if (process.env.GITHUB_ACTIONS) console.log(`::${kind} title=boot-check::${message.replace(/\n/g, ' | ').slice(0, 400)}`);
+};
+
+// CI runners (and containers) have no configured SUID sandbox; this is a local
+// test harness, so the sandbox adds nothing here.
+app.commandLine.appendSwitch('no-sandbox');
+app.disableHardwareAcceleration();
+app.commandLine.appendSwitch('ozone-platform', 'headless');
+
+for (const ev of ['uncaughtException', 'unhandledRejection']) {
+  process.on(ev, (error) => {
+    say('error', `boot-check harness error (${ev}): ${error?.stack ?? error}`);
+    app.exit(2);
+  });
+}
+
 const ui = process.argv[2] ? path.resolve(process.argv[2]) : '';
 if (!ui || !fs.existsSync(ui)) {
-  console.error('usage: electron scripts/boot-check.cjs <path-to-index.html>');
+  say('error', `usage: electron scripts/boot-check.cjs <path-to-index.html> — missing: ${ui}`);
   process.exit(2);
 }
 const preload = path.join(__dirname, '..', 'apps', 'desktop', 'preload.js');
 
-// No GPU / no window system needed — runs on CI runners too.
-app.disableHardwareAcceleration();
-app.commandLine.appendSwitch('ozone-platform', 'headless');
+// Never hang silent: whatever state we are in at the deadline, report it.
+setTimeout(() => {
+  say('error', 'boot-check watchdog: app did not reach a verdict within 90s');
+  app.exit(2);
+}, 90000).unref();
 
 // Stub every whitelisted IPC channel so a real handler absence can never be
 // mistaken for a bundle failure. The UI must render even in web mode.
@@ -53,6 +75,7 @@ for (const [channel, value] of Object.entries(stubs)) {
 }
 
 app.whenReady().then(async () => {
+  say('notice', `boot-check: electron ${process.versions.electron}, chromium ${process.versions.chromium}, ui ${ui}`);
   const win = new BrowserWindow({
     width: 1200, height: 800, show: false,
     webPreferences: {
@@ -61,10 +84,13 @@ app.whenReady().then(async () => {
       nodeIntegration: false,
       sandbox: false,
       spellcheck: false,
-      backgroundThrottling: true,
+      backgroundThrottling: false,
       devTools: true,
     },
   });
+  // The real app shows on ready-to-show; the boot splash is dismissed with
+  // requestAnimationFrame, which never runs on a hidden window.
+  win.once('ready-to-show', () => win.show());
   const problems = [];
   win.webContents.on('console-message', (_e, level, message, line, sourceId) => {
     if (level >= 2) problems.push(`console[${level}] ${message} (${sourceId}:${line})`);
@@ -83,16 +109,17 @@ app.whenReady().then(async () => {
       const root = document.getElementById('root');
       return {
         bootHidden: !!boot && boot.classList.contains('hidden'),
-        bootText: boot ? boot.innerText.replace(/\\s+/g, ' ').trim().slice(0, 80) : null,
         rootChildren: root ? root.childElementCount : -1,
-        bodyText: document.body.innerText.replace(/\\s+/g, ' ').trim().slice(0, 120),
+        bodyText: document.body.innerText.replace(/\\s+/g, ' ').trim().slice(0, 140),
       };
-    })()`);
+    })()`).catch((error) => ({ bootHidden: false, rootChildren: -1, bodyText: `executeJavaScript failed: ${error.message}` }));
     if (state.bootHidden && state.rootChildren > 0) break;
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
   const booted = !!state && state.bootHidden && state.rootChildren > 0;
-  console.log(JSON.stringify({ booted, ui, state, problems: problems.slice(0, 12) }, null, 2));
+  const verdict = JSON.stringify({ booted, state, problems: problems.slice(0, 12) });
+  if (booted) say('notice', `boot-check PASS ${verdict}`);
+  else say('error', `boot-check FAIL ${verdict}`);
   app.exit(booted ? 0 : 1);
 });
