@@ -176,15 +176,20 @@ describe('v2 provenance and licensing', () => {
 
   it('keeps the release workflow current and publishing checksums', () => {
     const workflow = file('.github/workflows/release.yml');
+    // The release notes live in docs/RELEASE-BODY.md and are assembled by the
+    // publish job, so the honesty claims are checked there — and the workflow
+    // must actually reference that file (a detached body would drop them).
+    const body = file('docs/RELEASE-BODY.md');
     // Derive the expected tag from package.json so a version bump cannot break
     // this test and tempt anyone into "fixing" it by pinning an old number.
     const { version } = JSON.parse(file('package.json')) as { version: string };
     expect(workflow).toContain(`default: 'v${version}'`);
     expect(workflow).toContain('SHA256SUMS.txt');
     expect(workflow).toContain('npm run test:site');
-    expect(workflow).toMatch(/not undetectable/i);
-    expect(workflow).not.toContain("default: 'v1.0.0'");
-    expect(workflow).not.toContain("default: 'v2.0.0'");
-    expect(workflow).not.toContain('8 coherent device templates');
+    expect(workflow).toContain('docs/RELEASE-BODY.md');
+    expect(body).toMatch(/not undetectable/i);
+    expect(workflow + body).not.toContain("default: 'v1.0.0'");
+    expect(workflow + body).not.toContain("default: 'v2.0.0'");
+    expect(workflow + body).not.toContain('8 coherent device templates');
   });
 });
