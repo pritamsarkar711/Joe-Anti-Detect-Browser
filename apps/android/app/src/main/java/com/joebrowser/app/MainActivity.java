@@ -14,11 +14,13 @@ import android.webkit.WebViewClient;
 import android.webkit.WebResourceRequest;
 import android.widget.Toast;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -53,14 +55,28 @@ public class MainActivity extends Activity {
         settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
         // The manager UI is loaded from android_asset and never browses third
         // party pages, so it keeps the app's own agent; profiles (BrowserActivity)
-        // get the spoofed one.
-        settings.setUserAgentString("JoeBrowser/3.0 (Android; Workspace)");
+        // get the spoofed one. The version comes from the manifest so the UA
+        // cannot drift from the release version again.
+        settings.setUserAgentString("JoeBrowser/" + appVersion() + " (Android; Workspace)");
         settings.setMediaPlaybackRequiresUserGesture(true);
 
         web.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                return false;
+                // The management UI is a bundled asset and must never browse:
+                // the JoeBridge is injected here, so a remote page would inherit
+                // workspace control. Anything that is not a bundled asset is
+                // refused and opened outside instead.
+                String target = request == null || request.getUrl() == null ? "" : request.getUrl().toString();
+                if (target.startsWith("file:///android_asset/")) return false;
+                try {
+                    Intent external = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(target));
+                    external.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(external);
+                } catch (Exception ignored) {
+                    // No browser available; staying put is safer than loading it here.
+                }
+                return true;
             }
 
             @Override
@@ -131,6 +147,15 @@ public class MainActivity extends Activity {
         return sb.toString();
     }
 
+    /** Version for the management user agent, from the manifest — never hard-coded. */
+    private String appVersion() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Exception e) {
+            return "0";
+        }
+    }
+
     /** Write the profile's process suffix before the :profile process starts. */
     private void writeSuffix(String suffix) {
         FileOutputStream out = null;
@@ -156,10 +181,80 @@ public class MainActivity extends Activity {
                 o.put("kind", "android-apk");
                 o.put("name", Build.MODEL);
                 o.put("platform", "Android " + Build.VERSION.RELEASE);
-                o.put("appVersion", "2.0.0");
+                o.put("appVersion", appVersion());
                 o.put("sdk", Build.VERSION.SDK_INT);
             } catch (JSONException ignored) {}
             return o.toString();
+        }
+
+        /**
+         * Browsing history recorded by the isolated profile WebViews.
+         *
+         * Each profile process appends visits to filesDir/history/<id>.jsonl;
+         * this reads every log back as one newest-first array for the UI.
+         */
+        @JavascriptInterface
+        public String getHistory() {
+            JSONArray rows = new JSONArray();
+            try {
+                File dir = new File(getFilesDir(), "history");
+                File[] files = dir.listFiles();
+                if (files != null) {
+                    for (int f = 0; f < files.length; f++) {
+                        if (!files[f].getName().endsWith(".jsonl")) continue;
+                        BufferedReader reader = new BufferedReader(new InputStreamReader(new FileInputStream(files[f]), "UTF-8"));
+                        try {
+                            String line;
+                            while ((line = reader.readLine()) != null) {
+                                if (line.trim().isEmpty()) continue;
+                                try {
+                                    rows.put(new JSONObject(line));
+                                } catch (JSONException ignored) {
+                                    // A torn write from a killed process: skip the line.
+                                }
+                            }
+                        } finally {
+                            reader.close();
+                        }
+                    }
+                }
+                java.util.ArrayList<JSONObject> sorted = new java.util.ArrayList<JSONObject>();
+                for (int i = 0; i < rows.length(); i++) sorted.add(rows.optJSONObject(i));
+                java.util.Collections.sort(sorted, new java.util.Comparator<JSONObject>() {
+                    @Override
+                    public int compare(JSONObject a, JSONObject b) {
+                        return b.optString("at", "").compareTo(a.optString("at", ""));
+                    }
+                });
+                JSONArray out = new JSONArray();
+                int cap = Math.min(sorted.size(), 1500);
+                for (int i = 0; i < cap; i++) out.put(sorted.get(i));
+                return out.toString();
+            } catch (Exception e) {
+                return "[]";
+            }
+        }
+
+        /** Clear one profile's history log, or every log when the id is empty. */
+        @JavascriptInterface
+        public String clearHistory(String profileId) {
+            try {
+                File dir = new File(getFilesDir(), "history");
+                File[] files = dir.listFiles();
+                if (files != null) {
+                    for (int f = 0; f < files.length; f++) {
+                        String name = files[f].getName();
+                        if (!name.endsWith(".jsonl")) continue;
+                        if (profileId == null || profileId.isEmpty()
+                                || name.equals(profileId.replaceAll("[^a-zA-Z0-9_-]", "_") + ".jsonl")) {
+                            files[f].delete();
+                        }
+                    }
+                }
+                return "{\"ok\":true}";
+            } catch (Exception e) {
+                return "{\"ok\":false}";
+            }
         }
 
         @JavascriptInterface

@@ -77,7 +77,8 @@ The interface follows the structure of `dunky11/react-saas-template` while adopt
 - **29 observed-device bundles** derived from Apache-2.0 Apify/BrowserForge data, plus 11 curated device classes (Windows 11 Intel/NVIDIA, Windows 10 AMD, macOS Apple-silicon and Intel, Pixel, Galaxy S23, Galaxy Tab S9, iPhone, iPad Pro, Ubuntu). CPU and RAM are drawn as one ordered pair, so a sample is never reported with hardware it never had.
 - **Coherent fingerprint specs**: User-Agent, Client Hints, platform, GPU, screen, DPR, CPU, RAM, fonts, timezone, locale, languages, WebRTC mode and touch points are derived together. WebKit (iPhone/iPad) templates keep Safari-shaped UA and brands instead of inheriting Chromium hints.
 - **30 region presets** with DST-correct timezone offsets and proxy-to-locale matching. Example: <img src="assets/brand/flags/bd.svg" alt="Bangladesh flag" width="16" height="16" /> Bangladesh, <img src="assets/brand/flags/us.svg" alt="United States flag" width="16" height="16" /> United States, <img src="assets/brand/flags/gb.svg" alt="United Kingdom flag" width="16" height="16" /> United Kingdom, <img src="assets/brand/flags/de.svg" alt="Germany flag" width="16" height="16" /> Germany and <img src="assets/brand/flags/jp.svg" alt="Japan flag" width="16" height="16" /> Japan.
-- **Browsing history per profile**: every URL and search, filterable by profile, copyable and openable.
+- **Browsing history per profile**: every URL and search, recorded by the desktop and Android shells as they browse (title refresh, search detection, deterministic dedupe), filterable by profile, copyable and openable.
+- **Real browser controls** in every profile window: tabs, back, forward, reload/stop, home, address bar with search fallback, find on page, zoom, per-profile bookmarks, downloads and deny-by-default site permissions — on Windows and Android alike. Keyboard shortcuts map to the same commands.
 - **Extension library**: 12 real extensions with per-family store deep links (Chrome, Edge, Firefox), recommended entries and opt-in auto-install.
 - **Paste as human**: a reviewed keystroke plan with per-character jitter, word-boundary beats and optional corrections, generated deterministically per seed. It does not solve CAPTCHAs — a person still completes any challenge.
 - **Proxy manager**: HTTP, HTTPS, SOCKS4 and SOCKS5, bulk paste, country tags, assignment, health checks, offline/recovery notifications and one-click exit rotation.
@@ -172,9 +173,10 @@ docs/                  architecture, validation and IP protection policy
 ```bash
 npm install
 npm run dev                 # live control plane on http://localhost:5173
-npm test                    # 100 unit, SSR, auth and schema-invariant tests
+npm test                    # unit, SSR, auth and schema-invariant tests
+npm run test:secrets        # credential and key-material scan
 npm run test:fingerprint    # 29/29 injection self-tests + workspace quality
-npm run test:ui             # 35 real-browser checks (starts its own server)
+npm run test:ui             # 37 real-browser checks (starts its own server)
 npm run test:devices        # 75 checks across five mobile devices (starts its own server)
 npm run test:java           # Java source parser check
 npm run test:site           # static SEO site checks

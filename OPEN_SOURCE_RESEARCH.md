@@ -83,3 +83,24 @@ and worth restating because of the corrected marketing claim:
    engine. The product now says exactly that.
 3. **No engine-level patching was attempted**, consistent with the L3 boundary in
    `docs/RESEARCH.md`; the release notes keep the limitation explicit.
+## 7. Component evaluations (merged research thread)
+
+A parallel evaluation reached compatible conclusions and covered these
+additional candidates. Method: official repository → license file → activity →
+dependency audit (`npm audit`, `npm ls`) → role fit → copyleft compatibility
+with MIT + CC BY-ND docs → advisory history.
+
+| Project | License | Decision | Why |
+|---|---|---|---|
+| `@fontsource/ibm-plex-sans` | MIT (font: SIL OFL) | **Adopt** | Spec: IBM Plex Sans, self-hosted; no font CDN (`test:site` enforces) |
+| `flag-icons` | MIT | **Adopt** | Circular country flags as data URIs, zero runtime stylesheet |
+| `simple-icons` | CC0-1.6 | **Adopt** | Official brand marks only; nominative use stated in `TRADEMARK.md` |
+| `java-parser` | MIT (deps chevrotain, lodash) | **Adopt, CI-only, overridden** | Parses first-party Android sources in CI; never shipped; lodash lifted to 4.18.1 via `overrides` |
+| `playwright-core` + `@sparticuz/chromium` | Apache-2.0 | **Adopt, dev-only** | Real-browser UI/device tests and screenshots in CI |
+| `@electron/asar` | MIT | **Reference only** | `scripts/check-asar.mjs` reads archive headers dependency-free instead |
+| `vite-node` | MIT | **Adopt, dev-only** | Runs the fingerprint self-test script; pinned explicitly (vitest 5 no longer bundles it) |
+| CEF | BSD-3 | Not adopted | ~200 MB + C++ toolchain; Electron embeds the same engine class |
+| GeckoView | MPL-2.0 | Not adopted | The legal path to real Firefox-family engines on Android; needs a Gradle/AAR toolchain this SDK-only build cannot carry. Documented upgrade path (file-level copyleft is compatible with MIT distribution of separate files) |
+| Camoufox / patching approaches | various | Not adopted | Engine patching is out of scope and contradicts the no-spoofing rule |
+| uBlock Origin (vendored) | GPLv3 | Not adopted | GPL vendoring into an MIT app creates license coupling; the catalog links to official stores instead |
+| `electron-updater` | MIT | Not adopted | No signing/publishing infrastructure operated yet; releases are explicit downloads with `SHA256SUMS.txt` |

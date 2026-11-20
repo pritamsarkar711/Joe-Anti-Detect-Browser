@@ -22,6 +22,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci --no-audit --no-fund
+      - run: npm run test:secrets
       - run: npm test
       - run: npm run build
       - run: npm run build:core
@@ -184,6 +185,20 @@ jobs:
             - `npm run test:ui`, `npm run test:devices` and `npm run screenshots` now start
               their own server and exit cleanly; the device suite no longer overwrites the
               committed evidence report when a run fails
+            - Real per-profile browsing history: the desktop and Android shells record every
+              visit (URL, title, time, search detection) as profiles browse; the History view
+              previously showed only seeded demo rows because nothing ever wrote an entry
+            - Real browser controls in every profile window on Windows and Android: tabs,
+              back, forward, reload/stop, home, address bar with search fallback, find on
+              page, zoom, per-profile bookmarks, downloads and deny-by-default site
+              permissions — plus keyboard shortcuts on Windows
+            - Security: browsed pages no longer receive the app's IPC bridge — profile
+              pages run without a preload and the management bridge is limited to bundled
+              pages (a website a profile visited could previously drive the whole workspace
+              through `window.joe`); the Android manager WebView refuses to navigate
+              anywhere but its bundled assets
+            - A credential-shaped-string scan now gates CI and releases alongside the
+              zero-vulnerability dependency audit
             - New tests: 25 for the account client, 10 for schema/secret invariants,
               13 for the relay edge function; the brand guard fails if any published
               favicon or logo drifts from the J monogram
@@ -191,10 +206,10 @@ jobs:
               the package said 3.1.1); `npm audit` reports 0 vulnerabilities
 
             **Validation** (this environment: Debian, Node 22, no JDK/Android SDK/Electron):
-            `tsc` clean; `npm test` 100/100; `test:ui` 37/37; `test:devices` 75/75;
+            `tsc` clean; `npm test` 115/115; `test:ui` 37/37; `test:devices` 75/75;
             `test:boot` pass (retry works when the entry script itself fails);
             `test:fingerprint` 29/29; `test:site` 15/15; `test:java` 4/4 (parse only);
-            `test:icons` 9/9; `test:desktop` 10/10; `check:bridges` 6/6; `test:packaged` 4/4;
+            `test:icons` 9/9; `test:desktop` 11/11; `check:bridges` 7/7; `test:packaged` 4/4;
             `test:main` 16/16; `test:ui-desktop` 5/5; `npm audit` 0. Migration 0002 was
             applied to the live project and its key properties verified there (backfilled
             entitlement rows, deny-all allowlist, anonymous writes refused with SQLSTATE

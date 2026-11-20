@@ -78,6 +78,30 @@ service-role key. Anonymous direct writes to `commands` are refused by RLS
 (SQLSTATE 42501, verified live), and a failed relay call is reported as a
 failure — never as sent.
 
+### Browsing history and browser windows (merged audit thread)
+
+- **History records for real.** Until this release the History view only ever
+  showed seeded demo rows: no code recorded a visit. The desktop and Android
+  shells now record every navigation per profile (URL, title, time, search
+  detection) with deterministic dedupe, and Clear history clears the native
+  store too.
+- **Real browser controls in every profile window.** Tabs, back, forward,
+  reload/stop, home, address bar (URL or search), find on page with match
+  counts, zoom, per-profile bookmarks, downloads and deny-by-default site
+  permissions on Windows (`chrome.html` + WebContentsView, keyboard shortcuts);
+  the Android window gains the same controls natively.
+
+### Security hardening (merged audit thread)
+
+- **Fixed (critical):** pages opened in profiles received the app's management
+  bridge (`window.joe`) — a website a profile visited could drive the whole
+  workspace. Browsed pages now run with no preload at all; the bridge is limited
+  to bundled pages and localhost dev servers. The Android manager WebView can no
+  longer navigate away from its bundled assets.
+- **`npm audit` 0 tree-wide** (vitest 5, esbuild 0.28, lodash 4.18 overrides);
+  CI fails on shipped-code advisories and on credential-shaped strings anywhere
+  in the repository (`scripts/check-secrets.mjs`).
+
 ### Product honesty
 
 - **"Five bundled engines" removed.** One Chromium engine is bundled (Electron on
@@ -130,9 +154,9 @@ reports that and stays on the free tier instead of guessing.
 Executed in the session that produced this release (Debian, Node 22; no JDK,
 Android SDK, Electron runtime, Postgres or device):
 
-`tsc` clean · `npm test` 100/100 (9 files) · `test:ui` 37/37 · `test:devices` 75/75 ·
+`tsc` clean · `npm test` 115/115 (12 files) · `test:ui` 37/37 · `test:devices` 75/75 ·
 `test:fingerprint` 29/29 · `test:site` 15/15 · `test:java` 4/4 (parse only) ·
-`test:icons` 9/9 · `test:desktop` 10/10 · `check:bridges` 6/6 ·
+`test:icons` 9/9 · `test:desktop` 11/11 · `check:bridges` 7/7 ·
 `test:packaged` 4/4 · `test:main` 16/16 · `test:ui-desktop` 5/5 ·
 `npm audit` 0 (production and development). Live Supabase evidence: migration
 applied, entitlement rows backfilled, anon writes denied with SQLSTATE 42501.

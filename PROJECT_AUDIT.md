@@ -167,3 +167,26 @@ the commands are in `REQUIREMENTS_TRACKER.md`.
 4. Add a payment provider before advertising Premium commercially; until then
    Premium is granted by an administrator.
 5. Add `npm audit` to CI once registry advisory access is confirmed.
+
+## Merged audit thread (browser, history and security)
+
+A second audit thread fixed the same spec from the browser side and its work is
+part of this release:
+
+- **History recorded nothing** (the view showed seeded rows; `addHistory` had
+  zero callers) — fixed on both shells with classification, deterministic
+  dedupe and native clear; `tests/history.test.ts` + the main-process suite.
+- **Browsed pages held the management IPC bridge** (critical): any site could
+  drive the workspace through `window.joe`. Profile tabs now browse with **no
+  preload**; the bridge is limited to bundled pages and localhost dev servers;
+  the Android manager refuses navigation off its bundled assets.
+- **Real browser chrome** in every profile window (tabs, navigation, address
+  bar with search fallback, find, zoom, bookmarks, downloads, deny-by-default
+  permissions, keyboard shortcuts) on Windows and Android.
+- **Version drift killed** everywhere (shell UA, Android device info, site
+  provenance derive from package.json; `tests/version.test.ts` pins it).
+- **`npm audit` 0 tree-wide** (vitest 5, esbuild 0.28, lodash overrides) and a
+  credential-pattern secret scan gates CI and releases.
+
+See `BUG_REPORT.md` BUG-019…BUG-021 and the "merged audit thread" sections of
+`TEST_REPORT.md` / `SECURITY_AUDIT.md` for the evidence.

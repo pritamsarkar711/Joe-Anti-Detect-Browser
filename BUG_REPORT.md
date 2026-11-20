@@ -378,3 +378,50 @@ which refuses as intended.
 | OPEN-004 | Windows/Android binaries are built only in GitHub Actions. | This environment has no JDK, Android SDK, Electron runtime or Windows host. | CI/release workflow builds and checksums them; see `RELEASE_NOTES.md`. |
 | OPEN-005 | Migrations are verified statically in the test suite **and** applied to the live project (`20261119181923`), but no automated test runs against that database from CI. | Live verification was done interactively this session (RLS 42501, entitlement rows, allowlist deny); CI has no project credentials by design. | Keep `schema.test.ts` as the CI gate; re-verify live after every migration. |
 | OPEN-006 | The generated Android demo workspace seeds documentation-range proxy addresses with a successful status and a latency value that was never measured, so a clean install can show invented measurements. | Demo fixtures and first-run production state are the same file; separating them changes what the APK ships and was not attempted in this pass. | Proxy checks in the desktop app recompute status; treat seeded latency as demo data. Tracked for the next release. |
+## Bugs found by the merged audit thread (added when the two work branches joined)
+
+### BUG-019 — History recorded nothing · major
+
+The History view listed, filtered and cleared entries, but `addHistory` had
+**zero callers** anywhere in the codebase: the view showed three seeded demo
+rows forever while the product promised "every URL and search".
+
+**Fix** Desktop `attachHistory` streams every main-frame navigation
+(`history:entry`) with title refresh; `BrowserActivity` appends per-profile
+JSONL served through `JoeBridge`; `packages/core/src/history.ts` owns search
+classification, deterministic ids and merge/dedupe. `clearHistory` also clears
+the native files.
+
+**Verified** `tests/history.test.ts`; `test:main` navigates a profile tab and
+asserts classified, titled, deduplicated entries reach the manager.
+
+### BUG-020 — Browsed pages held the full management IPC bridge · critical
+
+`preload.js` was attached to profile windows whose webContents browsed the open
+web. Any site could call `window.joe.workspace.replace()`,
+`profiles.delete()`, `sync.configure()` — full workspace control from a hostile
+page. The Android manager WebView carried `JoeBridge` while allowed to navigate
+to remote URLs.
+
+**Fix** Tabs browse in WebContentsViews with **no preload**; the bridge is
+exposed only to bundled pages (`file:`) and localhost dev servers; the Android
+manager refuses navigation away from `file:///android_asset/` and opens external
+links outside the app. (The account-client thread fixed the adjacent BUG-001:
+local email typing could not again grant owner, since roles now come from the
+server.)
+
+**Verified** `test:main` rejects chrome commands from foreign senders; the
+preload trust gate is enforced in code; `check:bridges` pins the Android
+navigation guard.
+
+### BUG-021 — The shipped toolchain carried 11 dependency advisories · high (dev-only)
+
+vitest 3's `@vitest/mocker`/`tinypool` prototype-pollution gadgets, esbuild's
+dev-server origin bypass and lodash/lodash-es (via java-parser).
+
+**Fix** vitest 5, esbuild 0.28, `overrides` lifting lodash/lodash-es to 4.18.1,
+`vite-node` pinned explicitly (vitest 5 no longer bundles it). `npm audit` is
+clean tree-wide; CI enforces `npm audit --omit=dev --audit-level=high` and a
+credential-pattern scan (`scripts/check-secrets.mjs`) on every push.
+
+**Verified** `npm audit` → 0; `npm run test:secrets` → clean over 119 files.

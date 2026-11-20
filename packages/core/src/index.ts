@@ -5,6 +5,7 @@ export * from './proxy';
 export * from './transfer';
 export * from './geo';
 export * from './quality';
+export * from './history';
 export * from './data/realFingerprints';
 
 export {
@@ -13,7 +14,7 @@ export {
 } from './extensions';
 
 export {
-  PLANS, FREE_PROFILE_LIMIT, OWNER_EMAIL, isVerifiedAccount,
+  PLANS, FREE_PROFILE_LIMIT, DEMO_PROFILE_LIMIT, OWNER_EMAIL, isVerifiedAccount,
   planFor, isAdmin, checkProfileQuota, browserAllowed, lockedBrowsers, engineRequiresPremium,
   BROWSER_SUPPORT, SELECTABLE_BROWSERS, browserSupport, isBrowserAvailable,
   type BrowserSupport, type Plan, type PlanId, type Account, type Entitlement,

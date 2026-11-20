@@ -155,3 +155,15 @@ layer, and exactly which techniques were adopted from which are recorded in
 `.github/workflows/ci.yml` runs unit tests, Java parsing, production build, core bundling, Android assets, SEO site build and generated-asset checks on every push to `arena/**` and on pull requests.
 
 `.github/workflows/release.yml` runs on tag push. It bundles shared artifacts on Ubuntu, builds the EXE on Windows, compiles and signs the APK on Ubuntu, then publishes both plus checksums as a GitHub Release. See [`VALIDATION.md`](VALIDATION.md) for current measured results and environment limits.
+
+## Profile windows (desktop)
+
+A profile window's own webContents loads only the bundled `chrome.html`
+toolbar (tab strip, back/forward/reload/stop/home, address bar with search
+fallback, find, zoom, bookmarks, downloads, permissions, clear-data). Each tab
+is a `WebContentsView` **without a preload**: browsed pages get no `window.joe`
+bridge at all. The management bridge is exposed only to bundled pages
+(`file:`) and localhost dev servers, and toolbar commands travel over one
+`chrome:command` channel routed to the window that owns the sender. Tabs stay
+inside the profile's `persist:<id>` session partition.
+

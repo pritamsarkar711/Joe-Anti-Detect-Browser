@@ -31,6 +31,7 @@
       "rest.js",
       "extensions.cjs",
       "core.cjs",
+      "chrome.html",
       "web-dist/**/*",
       "package.json"
     ],

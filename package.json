@@ -29,6 +29,7 @@
     "test:main": "node scripts/smoke-desktop-main.mjs",
     "test:ui-desktop": "node scripts/smoke-desktop-ui.mjs",
     "check:bridges": "node scripts/check-bridges.mjs",
+    "test:secrets": "node scripts/check-secrets.mjs",
     "test:boot": "node scripts/test-boot-retry.mjs"
   },
   "dependencies": {
@@ -59,9 +60,9 @@
     "vitest": "^5.1.1",
     "yaml": "^2.9.1"
   },
-  "license": "MIT",
   "overrides": {
     "lodash": "^4.18.1",
     "lodash-es": "^4.18.1"
-  }
+  },
+  "license": "MIT"
 }

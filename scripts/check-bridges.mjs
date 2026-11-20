@@ -96,6 +96,26 @@ check('the Android sync speaks only to the validated relay edge function', () =>
   return 'edge-function relay, service key server-side only';
 });
 
+check('the browser window exposes real navigation controls', () => {
+  // Phase 9: every advertised control must exist in the code that runs it.
+  const controls = [
+    ['back', 'web.goBack()'],
+    ['forward', 'web.goForward()'],
+    ['reload', 'web.reload()'],
+    ['home', 'web.loadUrl(homeUrl)'],
+    ['address bar', 'navigateTo('],
+    ['find on page', 'web.findAllAsync'],
+    ['find next', 'web.findNext'],
+    ['zoom in', 'web.zoomIn()'],
+    ['zoom out', 'web.zoomOut()'],
+    ['downloads', 'DownloadListener'],
+    ['clear site data', 'removeAllCookies'],
+  ];
+  const missing = controls.filter(([, needle]) => !browserActivity.includes(needle)).map(([name]) => name);
+  must(missing.length === 0, `BrowserActivity lost controls: ${missing.join(', ')}`);
+  return controls.map(([name]) => name).join(', ');
+});
+
 check('the browser activity loads a per-profile injection script', () => {
   must(/injection\//.test(browserActivity), 'BrowserActivity does not load an injection script');
   must(/profile_suffix|profileId/.test(browserActivity), 'BrowserActivity does not isolate by profile');

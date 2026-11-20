@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Joe Browser</title>
+<!--
+  Profile-window chrome.
+
+  This file is the only page a profile window's own webContents ever loads: the
+  browsed site lives in a separate WebContentsView *without* a preload, so a
+  hostile page can never reach the app's IPC bridge. Every control here calls
+  the whitelisted chrome:command channel and renders the nav:state push — no
+  control is decorative: if it has no handler it does not get a button.
+-->
+<style>
+  :root {
+    --pink: #d81b60;
+    --bg: #f6f7f9;
+    --bar: #ffffff;
+    --ink: #1c191d;
+    --muted: #655f66;
+    --line: #e4e2e6;
+    --hover: rgba(216, 27, 96, 0.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--bg); color: var(--ink);
+    display: flex; flex-direction: column;
+    -webkit-user-select: none; user-select: none;
+  }
+
+  /* ---- tab strip ---- */
+  #tabs {
+    display: flex; align-items: flex-end; gap: 2px;
+    background: var(--bg); padding: 4px 6px 0; height: 30px;
+    overflow-x: auto; scrollbar-width: none;
+  }
+  #tabs::-webkit-scrollbar { display: none; }
+  .tab {
+    display: flex; align-items: center; gap: 6px;
+    max-width: 190px; min-width: 96px; height: 26px; padding: 0 8px;
+    border: 1px solid var(--line); border-bottom: none;
+    border-radius: 6px 6px 0 0; background: var(--bg); color: var(--muted);
+    cursor: pointer; font-size: 12px; overflow: hidden; white-space: nowrap;
+  }
+  .tab.active { background: var(--bar); color: var(--ink); border-color: var(--line); }
+  .tab .title { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+  .tab .close {
+    width: 16px; height: 16px; border: none; background: none; border-radius: 50%;
+    color: var(--muted); cursor: pointer; font-size: 12px; line-height: 1; flex: none;
+  }
+  .tab .close:hover { background: var(--hover); color: var(--pink); }
+  #new-tab {
+    width: 26px; height: 26px; flex: none; border: none; background: none;
+    color: var(--muted); border-radius: 6px; cursor: pointer; font-size: 15px;
+  }
+  #new-tab:hover { background: var(--hover); color: var(--pink); }
+
+  /* ---- main bar ---- */
+  #bar {
+    display: flex; align-items: center; gap: 4px;
+    height: 40px; padding: 0 8px;
+    background: var(--bar); border-bottom: 1px solid var(--line);
+  }
+  button.ctl {
+    width: 28px; height: 28px; flex: none; border: none; background: none;
+    border-radius: 6px; cursor: pointer; color: var(--ink); font-size: 14px;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  button.ctl:hover { background: var(--hover); color: var(--pink); }
+  button.ctl:disabled { color: #b9b6bb; cursor: default; background: none; }
+  button.ctl.on { color: var(--pink); background: var(--hover); }
+
+  #address {
+    flex: 1; height: 28px; min-width: 80px; padding: 0 10px;
+    border: 1px solid var(--line); border-radius: 14px;
+    background: var(--bg); color: var(--ink); font-size: 12.5px; outline: none;
+    user-select: text; -webkit-user-select: text;
+  }
+  #address:focus { border-color: var(--pink); background: var(--bar); }
+
+  .badge {
+    position: absolute; top: 2px; right: 2px; min-width: 14px; height: 14px;
+    padding: 0 3px; border-radius: 7px; background: var(--pink); color: #fff;
+    font-size: 9px; line-height: 14px; text-align: center;
+  }
+  .wrap { position: relative; }
+
+  /* ---- find bar ---- */
+  #find {
+    display: none; align-items: center; gap: 6px;
+    height: 34px; padding: 0 8px; background: var(--bar);
+    border-bottom: 1px solid var(--line);
+  }
+  #find.open { display: flex; }
+  #find input {
+    width: 220px; height: 24px; padding: 0 8px; border: 1px solid var(--line);
+    border-radius: 12px; outline: none; font-size: 12px;
+    user-select: text; -webkit-user-select: text;
+  }
+  #find input:focus { border-color: var(--pink); }
+  #matches { color: var(--muted); font-size: 11px; min-width: 42px; }
+
+  /* ---- popovers (bookmarks / downloads / permissions) ---- */
+  #pop {
+    position: fixed; top: 74px; right: 10px; width: 280px; max-height: 320px;
+    overflow: auto; background: var(--bar); border: 1px solid var(--line);
+    border-radius: 8px; box-shadow: 0 12px 28px rgba(28, 25, 29, 0.18);
+    padding: 8px; display: none; z-index: 40;
+  }
+  #pop.open { display: block; }
+  #pop h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 2px 4px 8px; }
+  .row {
+    display: flex; align-items: center; gap: 8px; padding: 6px 6px;
+    border-radius: 6px; font-size: 12px;
+  }
+  .row:hover { background: var(--hover); }
+  .row .grow { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row a { color: var(--ink); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .row a:hover { color: var(--pink); }
+  .row .del { border: none; background: none; color: var(--muted); cursor: pointer; border-radius: 50%; width: 18px; height: 18px; }
+  .row .del:hover { color: var(--pink); background: var(--hover); }
+  .empty { color: var(--muted); font-size: 12px; padding: 8px 6px; }
+  .toggle {
+    width: 30px; height: 18px; border-radius: 9px; border: none; cursor: pointer;
+    background: var(--line); position: relative; flex: none;
+  }
+  .toggle::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
+    border-radius: 50%; background: #fff; transition: left 0.12s ease;
+  }
+  .toggle.on { background: var(--pink); }
+  .toggle.on::after { left: 14px; }
+  .note { font-size: 10.5px; color: var(--muted); padding: 2px 6px 8px; }
+</style>
+</head>
+<body>
+  <div id="tabs"><button id="new-tab" title="New tab (Ctrl+T)">+</button></div>
+  <div id="bar">
+    <button class="ctl" id="back" title="Back (Alt+Left)">&#8592;</button>
+    <button class="ctl" id="forward" title="Forward (Alt+Right)">&#8594;</button>
+    <button class="ctl" id="reload" title="Reload (Ctrl+R)">&#8635;</button>
+    <button class="ctl" id="home" title="Home">&#8962;</button>
+    <input id="address" spellcheck="false" autocomplete="off" placeholder="Search or enter address">
+    <span class="wrap"><button class="ctl" id="bookmark" title="Bookmark this page">&#9734;</button></span>
+    <span class="wrap"><button class="ctl" id="find-btn" title="Find on page (Ctrl+F)">&#128269;</button></span>
+    <span class="wrap"><button class="ctl" id="downloads" title="Downloads">&#8595;<span class="badge" id="dl-badge" hidden>0</span></button></span>
+    <span class="wrap"><button class="ctl" id="perms" title="Site permissions">&#9881;<span class="badge" id="perm-badge" hidden>0</span></button></span>
+    <button class="ctl" id="zoom-out" title="Zoom out (Ctrl+-)">&minus;</button>
+    <button class="ctl" id="zoom-in" title="Zoom in (Ctrl++)">+</button>
+    <button class="ctl" id="clear" title="Clear cookies and site data">&#128465;</button>
+  </div>
+  <div id="find">
+    <input id="find-input" placeholder="Find on page" spellcheck="false">
+    <span id="matches"></span>
+    <button class="ctl" id="find-prev" title="Previous match">&#8593;</button>
+    <button class="ctl" id="find-next" title="Next match">&#8595;</button>
+    <button class="ctl" id="find-close" title="Close (Esc)">&#10005;</button>
+  </div>
+  <div id="pop"></div>
+
+<script>
+(() => {
+  const api = window.joeChrome;
+  const $ = (id) => document.getElementById(id);
+
+  let state = {
+    tabs: [], activeId: null, url: '', title: '', canBack: false, canForward: false,
+    loading: false, zoom: 0, findOpen: false, findMatches: '',
+    bookmarks: [], downloads: [], permissions: {}, blocked: 0, home: '',
+  };
+  let popMode = null;
+
+  const send = (action, arg) => api.command(action, arg).catch(() => {});
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  function renderTabs() {
+    const strip = $('tabs');
+    strip.querySelectorAll('.tab').forEach((t) => t.remove());
+    for (const t of state.tabs) {
+      const el = document.createElement('div');
+      el.className = 'tab' + (t.id === state.activeId ? ' active' : '');
+      el.title = t.title || t.url || 'New tab';
+      el.innerHTML = `<span class="title">${esc(t.title || t.url || 'New tab')}</span>`;
+      const close = document.createElement('button');
+      close.className = 'close';
+      close.title = 'Close tab (Ctrl+W)';
+      close.textContent = '\u00d7';
+      close.addEventListener('click', (e) => { e.stopPropagation(); send('tabs:close', t.id); });
+      el.appendChild(close);
+      el.addEventListener('click', () => send('tabs:select', t.id));
+      strip.insertBefore(el, $('new-tab'));
+    }
+  }
+
+  function render() {
+    renderTabs();
+    $('back').disabled = !state.canBack;
+    $('forward').disabled = !state.canForward;
+    $('reload').innerHTML = state.loading ? '&#10005;' : '&#8635;';
+    $('reload').title = state.loading ? 'Stop (Esc)' : 'Reload (Ctrl+R)';
+    const addr = $('address');
+    if (document.activeElement !== addr) addr.value = state.url;
+    $('bookmark').innerHTML = state.bookmarks.some((b) => b.url === state.url) ? '&#9733;' : '&#9734;';
+    $('bookmark').classList.toggle('on', state.bookmarks.some((b) => b.url === state.url));
+    $('find').classList.toggle('open', state.findOpen);
+    $('matches').textContent = state.findMatches;
+    const dl = $('dl-badge');
+    dl.hidden = state.downloads.length === 0;
+    dl.textContent = String(state.downloads.length);
+    const blocked = state.blocked || 0;
+    const pb = $('perm-badge');
+    pb.hidden = blocked === 0;
+    pb.textContent = String(blocked);
+    if (popMode) renderPop();
+  }
+
+  function renderPop() {
+    const pop = $('pop');
+    pop.classList.add('open');
+    if (popMode === 'bookmarks') {
+      const rows = state.bookmarks.length
+        ? state.bookmarks.map((b, i) => `
+          <div class="row">
+            <a href="#" data-i="${i}" title="${esc(b.url)}">${esc(b.title || b.url)}</a>
+            <button class="del" data-del="${i}" title="Remove">&#10005;</button>
+          </div>`).join('')
+        : '<div class="empty">No bookmarks in this profile yet.</div>';
+      pop.innerHTML = `<h4>Bookmarks</h4>${rows}`;
+      pop.querySelectorAll('a[data-i]').forEach((a) => a.addEventListener('click', (e) => {
+        e.preventDefault();
+        send('open', state.bookmarks[Number(a.dataset.i)].url);
+        popMode = null; pop.classList.remove('open');
+      }));
+      pop.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', () => {
+        send('bookmark:remove', state.bookmarks[Number(b.dataset.del)].url);
+      }));
+    } else if (popMode === 'downloads') {
+      const rows = state.downloads.length
+        ? state.downloads.map((d, i) => `
+          <div class="row">
+            <a href="#" data-open="${i}" title="${esc(d.path)}">${esc(d.name)}</a>
+          </div>`).join('')
+        : '<div class="empty">Nothing downloaded in this profile yet.</div>';
+      pop.innerHTML = `<h4>Downloads</h4>${rows}`;
+      pop.querySelectorAll('[data-open]').forEach((a) => a.addEventListener('click', (e) => {
+        e.preventDefault();
+        send('download:open', state.downloads[Number(a.dataset.open)].path);
+        popMode = null; pop.classList.remove('open');
+      }));
+    } else if (popMode === 'perms') {
+      const types = [
+        ['geolocation', 'Location'],
+        ['notifications', 'Notifications'],
+        ['media', 'Camera & microphone'],
+      ];
+      const rows = types.map(([key, label]) => `
+        <div class="row">
+          <span class="grow">${label}</span>
+          <button class="toggle ${state.permissions[key] ? 'on' : ''}" data-perm="${key}"
+                  title="${state.permissions[key] ? 'Allowed' : 'Blocked'}"></button>
+        </div>`).join('');
+      pop.innerHTML = `<h4>Site permissions</h4>${rows}
+        <div class="note">Blocked by default. ${state.blocked || 0} request${state.blocked === 1 ? '' : 's'} blocked in this profile.</div>`;
+      pop.querySelectorAll('[data-perm]').forEach((b) => b.addEventListener('click', () => {
+        const key = b.dataset.perm;
+        send('perm:set', { type: key, allow: !state.permissions[key] });
+      }));
+    }
+  }
+
+  // ---- controls ----
+  $('back').addEventListener('click', () => send('back'));
+  $('forward').addEventListener('click', () => send('forward'));
+  $('reload').addEventListener('click', () => send(state.loading ? 'stop' : 'reload'));
+  $('home').addEventListener('click', () => send('home'));
+  $('new-tab').addEventListener('click', () => send('tabs:new'));
+  $('bookmark').addEventListener('click', () => {
+    if (state.bookmarks.some((b) => b.url === state.url)) send('bookmark:remove', state.url);
+    else send('bookmark:add', { url: state.url, title: state.title });
+  });
+  $('downloads').addEventListener('click', () => { popMode = popMode === 'downloads' ? null : 'downloads'; popMode ? renderPop() : $('pop').classList.remove('open'); });
+  $('perms').addEventListener('click', () => { popMode = popMode === 'perms' ? null : 'perms'; popMode ? renderPop() : $('pop').classList.remove('open'); });
+  $('zoom-in').addEventListener('click', () => send('zoom', 0.5));
+  $('zoom-out').addEventListener('click', () => send('zoom', -0.5));
+  $('clear').addEventListener('click', () => send('clear-data'));
+
+  $('address').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { send('open', e.target.value); e.target.blur(); }
+  });
+  $('address').addEventListener('focus', (e) => e.target.select());
+
+  $('find-btn').addEventListener('click', () => {
+    if (state.findOpen) send('find:close');
+    else { send('find:open'); setTimeout(() => $('find-input').focus(), 30); }
+  });
+  $('find-input').addEventListener('input', (e) => send('find', e.target.value));
+  $('find-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') send('find:next', e.shiftKey ? -1 : 1);
+    if (e.key === 'Escape') send('find:close');
+  });
+  $('find-next').addEventListener('click', () => send('find:next', 1));
+  $('find-prev').addEventListener('click', () => send('find:next', -1));
+  $('find-close').addEventListener('click', () => send('find:close'));
+
+  document.addEventListener('click', (e) => {
+    if (popMode && !$('pop').contains(e.target)
+        && !['downloads', 'perms'].includes(e.target.id)
+        && e.target.id !== 'bookmark') {
+      popMode = null;
+      $('pop').classList.remove('open');
+    }
+  });
+
+  api.onState((next) => {
+    const findWasOpen = state.findOpen;
+    state = { ...state, ...next };
+    render();
+    if (!findWasOpen && state.findOpen) setTimeout(() => $('find-input').focus(), 30);
+    if (state.findOpen && !findWasOpen) $('find-input').value = '';
+  });
+  render();
+})();
+</script>
+</body>
+</html>

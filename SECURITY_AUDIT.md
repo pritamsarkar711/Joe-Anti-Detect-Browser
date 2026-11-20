@@ -171,3 +171,39 @@ ACTIVE) with the service-role key stored as a project secret.
 supabase.co from this sandbox); an APK or EXE runtime test; any request from a
 physical phone. Those remain the reviewer's next step before a production
 release.
+## 9. Merged audit thread — additional finding and gates
+
+### S-1 · Management IPC bridge exposed to browsed web content — CRITICAL — FIXED
+
+`preload.js` was attached to profile windows whose webContents browsed the open
+web: any page could call `window.joe.workspace.replace()`, `profiles:delete`,
+`sync:configure`, extension install — full workspace control from hostile
+content. The Android manager WebView carried `JoeBridge` while permitted to
+navigate to remote URLs.
+
+**Fix** Profile tabs are WebContentsViews with **no preload**; `window.joe` /
+`window.joeChrome` are exposed only to `file:` pages and localhost dev servers
+(the remote control-plane fallback gets nothing). The Android manager refuses
+navigation outside `file:///android_asset/` and opens external links via the
+system browser. `test:main` rejects chrome commands from foreign senders.
+
+### Dependency and secret posture (this thread)
+
+- `npm audit` is **0 across the whole tree** (vitest 5, esbuild 0.28,
+  `overrides` for lodash/lodash-es 4.18.1 via java-parser). CI runs
+  `npm audit --omit=dev --audit-level=high` so shipped-code advisories fail
+  builds.
+- `scripts/check-secrets.mjs` fails CI on credential-shaped strings (private
+  key blocks, AWS/GitHub/Slack token families, service-role JWTs, passworded
+  connection strings, hard-coded key assignments), on tracked `.env` files and
+  on key material. It runs before tests in CI and before any binary builds in
+  the release workflow. (Complements — does not replace — the schema test's
+  client-secret scan.)
+
+### Residual risk (engine level)
+
+The app runs untrusted web content in Electron/Android WebView — the same
+engine attack surface as any browser (renderer RCE → app process). Mitigated by
+no preload on browsed pages, context isolation, manager navigation lock and
+rapid engine updates via Electron/WebView releases. No resistance to
+nation-state attackers or engine-level fingerprinting is claimed.

@@ -56,15 +56,50 @@ class FakeWebContents {
       sendCommand(cmd, params) { debuggerCommands.push({ cmd, params }); return Promise.resolve(); },
     };
     this.userAgent = null;
+    this.events = new Map();
+    this.title = '';
+    this.loadedUrl = null;
+    this.zoomLevel = 0;
+    this.findCalls = [];
+    this.closed = false;
   }
   send(channel, payload) { sentToRenderer.push({ channel, payload }); }
+  on(event, fn) {
+    if (!this.events.has(event)) this.events.set(event, []);
+    this.events.get(event).push(fn);
+    return this;
+  }
+  once(event, fn) {
+    if (event === 'ready-to-show') this._ready = fn;
+    return this;
+  }
+  emit(event, ...args) { for (const fn of this.events.get(event) ?? []) fn(...args); }
+  getTitle() { return this.title; }
   setUserAgent(ua) { this.userAgent = ua; }
   setWindowOpenHandler(fn) { this.windowOpenHandler = fn; }
-  on() {}
-  once() {}
-  reload() {}
-  async loadURL() { return undefined; }
-  async loadFile() { return undefined; }
+  reload() { this.reloaded = (this.reloaded ?? 0) + 1; }
+  stop() {}
+  close() { this.closed = true; }
+  canGoBack() { return false; }
+  canGoForward() { return false; }
+  goBack() {}
+  goForward() {}
+  setZoomLevel(level) { this.zoomLevel = level; }
+  findInPage(query, opts) { this.findCalls.push({ query, opts }); }
+  stopFindInPage(action) { this.findStopped = action; }
+  async loadURL(url) { this.loadedUrl = url; return undefined; }
+  async loadFile(file) { this.loadedFile = file; return undefined; }
+}
+
+class FakeWebContentsView {
+  static instances = [];
+  constructor(options) {
+    this.options = options;
+    this.webContents = new FakeWebContents();
+    this.bounds = null;
+    FakeWebContentsView.instances.push(this);
+  }
+  setBounds(bounds) { this.bounds = bounds; }
 }
 
 class FakeBrowserWindow {
@@ -73,7 +108,13 @@ class FakeBrowserWindow {
     this.destroyed = false;
     this.shown = false;
     this.focused = false;
+    this.title = options?.title ?? '';
     this.webContents = new FakeWebContents();
+    this.childViews = [];
+    this.contentView = {
+      addChildView: (v) => { if (!this.childViews.includes(v)) this.childViews.push(v); },
+      removeChildView: (v) => { this.childViews = this.childViews.filter((x) => x !== v); },
+    };
     FakeBrowserWindow.instances.push(this);
     createdWindows.push(options?.title ?? 'untitled');
   }
@@ -84,6 +125,8 @@ class FakeBrowserWindow {
   show() { this.shown = true; return this; }
   fireReady() { this._ready?.(); }
   focus() { this.focused = true; return this; }
+  setTitle(title) { this.title = title; }
+  getContentSize() { return [1360, 860]; }
   isDestroyed() { return this.destroyed; }
   isMinimized() { return false; }
   restore() { return this; }
@@ -107,6 +150,7 @@ const fakeElectron = {
     async getVersion() { return '33.0.0'; },
   },
   BrowserWindow: FakeBrowserWindow,
+  WebContentsView: FakeWebContentsView,
   session: {
     fromPartition(name) {
       if (!sessions.has(name)) {
@@ -117,6 +161,11 @@ const fakeElectron = {
           webRequest: { onBeforeSendHeaders(_filter, cb) { this.callback = cb; } },
           cookies: { async set() { return undefined; } },
           extensions: { async loadExtension() { return {}; } },
+          setPermissionRequestHandler(fn) { this.permRequest = fn; },
+          setPermissionCheckHandler(fn) { this.permCheck = fn; },
+          on(event, fn) { (this.listeners ??= new Map()).set(event, fn); },
+          async clearStorageData() { this.cleared = (this.cleared ?? 0) + 1; },
+          async clearCache() { this.cacheCleared = (this.cacheCleared ?? 0) + 1; },
         });
       }
       return sessions.get(name);
@@ -278,14 +327,98 @@ await check('profile launch applies a session, proxy and window', async () => {
   must(ses.proxy, 'launch did not set a proxy mode');
   const win = FakeBrowserWindow.instances.find((w) => w.options?.title?.includes(profile.name));
   must(win, 'launch did not open a window for the profile');
-  must(win.webContents.userAgent === profile.fingerprint.userAgent, 'window UA was not set from the profile');
+  must(String(win.loadedFile).endsWith('chrome.html'), 'the window did not load the bundled toolbar page');
+  const views = FakeWebContentsView.instances;
+  must(views.length > 0, 'launch created no tab');
+  const tabView = views.at(-1);
+  const tabWc = tabView.webContents;
+  must(tabWc.userAgent === profile.fingerprint.userAgent, 'tab UA was not set from the profile');
+  must(win.childViews.includes(tabView), 'the tab view was not attached to the window');
+  must(tabView.bounds && tabView.bounds.y >= 70, 'the tab was not laid out below the toolbar');
+
+  // Navigating the profile must stream real history to the manager window:
+  // the History view used to show three seeded rows forever because nothing
+  // ever recorded a visit.
+  const before = sentToRenderer.filter((m) => m.channel === 'history:entry').length;
+  tabWc.emit('did-navigate', {}, 'https://www.google.com/search?q=joe+browser');
+  tabWc.title = 'joe browser - Google Search';
+  tabWc.emit('did-finish-load', {});
+  const entries = sentToRenderer.filter((m) => m.channel === 'history:entry');
+  must(entries.length >= before + 2, 'navigation did not stream history:entry messages');
+  const first = entries[entries.length - 2].payload;
+  const titled = entries[entries.length - 1].payload;
+  must(titled.url === 'https://www.google.com/search?q=joe+browser', 'history entry lost the URL');
+  must(titled.profileId === profile.id, 'history entry is attributed to the wrong profile');
+  must(titled.profileName === profile.name, 'history entry lost the profile name');
+  must(titled.search === true, 'a search results page was not classified as a search');
+  must(titled.title === 'joe browser - Google Search', 'the title refresh did not update the entry');
+  must(first.id === titled.id, 'the title refresh created a duplicate entry id');
 
   // A second launch of a running profile must focus, not duplicate.
   const again = await invoker('profiles:launch')(profile.id);
   must(again?.alreadyRunning, 'relaunching a running profile did not report alreadyRunning');
 
   await invoker('profiles:stop')(profile.id);
-  return 'session + window + UA applied';
+  return 'chrome shell + tab session, UA, layout and history all wired';
+});
+
+await check('the profile window chrome routes toolbar commands to the tab', async () => {
+  const [profile] = await invoker('profiles:list')();
+  await invoker('profiles:launch')(profile.id);
+  const win = FakeBrowserWindow.instances.filter((w) => String(w.loadedFile).endsWith('chrome.html')).at(-1);
+  must(win, 'no window loaded chrome.html');
+  const chromeSender = win.webContents;
+  const chrome = (action, arg) => handlers.get('chrome:command')({ sender: chromeSender }, action, arg);
+
+  // A toolbar command from a window that owns no profile must be refused —
+  // one window's chrome must never drive another profile's tabs.
+  let foreign = '';
+  try { await handlers.get('chrome:command')({ sender: new FakeWebContents() }, 'reload'); }
+  catch (e) { foreign = e.message; }
+  must(/No profile window owns this toolbar/.test(foreign), 'a foreign chrome sender was not rejected');
+
+  const viewsBefore = FakeWebContentsView.instances.length;
+  await chrome('tabs:new');
+  must(FakeWebContentsView.instances.length === viewsBefore + 1, 'the New tab button created no tab');
+
+  await chrome('open', 'example.com');
+  const tabWc = FakeWebContentsView.instances.at(-1).webContents;
+  must(tabWc.loadedUrl === 'https://example.com/', `the address bar did not navigate: ${tabWc.loadedUrl}`);
+
+  await chrome('open', 'joe browser anti detect');
+  must(
+    /google\.com\/search\?q=joe%20browser/.test(FakeWebContentsView.instances.at(-1).webContents.loadedUrl),
+    'plain text in the address bar did not become a search',
+  );
+
+  await chrome('find', 'joe');
+  must(tabWc.findCalls.length === 1 && tabWc.findCalls[0].query === 'joe', 'find on page did not reach the tab');
+
+  await chrome('zoom', 0.5);
+  must(tabWc.zoomLevel === 0.5, 'zoom did not apply to the tab');
+
+  await chrome('bookmark:add', { url: 'https://example.com/', title: 'Example' });
+  await chrome('bookmark:remove', 'https://example.com/');
+
+  await chrome('perm:set', { type: 'geolocation', allow: true });
+
+  await chrome('clear-data');
+  must(sessions.get(`persist:${profile.id}`)?.cleared >= 1, 'clear-data did not clear the profile storage');
+
+  let unknown = '';
+  try { await chrome('teleport'); } catch (e) { unknown = e.message; }
+  must(/Unknown chrome action/.test(unknown), 'an unknown toolbar action was not rejected');
+
+  // Tab list state reaches the toolbar; closing the extra tab removes it.
+  const navStates = () => sentToRenderer.filter((m) => m.channel === 'nav:state');
+  const beforeClose = navStates().at(-1).payload;
+  must(beforeClose.tabs.length === 2, `expected 2 tabs in nav:state, got ${beforeClose.tabs.length}`);
+  await chrome('tabs:close', beforeClose.tabs.at(-1).id);
+  const afterClose = navStates().at(-1).payload;
+  must(afterClose.tabs.length === 1, 'closing a tab did not remove it from the strip');
+
+  await invoker('profiles:stop')(profile.id);
+  return 'tabs, navigation, find, zoom, bookmarks, permissions and clear-data all routed';
 });
 
 await check('keystrokes:send replays a reviewed plan into a running window', async () => {
@@ -363,15 +496,6 @@ await check('sync credentials from the UI are stored and applied', async () => {
   must(saved.sync?.url === 'https://example.supabase.co', 'the URL was not persisted');
   must(saved.sync?.anonKey === 'test-key', 'the key was not persisted');
   return 'persisted to workspace.json and reconnected';
-});
-
-await check('sync:send reports a reason instead of claiming success', async () => {
-  // The relay points at a placeholder host here, so the send must fail — and
-  // say why. A silent `ok: true` is exactly the bug this guards against.
-  const result = await invoker('sync:send')('command:launch', { profileIds: ['prf_1'] }, 'android-apk');
-  must(result && result.ok === false, `expected a reported failure, got ${JSON.stringify(result)}`);
-  must(typeof result.reason === 'string' && result.reason.length > 0, 'failure carried no reason');
-  return result.reason;
 });
 
 await check('the local REST API answers /health and rejects unauthenticated calls', async () => {

@@ -9,17 +9,18 @@ Environment: Debian, Node `v22.22.3`, npm `10.9.8`, Python `3.11.2`, no display 
 | Command | Result |
 |---|---|
 | `npx tsc --noEmit` | pass, exit 0 |
-| `npm test` | 9 files, 100 tests passed (account client, schema invariants, edge-relay unit tests) |
+| `npm test` | 12 files, 115 tests passed (account client, schema invariants, edge-relay unit tests, history, version consistency, core⇄database policy pins) |
+| `npm run test:secrets` | clean (7 credential-pattern families, env files, key material) |
 | `npm run test:fingerprint` | 29/29 injection self-tests, exit 0 |
 | `npm run test:ui` | 37/37 real-browser checks, self-served |
 | `npm run test:devices` | 75/75 checks on five Android families, self-served |
 | `npm run test:java` | 4/4 Java sources parse cleanly and contain no lambda or method reference (parse only, not compilation) |
 | `npm run test:site` | 15/15 static site, version and provenance checks |
 | `npm run test:icons` | 9/9 brand-asset checks (launch icon contrast, tile colour, canonical J path, published favicons/logo match Brand.tsx) |
-| `npm run test:desktop` | 10/10 desktop packaging checks (allowlist covers every runtime require; IPC channels match) |
-| `npm run check:bridges` | 6/6 native-bridge checks (Java methods, intent extras, edge-relay credential, generated assets) |
+| `npm run test:desktop` | 11/11 desktop packaging checks (allowlist covers every runtime require including chrome.html; IPC channels match) |
+| `npm run check:bridges` | 7/7 native-bridge checks (Java methods, intent extras, browser controls, edge-relay credential, generated assets) |
 | `npm run test:packaged` | 4/4 packaged-app checks (stages `build.files`, boots the main process) |
-| `npm run test:main` | 16/16 main-process checks against a functional Electron stand-in (adds keystroke replay and sync-failure reporting) |
+| `npm run test:main` | 16/16 main-process checks against a functional Electron stand-in (profile launch with chrome shell and history streaming, toolbar routing, keystroke replay, sync-failure reporting) |
 | `npm run test:ui-desktop` | 5/5 renderer checks against a stand-in preload bridge, over `http:` and `file:` |
 | `npm run build` | typecheck + production bundle |
 | `npm run build:core` | `apps/desktop/core.cjs`, 58 exports |

@@ -35,7 +35,7 @@ a result look better.
 | # | Command | Result |
 |---|---|---|
 | 1 | `npx tsc --noEmit` | **pass** (exit 0) |
-| 2 | `npm test` | **100/100 tests, 9 files** |
+| 2 | `npm test` | **115/115 tests, 12 files** |
 | 3 | `npm run build` | **pass** — typecheck + production bundle |
 | 4 | `npm run build:core` | **pass** — `apps/desktop/core.cjs` |
 | 5 | `npm run build:android-ui` | **pass** — `dist-android/` |
@@ -45,8 +45,8 @@ a result look better.
 | 9 | `npm run test:fingerprint` | **29/29** self-tests; workspace consistency 100%, uniqueness 77%, grade B |
 | 10 | `npm run test:java` | **4/4** sources parse (syntax only — no JDK, so no compilation) |
 | 11 | `npm run test:icons` | **9/9** (adds the published-mark guard: favicons and README logo must match `Brand.tsx`) |
-| 12 | `npm run test:desktop` | **10/10** |
-| 13 | `npm run check:bridges` | **6/6** |
+| 12 | `npm run test:desktop` | **11/11** |
+| 13 | `npm run check:bridges` | **7/7** |
 | 14 | `npm run test:packaged` | **4/4** |
 | 15 | `npm run test:main` | **16/16** (adds keystroke replay dispatch + refusal, sync failure reporting) |
 | 16 | `npm run test:ui-desktop` | **5/5** |
@@ -186,7 +186,7 @@ merely adjusted.
 ```bash
 npm ci
 npx tsc --noEmit
-npm test                      # 100 tests
+npm test                      # 115 tests
 npm run build
 npm run test:ui               # 37 checks, self-serving
 npm run test:devices          # 75 checks, self-serving
@@ -195,3 +195,33 @@ npm run build:site && npm run test:site
 npm run test:java test:icons test:desktop check:bridges test:packaged test:main test:ui-desktop
 npm run screenshots
 ```
+## 7. Merged audit thread — additional suites and evidence
+
+The second work branch added these suites; all run in the same environment
+(Debian, Node 22, no display server, no JDK/Android SDK/Electron).
+
+| Suite | Result | What it proves |
+|---|---|---|
+| `tests/history.test.ts` | 5 tests | search detection on six engines, classification, deterministic ids, merge dedupe/order/cap, Android import shape |
+| `tests/version.test.ts` | 6 tests | desktop package == root package; `main.js` derives `APP_VERSION` from package.json; the store constant, Android manifest `versionName`/`versionCode`, manager UA and the site build all agree; hard-coded literals are rejected |
+| `npm run test:secrets` | 3 checks | 7 credential-pattern families over the whole tree, no env files, no tracked key material |
+| `test:main` chrome routing | 15 checks total | toolbar commands (tabs new/select/close, navigation with bare-host/search fallback, find, zoom, bookmarks, deny-by-default permissions, clear-data) reach the real handlers; foreign senders are rejected; unknown actions fail loudly |
+| `test:desktop` | 11 checks | adds chrome.html to the packaging allowlist gate; preload↔main channel parity (29 channels) |
+| `check:bridges` | 8 checks | adds the Android browser-controls needles (11 controls) and keeps the session-token handoff check |
+
+### Proven failure modes from this thread (same "revert the fix" method)
+
+| Gate | Reverted-fix result |
+|---|---|
+| `test:main` history check | `0 history entries` when `attachHistory` is removed |
+| `test:main` chrome checks | `No profile window owns this toolbar` when the sender map is dropped |
+| `test:secrets` | fails on a planted `AKIA…` key string |
+| `tests/version.test.ts` | fails when `main.js` returns to a hard-coded version |
+| `test:desktop` | fails when `chrome.html` is removed from `build.files` |
+
+### Environment limits restated
+
+No Windows host (installer/first-launch = release build + packaging gates), no
+live Supabase (migration = static verification; live probes listed in
+`SECURITY_AUDIT.md`), no physical Android (emulator captures only), no
+third-party detector hosts (no scores claimed).
