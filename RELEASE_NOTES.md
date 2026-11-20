@@ -1,3 +1,24 @@
+# Joe Browser 3.2.2
+
+## What changed in 3.2.2
+
+- **Android finally ships**: a real, installable `JoeBrowser.apk` is in the
+  release (profiles, fingerprint injection, proxies, history, sync). Its
+  signing status and certificate SHA-256 fingerprint are published in
+  `Android-signing.txt`; when the owner's `JOE_SIGNING_*` secrets are set the
+  APK carries one stable identity, otherwise a clearly labelled per-build key
+  (updates need an uninstall). `scripts/setup-signing.sh` is the one-command
+  path to a stable key — the private key is generated on the owner's machine
+  and never enters the repository.
+- The Windows release gate now drives the real profile-window toolbar
+  (`chrome.html`) in Electron — it must render a tab and address bar from the
+  main process's `nav:state` before anything publishes.
+- Windows first-run guidance (SmartScreen: More info → Run anyway) in the
+  release notes and README; the EXEs are unsigned because no code-signing
+  certificate has been purchased.
+- `npm test` 118/118 with pins for the signing modes and the compose-script
+  signing branches.
+
 # Joe Browser 3.2.1
 
 > **3.2.0 does not start.** Its EXEs opened a window that sat forever on

@@ -128,8 +128,52 @@ app.whenReady().then(async () => {
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
-  const booted = !!state && state.bootHidden && state.rootChildren > 0;
-  const verdict = JSON.stringify({ booted, state, problems: problems.slice(0, 12) });
+  const managerOk = !!state && state.bootHidden && state.rootChildren > 0;
+
+  // Phase 2: the profile-window toolbar (chrome.html) with the real preload.
+  // It renders from the nav:state pushes the main process sends, so push one
+  // and require the tab strip and address bar to reflect it.
+  let toolbar = null;
+  let toolbarOk = false;
+  try {
+    const bar = new BrowserWindow({
+      width: 1100, height: 220, show: false,
+      webPreferences: {
+        preload,
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false,
+        spellcheck: false,
+        backgroundThrottling: false,
+        devTools: true,
+      },
+    });
+    bar.once('ready-to-show', () => bar.show());
+    await bar.loadFile(path.join(__dirname, '..', 'apps', 'desktop', 'chrome.html'));
+    bar.webContents.send('nav:state', {
+      tabs: [{ id: 't1', title: 'Example', url: 'https://example.com/' }],
+      activeId: 't1', url: 'https://example.com/', title: 'Example',
+      canBack: true, canForward: false, loading: false, zoom: 0,
+      findOpen: false, findMatches: '', bookmarks: [], downloads: [],
+      permissions: {}, blocked: 0, home: 'https://example.com/',
+    });
+    const deadline2 = Date.now() + 10000;
+    while (Date.now() < deadline2) {
+      toolbar = await bar.webContents.executeJavaScript(`(() => ({
+        tabs: document.querySelectorAll('#tabs .tab').length,
+        address: document.getElementById('address') ? document.getElementById('address').value : null,
+        backEnabled: document.getElementById('back') ? !document.getElementById('back').disabled : null,
+      }))()`).catch((error) => ({ error: error.message }));
+      if (toolbar && toolbar.tabs === 1 && toolbar.address === 'https://example.com/' && toolbar.backEnabled === true) break;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    toolbarOk = !!toolbar && toolbar.tabs === 1 && toolbar.address === 'https://example.com/' && toolbar.backEnabled === true;
+  } catch (error) {
+    toolbar = { error: String(error?.message ?? error) };
+  }
+
+  const booted = managerOk && toolbarOk;
+  const verdict = JSON.stringify({ booted, manager: state, toolbar, problems: problems.slice(0, 12) });
   if (booted) say('notice', `boot-check PASS ${verdict}`);
   else say('error', `boot-check FAIL ${verdict}`);
   app.exit(booted ? 0 : 1);

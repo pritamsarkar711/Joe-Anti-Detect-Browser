@@ -263,3 +263,37 @@ Suite after this work: `npm test` **117/117** (12 files) including the pins
 that keep the corrected pipeline in place (tests/v2.test.ts "ships a UI bundle
 that loads over file:// instead of the v3.2.0 hang"). `tsc` clean;
 `npm run test:webdist` 2/2; `npm run test:boot-web` pass; `npm audit` 0.
+
+## 9. v3.2.2 — Android signing reality and the toolbar boot gate (2026-11-20)
+
+**Android APK: the wall and the way through it.** The release keystore cannot
+be delivered to CI from any integration available here (GitHub Actions secrets
+return 403 for this token; the key must never be committed or pasted into
+chat). Instead of shipping nothing, `scripts/build-apk.sh` now signs with:
+
+1. the owner's release key when the four `JOE_SIGNING_*` secrets exist
+   (created on the owner's machine by `scripts/setup-signing.sh`, which uses
+   openssl + `gh secret set` — the private key never leaves their machine and
+   GitHub's secret store), or
+2. a **per-build key** generated inside the CI run (`JOE_SIGNING_ALLOW_EPHEMERAL=1`),
+   producing a real, installable APK whose mode and certificate SHA-256
+   fingerprint are published in `Android-signing.txt` and mirrored in the
+   release notes. The documented consequence: updating between per-build-key
+   APKs requires uninstalling first.
+
+`apksigner verify` runs on every APK. Keystores in JKS and PKCS#12 are both
+accepted (`--ks-type` detected from the store's magic bytes).
+
+**Windows profile toolbar gate.** `scripts/boot-check.cjs` phase 2 opens
+`chrome.html` in real Electron with the real preload, pushes a `nav:state`
+exactly as the main process does, and fails unless the tab strip and address
+bar render from it. This runs on the Windows release runner before publishing,
+alongside the existing manager-window boot.
+
+**Windows first-run honesty**: the EXEs are unsigned (no purchased code-signing
+certificate); SmartScreen guidance is now in the README and release notes.
+
+Suite: `npm test` **118/118** (12 files), including three compose-script
+signing branches (absent / per-build key / release key) and pins for
+`setup-signing.sh`, `build-apk.sh`'s signing modes, and the workflow's
+ephemeral opt-in.

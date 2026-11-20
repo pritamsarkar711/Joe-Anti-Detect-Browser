@@ -33,15 +33,18 @@ The Windows **EXE** and Android **APK** communicate through <img src="assets/bra
 
 | Platform | File | Notes |
 |---|---|---|
-| <img src="assets/brand/marks/windows.svg" alt="Windows" width="18" height="18" /> Windows 10/11 | `JoeBrowser-Setup-3.2.1.exe` | NSIS installer |
-| <img src="assets/brand/marks/windows.svg" alt="Windows" width="18" height="18" /> Windows 10/11 | `JoeBrowser-Portable-3.2.1.exe` | Portable, no install |
+| <img src="assets/brand/marks/windows.svg" alt="Windows" width="18" height="18" /> Windows 10/11 | `JoeBrowser-Setup-3.2.2.exe` | NSIS installer |
+| <img src="assets/brand/marks/windows.svg" alt="Windows" width="18" height="18" /> Windows 10/11 | `JoeBrowser-Portable-3.2.2.exe` | Portable, no install |
+| <img src="assets/brand/marks/android.svg" alt="Android" width="18" height="18" /> Android 9+ | `JoeBrowser.apk` | Sideload APK — see the signing note in the release |
 
-> **3.2.0 is broken — use 3.2.1.** The 3.2.0 EXEs installed and opened but sat
-> forever on "Starting Joe Browser…": the release pipeline packaged the web
-> bundle (absolute `/assets/…` paths) instead of the desktop bundle, so no
-> script could load under `file://`. 3.2.1 packages the correct bundle and adds
-> boot gates (`npm run test:webdist`, `npm run test:boot-web`, an asar content
-> check and a real-Electron boot check) so this failure cannot ship again.
+> **First run on Windows:** the EXEs are not code-signed with a purchased
+> certificate yet, so SmartScreen shows "Windows protected your PC" — click
+> **More info → Run anyway** (and verify the SHA-256 in `SHA256SUMS.txt` if you
+> like). **Android:** the APK's signing mode and certificate fingerprint are
+> published in `Android-signing.txt` with every release — a per-build key works
+> today but updates need an uninstall; `scripts/setup-signing.sh` gives future
+> releases one stable key. **3.2.0 does not start** — its release notes say so;
+> use 3.2.2.
 | <img src="assets/brand/marks/android.svg" alt="Android" width="18" height="18" /> Android 9+ | `JoeBrowser.apk` | Signed debug build, sideload |
 
 Get all three from the [latest GitHub Release](https://github.com/pritamsarkar711/Joe-Anti-Detect-Browser/releases/latest), together with `SHA256SUMS.txt`. Android users should enable installation from their file manager and verify the checksum before sideloading.

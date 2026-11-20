@@ -257,3 +257,15 @@ fixes the Android WebView module-access default, and pins all of it in
 
 Remaining owner steps are unchanged (APK signing secrets, then
 `gh workflow run "Build and publish binaries" -f tag=v3.2.1` to attach the APK).
+
+## v3.2.2 — Android ships, PC toolbar verified (2026-11-20)
+
+The owner reported both platforms "bad" and asked for a serious release.
+v3.2.2 delivers: an Android APK in the release (per-build key, fingerprint
+published in `Android-signing.txt`, stable-key path via
+`scripts/setup-signing.sh` for the owner), an extended Windows release gate
+that drives the real profile toolbar (`chrome.html`) in Electron before
+publishing, and first-run honesty about SmartScreen and APK signing in the
+README and release notes. Test suite 118/118. The only remaining owner action
+for a stable Android update identity is running `scripts/setup-signing.sh`
+once (or adding the four `JOE_SIGNING_*` secrets by hand).

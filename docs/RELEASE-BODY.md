@@ -1,57 +1,68 @@
-## Joe Browser 3.2.1
+## Joe Browser 3.2.2
 
-**3.2.0 does not start — 3.2.1 fixes it.** The 3.2.0 installers opened a window
-that sat forever on "Starting Joe Browser…". Root cause: the release pipeline
-packaged the web bundle (absolute `/assets/…` paths) inside the EXE instead of
-the desktop bundle; under `file://` every script 404'd and nothing could ever
-boot. 3.2.1 packages the correct relative-base bundle, and the pipeline now
-refuses to publish a UI that does not boot: the built HTML is checked statically,
-loaded in a real Chromium over `file://`, checked again inside the assembled
-asar, and finally booted in real Electron on the Windows runner before any
-asset is published.
+This release ships **both platforms**: verified-boot Windows EXEs and a real,
+installable Android APK. 3.2.1 fixed the v3.2.0 startup bug (the packaged app
+sat forever on "Starting Joe Browser…"); 3.2.2 goes further — the release
+pipeline now boots the profile-window toolbar in real Electron on the Windows
+runner, and Android finally gets an APK in the release.
 
 Binaries are listed at the bottom of these notes. `SHA256SUMS.txt` contains a
-checksum for every file in the release — verify it before running anything.
+checksum for every file — verify before running anything.
 
-**What 3.2.1 fixes**
-- The packaged Windows app boots: the workspace renders instead of the eternal
-  startup splash (reproduced and verified over `file://` in a real Chromium)
-- The release pipeline builds `apps/desktop/web-dist` (relative base) and ships
-  exactly that — previously it shipped the web `dist/` build by mistake
-- `scripts/check-webdist.mjs` fails any UI bundle whose references are absolute
-  or missing; `scripts/boot-check-web.mjs` fails any bundle that does not
-  actually mount from `file://`; `check-asar` now reads the packed
-  `web-dist/index.html` and verifies every reference resolves *inside the
-  archive*; `scripts/boot-check.cjs` boots the manager window in real Electron
-  on the Windows release runner before anything publishes
-- Android: the manager WebView enables `setAllowFileAccessFromFileURLs` so ES
-  module scripts can load from `file:///android_asset/` on API 30+ (without it
-  the same splash-forever failure ships to phones); the UI is still confined to
-  bundled assets — anything else is refused and opened outside
+**Windows: first run.** The EXEs are not code-signed with a purchased
+certificate (that costs money this project does not have yet), so Windows
+SmartScreen shows "Windows protected your PC". Click **More info → Run
+anyway**. This warning says "unknown publisher", not "malware" — and you can
+verify the download against `SHA256SUMS.txt` before running it.
 
-**What 3.2.0 delivered (unchanged here)**
-- Real Supabase authentication with server-enforced plans and administrator
-  flag (RLS + `guard_account_plan` trigger; no in-app upgrade button)
-- Validated EXE⇄APK commands via the `joe-command-validate` edge function
-- Real per-profile browsing history and real browser controls on Windows and
-  Android (tabs, navigation, find, zoom, bookmarks, downloads, permissions)
-- Browsed pages cut off from the app's IPC bridge; Android manager WebView
-  refuses to navigate anywhere but its bundled assets
-- Honest engine picker: one bundled Chromium with four compatible identities —
-  Firefox is not offered because no Gecko runtime ships
-- "Paste as human" replays reviewed keystrokes through CDP with per-key delays;
-  CAPTCHA challenges stay with a person
-- Free-tier quota enforced on every profile-adding path; service-role keys
-  refused in Settings; credential-shaped-string scan gates CI and releases
+**Android: how this APK is signed.** The APK in this release is built and
+signed by CI. If the repository has the owner's `JOE_SIGNING_*` secrets it
+carries one stable identity (updates install over older versions); otherwise
+it is signed with a **per-build key** — it installs and runs today, but a
+later build will have a different signature, so updating means uninstalling
+first. `Android-signing.txt` states exactly which mode was used and lists the
+certificate SHA-256 fingerprint — check it against what your device reports.
+`scripts/setup-signing.sh` (run once) moves every future release to a stable
+key.
 
-**Validation** (this environment: Debian, Node 22, no JDK/Android SDK):
-`tsc` clean; `npm test` 117/117; `test:ui` 37/37; `test:devices` 75/75;
-`test:fingerprint` 29/29; `test:site` 15/15; `test:java` 4/4;
-`test:icons` 9/9; `test:desktop` 11/11; `check:bridges` 7/7; `test:packaged` 4/4;
-`test:main` 16/16; `test:ui-desktop` 5/5; `test:webdist` 2/2; `test:boot-web`
-boots the real bundle from `file://` (and the harness was self-tested against
-the broken bundle, which it rejects); `npm audit` 0. The release workflow boots
-the manager window in real Electron on the Windows runner as a publish gate.
+**What 3.2.2 adds**
+- Android APK in the release (a real, installable app: profiles, fingerprint
+  injection, proxies, history, sync), with its signing status and certificate
+  fingerprint published alongside it (`Android-signing.txt`)
+- `scripts/setup-signing.sh`: one command that creates the release keystore on
+  the owner's machine and pushes the four signing secrets — the private key
+  never touches the repository
+- The Windows release gate now also drives the real profile-window toolbar
+  (`chrome.html`) in Electron: it must render a tab strip and address bar from
+  the main process's `nav:state` before anything publishes
+- APK signing accepts JKS and PKCS#12 keystores and always records the signer's
+  fingerprint
+
+**What 3.2.1 fixed** (carried forward): the packaged Windows app boots —
+v3.2.0's pipeline shipped the web bundle (absolute `/assets/…` paths) inside
+the EXE and every script 404'd under `file://`. Four gates now refuse to
+publish an app that does not boot: static `file://` reference check,
+real-Chromium boot, asar-content verification, and the real-Electron boot
+checks on the Windows runner.
+
+**What 3.2.0 delivered** (unchanged): real Supabase authentication with
+server-enforced plans and administrator flag; validated EXE⇄APK commands via
+the `joe-command-validate` edge function; real per-profile browsing history
+and real browser controls on Windows and Android; browsed pages cut off from
+the app's IPC bridge; honest engine picker (one bundled Chromium, four
+compatible identities — Firefox is not offered); "Paste as human" keystroke
+replay with CAPTCHA left to a person; free-tier quota on every path;
+service-role keys refused in Settings; credential-scan and zero-vulnerability
+gates.
+
+**Validation** (this environment: Debian, Node 22, no JDK/Android SDK/device):
+`tsc` clean; `npm test` 118/118; `test:ui` 37/37; `test:devices` 75/75;
+`test:fingerprint` 29/29; `test:site` 15/15; `test:java` 4/4; `test:icons` 9/9;
+`test:desktop` 11/11; `check:bridges` 7/7; `test:packaged` 4/4; `test:main` 16/16;
+`test:ui-desktop` 5/5; `test:webdist` 2/2; `test:boot-web` boot pass with a
+self-tested harness; `npm audit` 0. The release workflow boots the manager
+window **and** the profile toolbar in real Electron on the Windows runner, and
+`apksigner verify` checks the APK, before anything publishes.
 
 **Honest scope**: profile isolation, fingerprint coherence and history work as
 described for the surfaces the app controls. Joe Browser does not ship a patched

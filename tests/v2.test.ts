@@ -204,7 +204,7 @@ describe('v2 provenance and licensing', () => {
     const step = workflow.slice(workflow.indexOf(marker));
     const block = step.split('        run: |\n')[1].split('      - name:')[0];
     const script = 'TAG=v3.2.0\n' + block.split('\n').map((l) => l.replace(/^ {10}/, '')).join('\n');
-    const run = (withApk: boolean) => {
+    const run = (signing: 'none' | 'ephemeral' | 'release') => {
       const dir = mkdtempSync(join(tmpdir(), 'joe-notes-'));
       try {
         mkdirSync(join(dir, 'docs'));
@@ -213,22 +213,59 @@ describe('v2 provenance and licensing', () => {
         writeFileSync(join(dir, 'release-assets', 'JoeBrowser-Setup-3.2.0.exe'), 'exe');
         writeFileSync(join(dir, 'release-assets', 'JoeBrowser-Portable-3.2.0.exe'), 'exe');
         writeFileSync(join(dir, 'release-assets', 'SHA256SUMS.txt'), 'sum');
-        if (withApk) writeFileSync(join(dir, 'release-assets', 'JoeBrowser.apk'), 'apk');
+        if (signing !== 'none') {
+          writeFileSync(join(dir, 'release-assets', 'JoeBrowser.apk'), 'apk');
+          writeFileSync(
+            join(dir, 'release-assets', 'Android-signing.txt'),
+            `Joe Browser APK signing\nmode: ${signing}\nSHA-256 digest: AB:CD\n`,
+          );
+        }
         execFileSync('bash', ['-e', '-c', script], { cwd: dir });
         return readFileSync(join(dir, 'release-notes.md'), 'utf8');
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
     };
-    const withoutApk = run(false);
+    const withoutApk = run('none');
     expect(withoutApk).toContain('Honest body.');
     expect(withoutApk).toContain('JoeBrowser-Setup-3.2.0.exe');
     expect(withoutApk).toContain('JoeBrowser-Portable-3.2.0.exe');
     expect(withoutApk).toMatch(/not included in this release/i);
     expect(withoutApk).toContain('JOE_SIGNING_STORE_B64');
-    const withApk = run(true);
-    expect(withApk).toContain('JoeBrowser.apk');
-    expect(withApk).not.toMatch(/not included in this release/i);
+    const ephemeral = run('ephemeral');
+    expect(ephemeral).toContain('JoeBrowser.apk');
+    expect(ephemeral).not.toMatch(/not included in this release/i);
+    expect(ephemeral).toMatch(/per-build key/i);
+    expect(ephemeral).toContain('setup-signing.sh');
+    const release = run('release');
+    expect(release).toContain('JoeBrowser.apk');
+    expect(release).toMatch(/release key/i);
+    expect(release).toContain('Android-signing.txt');
+    expect(release).not.toMatch(/per-build key/i);
+  });
+
+  it('signs the APK with a stable key or a labelled per-build key, never silently', () => {
+    // v3.1.x refused to build any APK without secrets (Android shipped
+    // nothing); v3.2.x now builds a real, installable APK either way — with
+    // the owner's key when configured, otherwise a per-build key whose status
+    // and certificate fingerprint are published in Android-signing.txt.
+    const build = file('scripts/build-apk.sh');
+    expect(build).toContain('JOE_SIGNING_ALLOW_EPHEMERAL');
+    expect(build).toContain('--ks-type');
+    expect(build).toContain('Android-signing.txt');
+    expect(build).toContain('keytool -genkeypair');
+    expect(build).toMatch(/print-certs/);
+    const setup = file('scripts/setup-signing.sh');
+    expect(setup).toContain('gh secret set JOE_SIGNING_STORE_B64');
+    expect(setup).toContain('gh secret set JOE_SIGNING_ALIAS');
+    expect(setup).toContain('gh secret set JOE_STORE_PASSWORD');
+    expect(setup).toContain('gh secret set JOE_KEY_PASSWORD');
+    expect(setup).toContain('openssl pkcs12 -export');
+    const workflow = file('.github/workflows/release.yml');
+    expect(workflow).toContain("JOE_SIGNING_ALLOW_EPHEMERAL: '1'");
+    expect(workflow).toContain('Android-signing.txt');
+    const gitignore = file('.gitignore');
+    expect(gitignore).toContain('joe-release-keystore');
   });
 
   it('ships a UI bundle that loads over file:// instead of the v3.2.0 hang', () => {
