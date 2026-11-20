@@ -52,6 +52,40 @@ try {
 }
 const windows = new Map(); // profileId -> profile window record (see launchProfile)
 
+/* ------------------------------------------------------------------
+ * Human-paced keystroke replay (CDP Input).
+ * ------------------------------------------------------------------ */
+const typingRuns = new Map(); // profileId -> generation; a new plan wins
+
+function validateSchedule(schedule) {
+  if (!Array.isArray(schedule) || !schedule.length || schedule.length > 10000) {
+    return 'A plan must contain 1 to 10,000 keystrokes.';
+  }
+  for (const k of schedule) {
+    if (!k || (k.key !== 'char' && k.key !== 'Backspace')) return 'The plan contains an unknown keystroke kind.';
+    if (typeof k.delay !== 'number' || !(k.delay >= 0) || k.delay > 5000) return 'The plan contains an invalid delay.';
+    if (k.key === 'char' && (typeof k.char !== 'string' || Array.from(k.char).length > 1)) {
+      return 'The plan contains an invalid character.';
+    }
+  }
+  return null;
+}
+
+async function dispatchKey(target, k) {
+  const dbg = target.debugger;
+  if (k.key === 'Backspace') {
+    await dbg.sendCommand('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8, nativeVirtualKeyCode: 8 });
+    await dbg.sendCommand('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8, nativeVirtualKeyCode: 8 });
+    return;
+  }
+  if (k.char === '\n') {
+    await dbg.sendCommand('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+    await dbg.sendCommand('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+    return;
+  }
+  await dbg.sendCommand('Input.dispatchKeyEvent', { type: 'char', text: k.char, unmodifiedText: k.char, key: k.char });
+}
+
 /**
  * Per-profile browsing controls state: bookmarks and permission decisions.
  * Kept beside the workspace but in its own file — `workspace:replace` adopts
@@ -820,6 +854,37 @@ function registerIpc() {
   });
   handle('profiles:launch', (id) => launchProfile(id));
   handle('profiles:stop', (id) => stopProfile(id));
+  /**
+   * "Paste as human": replay a reviewed keystroke schedule into the active
+   * page of a running profile through CDP `Input.dispatchKeyEvent`, honouring
+   * each per-key delay. Accessibility text entry only — nothing runs unattended
+   * and no challenge is solved. A new plan cancels a plan already typing.
+   */
+  handle('keystrokes:send', async (profileId, schedule) => {
+    const problem = validateSchedule(schedule);
+    if (problem) return { ok: false, reason: problem };
+    const rec = windows.get(profileId);
+    if (!rec || !rec.win || rec.win.isDestroyed()) return { ok: false, reason: 'That profile window is not open.' };
+    const tab = rec.tabs ? rec.tabs.get(rec.activeTab) : null;
+    const target = tab && tab.webContents ? tab.webContents : rec.win.webContents;
+    const run = (typingRuns.get(profileId) ?? 0) + 1;
+    typingRuns.set(profileId, run);
+    try {
+      if (!target.debugger.isAttached?.()) target.debugger.attach('1.3');
+    } catch {
+      return { ok: false, reason: 'That window is not accepting input right now.' };
+    }
+    const stopped = () => typingRuns.get(profileId) !== run || rec.win.isDestroyed();
+    let sent = 0;
+    for (const k of schedule) {
+      if (stopped()) return { ok: false, reason: 'Typing stopped: the window closed or a newer plan took over.' };
+      if (k.delay > 0) await new Promise((resolve) => setTimeout(resolve, k.delay));
+      if (stopped()) return { ok: false, reason: 'Typing stopped: the window closed or a newer plan took over.' };
+      await dispatchKey(target, k);
+      sent += 1;
+    }
+    return { ok: true, keys: sent };
+  });
   handle('profiles:consistency', (id) => { const p = findProfile(id); return p ? core.checkProfile(p) : null; });
   handle('profiles:quality', (id) => { const p = findProfile(id); return p ? core.profileQuality(p, workspace.profiles) : null; });
   handle('profiles:surfaces', (id) => { const p = findProfile(id); return p ? core.surfaces(p.fingerprint) : null; });

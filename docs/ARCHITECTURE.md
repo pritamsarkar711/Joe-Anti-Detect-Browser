@@ -35,7 +35,8 @@ Joe Browser 2.0 is a TypeScript-first profile isolation system with thin native 
                     ┌─────────▼─────────┐
                     │ Supabase          │
                     │ Postgres + RLS    │
-                    │ Realtime commands │
+                    │ validated edge    │
+                    │ function (relay)  │
                     └───────────────────┘
 ```
 
@@ -68,7 +69,15 @@ The payload installs two hooks:
 
 ### `packages/sync`
 
-Transport-agnostic sync contracts plus a Supabase adapter. Desktop and Android exchange `commands` and publish `events`; device presence uses the `devices` table. Realtime carries live changes, and Postgres remains the source of truth.
+Transport-agnostic sync contracts plus a Supabase adapter. Desktop and Android
+exchange `commands` and publish `events`; device presence uses the `devices`
+table. **The relay is the `joe-command-validate` edge function** (actions
+`send` / `poll` / `ack`): clients call it with the publishable anon key, it
+validates action, profile, device, payload shape and size, and only it holds
+the service-role key. Row-level security denies clients direct access to the
+relay tables (an anonymous INSERT fails with SQLSTATE 42501), so Postgres
+remains the source of truth and the function is the only door. Realtime is no
+longer part of the command path.
 
 ## Native shells
 
@@ -146,3 +155,15 @@ layer, and exactly which techniques were adopted from which are recorded in
 `.github/workflows/ci.yml` runs unit tests, Java parsing, production build, core bundling, Android assets, SEO site build and generated-asset checks on every push to `arena/**` and on pull requests.
 
 `.github/workflows/release.yml` runs on tag push. It bundles shared artifacts on Ubuntu, builds the EXE on Windows, compiles and signs the APK on Ubuntu, then publishes both plus checksums as a GitHub Release. See [`VALIDATION.md`](VALIDATION.md) for current measured results and environment limits.
+
+## Profile windows (desktop)
+
+A profile window's own webContents loads only the bundled `chrome.html`
+toolbar (tab strip, back/forward/reload/stop/home, address bar with search
+fallback, find, zoom, bookmarks, downloads, permissions, clear-data). Each tab
+is a `WebContentsView` **without a preload**: browsed pages get no `window.joe`
+bridge at all. The management bridge is exposed only to bundled pages
+(`file:`) and localhost dev servers, and toolbar commands travel over one
+`chrome:command` channel routed to the window that owns the sender. Tabs stay
+inside the profile's `persist:<id>` session partition.
+

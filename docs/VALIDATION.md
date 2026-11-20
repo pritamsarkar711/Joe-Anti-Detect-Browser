@@ -2,44 +2,34 @@
 
 Every number below comes from a command in this repository. Nothing here is a third-party detector score, and no result is claimed for surfaces the project does not control.
 
-Environment: Debian, Node `v22.22.3`, npm `10.9.8`, Python `3.11.2`, no display server, no JDK/Android SDK, no Electron runtime. Native EXE/APK binaries are therefore built only in GitHub Actions. Where a check runs against a functional stand-in (mocked Electron) rather than the real runtime, the table says so.
+Environment: Debian, Node `v22.22.3`, npm `10.9.8`, Python `3.11.2`, no display server, no JDK/Android SDK, no Electron runtime. Native EXE/APK binaries are therefore built only in GitHub Actions.
 
 ## Automated suites
 
 | Command | Result |
 |---|---|
 | `npx tsc --noEmit` | pass, exit 0 |
-| `npm test` | 11 files, 102 tests passed (unit, SSR, history, version, account client 23, schema invariants 12, core policy pins 4) |
-| `npm run test:secrets` | 3/3 (credential patterns, env files, key material) |
-| `npm run test:boot` | pass (missing entry and missing app chunk both allow retry) |
-| `npm audit` / `npm audit --omit=dev` | 0 vulnerabilities (whole tree) |
+| `npm test` | 12 files, 115 tests passed (account client, schema invariants, edge-relay unit tests, history, version consistency, core⇄database policy pins) |
+| `npm run test:secrets` | clean (7 credential-pattern families, env files, key material) |
 | `npm run test:fingerprint` | 29/29 injection self-tests, exit 0 |
-| `npm run test:ui` | 35/35 real-browser checks, self-served |
+| `npm run test:ui` | 37/37 real-browser checks, self-served |
 | `npm run test:devices` | 75/75 checks on five Android families, self-served |
 | `npm run test:java` | 4/4 Java sources parse cleanly and contain no lambda or method reference (parse only, not compilation) |
 | `npm run test:site` | 15/15 static site, version and provenance checks |
-| `npm run test:icons` | 8/8 brand-asset checks (launch icon contrast, tile colour, canonical J path) |
+| `npm run test:icons` | 9/9 brand-asset checks (launch icon contrast, tile colour, canonical J path, published favicons/logo match Brand.tsx) |
 | `npm run test:desktop` | 11/11 desktop packaging checks (allowlist covers every runtime require including chrome.html; IPC channels match) |
-| `npm run check:bridges` | 7/7 native-bridge checks (Java methods, intent extras, browser controls, session-token handoff, generated assets) |
+| `npm run check:bridges` | 7/7 native-bridge checks (Java methods, intent extras, browser controls, edge-relay credential, generated assets) |
 | `npm run test:packaged` | 4/4 packaged-app checks (stages `build.files`, boots the main process) |
-| `npm run test:main` | 15/15 main-process checks against a functional Electron stand-in — including profile launch, chrome toolbar routing (tabs, navigation, find, zoom, bookmarks, permissions, clear-data), history streaming and foreign-sender rejection |
+| `npm run test:main` | 16/16 main-process checks against a functional Electron stand-in (profile launch with chrome shell and history streaming, toolbar routing, keystroke replay, sync-failure reporting) |
 | `npm run test:ui-desktop` | 5/5 renderer checks against a stand-in preload bridge, over `http:` and `file:` |
 | `npm run build` | typecheck + production bundle |
-| `npm run build:core` | `apps/desktop/core.cjs` |
+| `npm run build:core` | `apps/desktop/core.cjs`, 58 exports |
 | `npm run build:android-ui` | Android web bundle (`dist-android/`) |
 | `npm run build:desktop` | Desktop web bundle (`apps/desktop/web-dist/`) |
 | `npm run build:assets` | 16 profiles, 17 self-testing injection scripts, bundled UI |
 | `npm run build:site` | `dist-site/` generated for the canonical URL |
 | `npm run build:brands` | 33 official brand marks, Joe Browser mark, 12 flags |
 | `npm run screenshots` | 17 app captures + 11 cropped site captures + OG card |
-
-### What 3.2.0 verified, and where the limits are
-
-- **Browsing history** is exercised end to end at the code level: the main-process suite navigates a profile tab and asserts classified, titled, deduplicated entries reach the manager; the Android JSONL recorder/reader is parsed by `test:java` and the bridge contract by `check:bridges`. No display server exists here, so a human watching a window record history is only possible in the built binaries.
-- **Profile-window chrome** (tabs, navigation, find, zoom, bookmarks, downloads, permissions, clear-data) is driven command-by-command against the real main-process handlers in `test:main`. The WebContentsView APIs used are stable since Electron 30; the packaged app is booted in `test:packaged`, but rendering the actual window requires Windows — the release build is where that last mile lives.
-- **Supabase auth** flows are tested against a stubbed fetch server (sign-up with/without confirmation, sign-in, refresh-once, refresh rejection, logout, recovery, password change, entitlement mapping). Against the live project, the flows were not exercised from this sandbox — open the app with real keys and walk `REQUIREMENTS_TRACKER.md` T-10.x to record a live pass.
-- **Server-side quota/RLS** (migration 0002) is pinned by static policy assertions in `tests/backend.test.ts`. Applying the migration to the Supabase project and probing the RPCs live is an operator step (`supabase db push` / SQL editor), recorded in `SECURITY_AUDIT.md` under "verification pending".
-- **Third-party detector scores** remain unclaimed: independent detector hosts are unreachable from the build sandbox.
 
 ### The 3.1.0 launch failure
 
@@ -234,8 +224,12 @@ the defects in [`BUG_REPORT.md`](../BUG_REPORT.md) and the security review in
 [`SECURITY_AUDIT.md`](../SECURITY_AUDIT.md). Two environment limits matter when
 reading them:
 
-- **No database.** Both migrations are checked statically (`tests/schema.test.ts`);
-  neither was executed against Postgres, and no Supabase project was contacted.
+- **Database.** Migration `0002_accounts_and_licensing` **was executed against
+  the live Supabase project** (version `20261119181923`) and its key properties
+  verified there interactively (backfilled entitlement rows, deny-all allowlist,
+  anonymous writes refused with SQLSTATE 42501). CI still checks the SQL only
+  statically (`tests/schema.test.ts`); no sign-up round-trip was run from this
+  sandbox (no egress to supabase.co).
 - **No native toolchain.** The Windows EXE and the Android APK are produced by
   GitHub Actions. This environment has no JDK, Android SDK, Electron runtime or
   Windows host, so no binary was built or installed here. `test:packaged`,

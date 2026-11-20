@@ -163,17 +163,28 @@ jobs:
             - Supabase authentication is implemented: sign-up, password login, password
               reset, refresh-token rotation and sign-out now make real requests. Without a
               configured project the app says so and stays on the local free tier
-            - Plans and the administrator flag come from the server. The client reads
-              `my_entitlement()`; there is no in-app upgrade button and no email-based
+            - Plans and the administrator flag come from the server: the client reads its
+              own row in `public.accounts` under row-level security, and the
+              `guard_account_plan` trigger makes plan and limit columns immutable to
+              clients. There is no in-app upgrade button and no email-based
               administrator check anywhere
-            - `supabase/migrations/0002_entitlements.sql` creates a personal workspace for
-              every account, adds `entitlements`/`app_admins` (read-only to users), enforces
-              the profile quota with a database trigger, and scopes primary keys per
-              workspace. **Apply it to your project before signing in** — without it the
-              app reports the missing function instead of guessing
+            - `supabase/migrations/0002_accounts_and_licensing.sql` (applied to the live
+              project) adds the deny-all owner allowlist, entitlement rows with a signup
+              trigger and backfill, the licensing tables behind `require_user()` /
+              `require_admin()`, and an event trigger that re-enables RLS if a future
+              migration forgets it
+            - EXE⇄APK commands flow through the validated `joe-command-validate` edge
+              function — action, profile, device and payload checked server-side, and
+              only that function ever holds the service-role key (as a project secret)
+            - "Paste as human" now really types: the desktop replays the reviewed
+              keystroke plan through CDP with per-key delays; other platforms copy the
+              plan and say so. CAPTCHA challenges stay with a person
             - Free-tier quota is enforced on every path that adds profiles, including CSV and
               workspace import, which previously bypassed it
             - A service-role key pasted into Settings is refused instead of stored
+            - `npm run test:ui`, `npm run test:devices` and `npm run screenshots` now start
+              their own server and exit cleanly; the device suite no longer overwrites the
+              committed evidence report when a run fails
             - Real per-profile browsing history: the desktop and Android shells record every
               visit (URL, title, time, search detection) as profiles browse; the History view
               previously showed only seeded demo rows because nothing ever wrote an entry
@@ -186,16 +197,26 @@ jobs:
               pages (a website a profile visited could previously drive the whole workspace
               through `window.joe`); the Android manager WebView refuses to navigate
               anywhere but its bundled assets
-            - `npm audit` is clean across the tree (vitest 5, esbuild 0.28, lodash 4.18
-              overrides); a credential-shaped-string scan now gates CI and releases
-            - `npm run test:ui`, `npm run test:devices` and `npm run screenshots` now start
-              their own server and exit cleanly; the device suite no longer overwrites the
-              committed evidence report when a run fails
+            - A credential-shaped-string scan now gates CI and releases alongside the
+              zero-vulnerability dependency audit
+            - New tests: 25 for the account client, 10 for schema/secret invariants,
+              13 for the relay edge function; the brand guard fails if any published
+              favicon or logo drifts from the J monogram
+            - Version metadata is consistent again (the desktop shell reported 3.1.0 while
+              the package said 3.1.1); `npm audit` reports 0 vulnerabilities
 
-            **Validation**: see `docs/VALIDATION.md` for the exact per-suite numbers from
-            the final run and `TEST_REPORT.md`/`SECURITY_AUDIT.md`/`PROJECT_AUDIT.md` for
-            the full evidence and for every item that remains unverified (the migration is
-            verified statically and is **not** executed in CI — it has no database).
+            **Validation** (this environment: Debian, Node 22, no JDK/Android SDK/Electron):
+            `tsc` clean; `npm test` 115/115; `test:ui` 37/37; `test:devices` 75/75;
+            `test:boot` pass (retry works when the entry script itself fails);
+            `test:fingerprint` 29/29; `test:site` 15/15; `test:java` 4/4 (parse only);
+            `test:icons` 9/9; `test:desktop` 11/11; `check:bridges` 7/7; `test:packaged` 4/4;
+            `test:main` 16/16; `test:ui-desktop` 5/5; `npm audit` 0. Migration 0002 was
+            applied to the live project and its key properties verified there (backfilled
+            entitlement rows, deny-all allowlist, anonymous writes refused with SQLSTATE
+            42501); a live sign-up round-trip and a real EXE⇄APK command round trip remain
+            pending device testing. See `TEST_REPORT.md`, `SECURITY_AUDIT.md` and
+            `PROJECT_AUDIT.md` for the full evidence and for every item that remains
+            unverified.
 
             **Engine**: one bundled Chromium engine with four compatible browser
             identities (Joe Browser, Chrome, Edge, Brave). Firefox is **not** offered —

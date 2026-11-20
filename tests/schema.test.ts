@@ -32,15 +32,24 @@ function tablesCreatedIn(text: string): string[] {
 
 describe('database schema', () => {
   it('ships the migrations in order', () => {
-    expect(migrations).toEqual(['0001_joe_browser_init.sql', '0002_entitlements.sql']);
+    // 0002_accounts_and_licensing is the migration applied to the live
+    // project (version 20261119181923). A competing 0002_entitlements from a
+    // parallel branch was removed in the integration merge — never re-add a
+    // second 0002: entitlements now come from public.accounts alone.
+    expect(migrations).toEqual(['0001_joe_browser_init.sql', '0002_accounts_and_licensing.sql']);
   });
 
   it('enables row level security on every table it creates', () => {
-    const tables = tablesCreatedIn(sql);
-    expect(tables.length).toBeGreaterThanOrEqual(9);
-    for (const table of tables) {
+    const publicTables = tablesCreatedIn(sql);
+    expect(publicTables.length).toBeGreaterThanOrEqual(9);
+    for (const table of publicTables) {
       const enabled = new RegExp(`alter table public\\.${table} enable row level security`, 'i').test(sql);
-      expect(enabled, `RLS missing on ${table}`).toBe(true);
+      expect(enabled, `RLS missing on public.${table}`).toBe(true);
+    }
+    // The licensing tables live in joe_private and are deny-by-default too.
+    for (const table of ['accounts', 'admins', 'codes']) {
+      const enabled = new RegExp(`alter table joe_private\\.${table} enable row level security`, 'i').test(sql);
+      expect(enabled, `RLS missing on joe_private.${table}`).toBe(true);
     }
   });
 
@@ -51,15 +60,16 @@ describe('database schema', () => {
     expect(sql).not.toMatch(/for all to public/i);
   });
 
-  it('scopes every workspace policy to a membership check or the caller id', () => {
-    // Static policies…
+  it('scopes every policy to a membership check or the caller id', () => {
+    // Static policies (quoted names contain spaces and colons, e.g.
+    // "accounts: read own")…
     const staticPolicies = [...sql.matchAll(
-      /create policy (\w+) on public\.(\w+)\s+for \w+(?: to \w+)? using \(([\s\S]*?)\)(?:\s+with check \(([\s\S]*?)\))?;/gi,
-    )].map(([, name, table, using, check]) => ({ name, table, body: `${using} ${check ?? ''}` }));
+      /create policy\s+"?([\w :.-]+)"?\s+on\s+public\.(\w+)\s+for\s+(\w+)(?:\s+to\s+(\w+))?\s+([\s\S]*?);/gi,
+    )].map(([, name, table, _verb, _to, body]) => ({ name: name.trim(), table, body }));
 
-    // …and the five tables 0001 covers with `execute format(...)`, which is where
-    // the actual tenant isolation for profiles/proxies/devices/commands/events
-    // lives. A regex over plain statements would have silently skipped it.
+    // …and the five tables 0001 covers with `execute format(...)`, which is
+    // where the actual tenant isolation for profiles/proxies/devices/commands/
+    // events lives. A regex over plain statements would have skipped it.
     const dynamic = /execute format\(\$f\$\s*create policy %I on public\.%I for all to authenticated\s*using \(([\s\S]*?)\)\s*with check \(([\s\S]*?)\)/i.exec(sql);
     expect(dynamic, 'the dynamic workspace policy template is missing').not.toBeNull();
     const dynamicBody = `${dynamic?.[1]} ${dynamic?.[2]}`;
@@ -67,57 +77,67 @@ describe('database schema', () => {
       expect(sql).toContain(`'${table}'`);
     }
 
-    expect(staticPolicies.length).toBeGreaterThanOrEqual(3);
+    expect(staticPolicies.length).toBeGreaterThanOrEqual(4);
     for (const { name, table, body } of staticPolicies) {
-      const scoped = /workspace_members/.test(body) || /user_id\s*=\s*auth\.uid\(\)/.test(body);
+      const scoped =
+        /workspace_members/.test(body) ||
+        /user_id\s*=\s*auth\.uid\(\)/.test(body) ||
+        /auth\.uid\(\)\s*=\s*id/.test(body);
       expect(scoped, `policy ${name} on ${table} is not scoped to the caller`).toBe(true);
     }
     expect(dynamicBody).toMatch(/workspace_members/);
     expect(dynamicBody).toMatch(/m\.user_id\s*=\s*auth\.uid\(\)/);
   });
 
-  it('keeps the plan and the admin roster unwritable by users', () => {
-    const entitlementWrites = /create policy[^;]*on public\.entitlements[^;]*for (insert|update|delete|all)/i.test(sql);
-    const adminWrites = /create policy[^;]*on public\.app_admins/i.test(sql);
-    expect(entitlementWrites, 'entitlements must be read-only for users').toBe(false);
-    expect(adminWrites, 'app_admins must have no user policy').toBe(false);
-    expect(sql).toMatch(/create policy entitlements_select on public\.entitlements\s+for select to authenticated using \(user_id = auth\.uid\(\)\)/i);
+  it('keeps the allowlist and the plan columns unwritable by users', () => {
+    // The allowlist decides who is premium/owner: no user policy at all, and
+    // the explicit revoke covers Supabase's default table grants.
+    const allowlistWrites = /create policy[^;]*on public\.account_allowlist/i.test(sql);
+    expect(allowlistWrites, 'account_allowlist must have no user policy').toBe(false);
+    expect(sql).toMatch(/revoke all on public\.account_allowlist from anon, authenticated/i);
+
+    // accounts rows are created only by the SECURITY DEFINER signup trigger:
+    // no INSERT/DELETE policy, and the UPDATE trigger freezes plan + limit so
+    // `guard_account_plan` makes self-serve escalation impossible.
+    const accountInsert = /create policy[^;]*on public\.accounts[^;]*for (insert|delete|all)/i.test(sql);
+    expect(accountInsert, 'accounts must have no insert/delete policy').toBe(false);
+    expect(sql).toMatch(/create policy "accounts: read own" on public\.accounts\s+for select to authenticated using \(auth\.uid\(\) = id\)/i);
+    expect(sql).toMatch(/create trigger guard_account_plan_before_update/i);
+    expect(sql).toMatch(/new\.plan\s*:=\s*old\.plan/i);
+    expect(sql).toMatch(/new\.profile_limit\s*:=\s*old\.profile_limit/i);
   });
 
-  it('exposes the plan through a SECURITY DEFINER function only', () => {
-    for (const fn of ['my_entitlement', 'is_admin', 'enforce_profile_quota', 'ensure_user_workspace', 'my_workspace_id']) {
-      const pattern = new RegExp(`create or replace function public\\.${fn}\\([^)]*\\)[\\s\\S]*?security definer`, 'i');
+  it('exposes privileged work only through SECURITY DEFINER functions', () => {
+    for (const fn of ['handle_new_account', 'require_user', 'require_admin', 'msap_my_entitlement']) {
+      const pattern = new RegExp(`create or replace function (?:public|joe_private)\\.${fn}\\([^)]*\\)[\\s\\S]*?security definer`, 'i');
       expect(pattern.test(sql), `${fn} must be SECURITY DEFINER`).toBe(true);
     }
-    for (const fn of ['my_entitlement()', 'is_admin()', 'my_workspace_id()']) {
-      expect(sql).toMatch(new RegExp(`revoke all on function public\\.${fn.replace('(', '\\(').replace(')', '\\)')} from public`, 'i'));
-      expect(sql).toMatch(new RegExp(`grant execute on function public\\.${fn.replace('(', '\\(').replace(')', '\\)')} to authenticated`, 'i'));
-    }
+    // joe_private itself grants nothing to the API roles: the licensing RPCs
+    // are the only way in, and each defends itself with require_*().
+    expect(sql).not.toMatch(/grant\s+[\w\s,]+\s+on\s+(?:schema\s+)?joe_private/i);
   });
 
-  it('fails closed for an anonymous caller', () => {
-    expect(sql).toMatch(/'verified', false/i);
-    expect(sql).toMatch(/'profile_limit', 2/i);
+  it('fails closed for a new or unknown account', () => {
+    // New signups land on free unless the allowlist says otherwise…
+    expect(sql).toMatch(/plan text not null default 'free'/i);
+    // …the backfill reads the allowlist for pre-trigger users…
+    expect(sql).toMatch(/insert into public\.accounts[\s\S]*?from auth\.users u/i);
+    // …and the trigger that creates rows is attached to auth.users.
+    expect(sql).toMatch(/create trigger \w+\s+after insert on auth\.users/i);
+    // Client-side fail-closed parsing (a missing limit is never "unlimited")
+    // lives in cloud.ts and is covered by tests/cloud.test.ts.
   });
 
-  it('enforces the quota with a trigger, not a UI hint', () => {
-    expect(sql).toMatch(/create trigger profiles_quota\s+before insert on public\.profiles\s+for each row execute function public\.enforce_profile_quota\(\)/i);
-    expect(sql).toMatch(/raise exception 'profile quota reached/i);
-    expect(sql).toMatch(/auth\.role\(\)[^)]*\) = 'service_role'/i);
-  });
-
-  it('creates a workspace for every new auth user', () => {
-    expect(sql).toMatch(/create trigger joe_bootstrap_workspace\s+after insert on auth\.users/i);
-    expect(sql).toMatch(/insert into public\.workspace_members \(workspace_id, user_id, role\)\s+values \(wid, uid, 'owner'\)/i);
-  });
-
-  it('scopes primary keys to the workspace so deterministic ids cannot collide', () => {
-    for (const table of ['profiles', 'proxies', 'devices', 'commands']) {
-      const re = new RegExp(`alter table public\\.${table} add constraint ${table}_pkey primary key \\(workspace_id, id\\)`, 'i');
-      expect(re.test(sql), `${table} primary key must be (workspace_id, id)`).toBe(true);
-    }
-    const profilesProxy = /alter table public\.profiles\s+add constraint profiles_proxy_fk foreign key \(workspace_id, proxy_id\)\s+references public\.proxies \(workspace_id, id\)/i;
-    expect(profilesProxy.test(sql)).toBe(true);
+  it('locks the relay table away from anonymous callers', () => {
+    // The desktop/Android relay speaks to the joe-command-validate edge
+    // function; the anon role must hold no policy on commands at all.
+    const anonPolicy = /create policy[^;]*on public\.commands[^;]*to anon/i.test(sql);
+    expect(anonPolicy, 'commands must have no anon policy').toBe(false);
+    expect(sql).not.toMatch(/to\s+anon\b/i);
+    // Authenticated workspace members keep the original workspace-scoped
+    // policy from 0001 — scoped, never open.
+    const dynamic = /execute format\(\$f\$\s*create policy %I on public\.%I for all to authenticated/i.test(sql);
+    expect(dynamic).toBe(true);
   });
 });
 

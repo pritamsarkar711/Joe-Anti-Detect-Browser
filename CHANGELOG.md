@@ -5,6 +5,42 @@ All notable changes to Joe Browser. Format follows
 semantic versioning for the application as a whole (workspace schema, desktop
 shell and Android app ship together).
 
+## [Unreleased] — integration merge
+
+### Added
+
+- EXE⇄APK command relay through the deployed `joe-command-validate` edge
+  function (send / poll / ack): payload, action, profile and device validation
+  server-side; the service-role key exists only as a project secret; 13 relay
+  unit tests plus main-process smoke checks for invalid plans and closed
+  windows.
+- Desktop `keystrokes:send`: "Paste as human" replays the reviewed schedule
+  through CDP `Input.dispatchKeyEvent` with per-key delays; other platforms
+  label the button "Copy plan". Accessibility text entry only.
+- Brand guard in `test:icons`: every published mark (both favicons, README
+  logo) must match `Brand.tsx`'s J monogram.
+
+### Fixed
+
+- The brand generator still emitted the retired ring-and-dot, so the README
+  header and favicons disagreed with the app.
+- Desktop `app:info` version came from a hard-coded literal (3.1.0 → 3.2.0
+  chase); it now reads `package.json`.
+- Auth confirmation/reset links pointed at `http://localhost:3000`; Supabase
+  redirects now use the canonical Vercel origin.
+- The built site linked documentation to a branch that does not contain the
+  work; `build:site` derives the branch from `SITE_BRANCH`/git.
+- Dependency audit: 11 vulnerabilities (2 critical) → **0**, without breaking
+  `java-parser`'s pinned chevrotain.
+
+### Changed
+
+- The parallel branch's `0002_entitlements.sql` (workspace bootstrap,
+  `my_entitlement()`, quota trigger, composite keys) was **never applied** and
+  is removed; entitlement now comes from the live `public.accounts` row, and
+  the repository has exactly one `0002` — the one the live database runs.
+  The profile-count quota remains client-side (open item).
+
 ## [3.2.0] — 2026-11-19
 
 ### Security
@@ -15,8 +51,8 @@ shell and Android app ship together).
 - **Fixed the missing authentication**: sign-up, login, password reset, session
   refresh and sign-out now make real requests to Supabase. Previously the form
   accepted any password and never left the device.
-- **Removed the one-click "Unlock Premium"**: plans are read from
-  `my_entitlement()` and cannot be changed by the client.
+- **Removed the one-click "Unlock Premium"**: plans are read from the
+  server-side `accounts` row and cannot be changed by the client.
 - **Enforced the free quota on CSV and workspace import**, which previously
   bypassed it.
 - **Refused service-role keys** pasted into Settings instead of storing them.
@@ -24,18 +60,23 @@ shell and Android app ship together).
   and bound the cache to the account that earned it.
 - **Fail-closed entitlement parsing**: a missing `profile_limit` no longer means
   "unlimited".
-- **Android sync now authenticates with the session JWT**, so row-level security
-  can scope it; the hard-coded foreign workspace id is gone and a failed write is
-  no longer reported as sent.
+- **Android sync goes through a validated relay**: commands flow through the
+  `joe-command-validate` edge function, which checks action, profile, device and
+  payload and alone holds the service-role key; a failed write is no longer
+  reported as sent.
 
 ### Added
 
 - `src/state/cloud.ts` — dependency-free Supabase Auth/PostgREST client with typed
   errors, refresh rotation and an offline plan cache.
-- `supabase/migrations/0002_entitlements.sql` — workspace bootstrap trigger and
-  backfill, `entitlements`, `app_admins`, `my_entitlement()`, `is_admin()`,
-  `enforce_profile_quota()`, `(workspace_id, id)` primary keys and a composite
-  proxy foreign key.
+- `supabase/migrations/0002_accounts_and_licensing.sql` — the migration applied
+  to the live project: deny-all `account_allowlist`, `public.accounts` with
+  own-row RLS and the `guard_account_plan` trigger, the signup trigger plus
+  backfill for pre-trigger users, the `joe_private` licensing tables with
+  `require_user()`/`require_admin()` and the `msap_*` RPCs, and an event trigger
+  that re-enables RLS if a future migration forgets it. (A competing
+  `0002_entitlements.sql` from a parallel branch was removed in the integration
+  merge — it was never applied to any project.)
 - `tests/cloud.test.ts` (21 tests) and `tests/schema.test.ts` (12 tests, including
   a repository credential scan).
 - `scripts/serve.mjs` — the browser suites now start and stop their own server.

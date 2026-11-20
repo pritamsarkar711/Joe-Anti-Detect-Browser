@@ -71,6 +71,10 @@ if (trusted) {
       replace: (data) => invoke('workspace:replace', data),
       read: () => invoke('workspace:read'),
     },
+    keystrokes: {
+      /** Replay a reviewed human-pacing plan into a running profile window. */
+      send: (profileId, schedule) => invoke('keystrokes:send', profileId, schedule),
+    },
     sync: {
       send: (topic, payload, to) => invoke('sync:send', topic, payload, to),
       configure: (config) => invoke('sync:configure', config),

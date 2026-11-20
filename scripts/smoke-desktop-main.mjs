@@ -45,13 +45,15 @@ const cleanup = () => fs.rmSync(userData, { recursive: true, force: true });
 /* ------------------------------------------------------------------ mocks */
 const handlers = new Map();
 const sentToRenderer = [];
+const debuggerCommands = [];
 let createdWindows = [];
 
 class FakeWebContents {
   constructor() {
     this.debugger = {
       attach() {},
-      sendCommand() { return Promise.resolve(); },
+      isAttached() { return true; },
+      sendCommand(cmd, params) { debuggerCommands.push({ cmd, params }); return Promise.resolve(); },
     };
     this.userAgent = null;
     this.events = new Map();
@@ -417,6 +419,32 @@ await check('the profile window chrome routes toolbar commands to the tab', asyn
 
   await invoker('profiles:stop')(profile.id);
   return 'tabs, navigation, find, zoom, bookmarks, permissions and clear-data all routed';
+});
+
+await check('keystrokes:send replays a reviewed plan into a running window', async () => {
+  // Paste-as-human used to be a fake button that only copied. The real path
+  // dispatches each key through CDP with its delay and rejects bad plans.
+  const [profile] = await invoker('profiles:list')();
+  await invoker('profiles:launch')(profile.id);
+  const before = debuggerCommands.filter((c) => c.cmd === 'Input.dispatchKeyEvent').length;
+  const result = await invoker('keystrokes:send')(profile.id, [
+    { char: 'h', delay: 1, key: 'char' },
+    { char: 'i', delay: 1, key: 'char' },
+    { char: '', delay: 1, key: 'Backspace' },
+  ]);
+  must(result?.ok, `keystrokes:send failed: ${JSON.stringify(result)}`);
+  must(result.keys === 3, `expected 3 keys dispatched, got ${result.keys}`);
+  const dispatched = debuggerCommands.filter((c) => c.cmd === 'Input.dispatchKeyEvent');
+  must(dispatched.length >= before + 4, `expected char and backspace events, saw ${dispatched.length - before}`);
+  must(dispatched.some((c) => c.params?.type === 'char' && c.params?.text === 'h'), 'no char event for h');
+  must(dispatched.some((c) => c.params?.key === 'Backspace'), 'no Backspace event');
+
+  const badDelay = await invoker('keystrokes:send')(profile.id, [{ char: 'x', delay: -1, key: 'char' }]);
+  must(badDelay?.ok === false && badDelay.reason, 'an invalid schedule was accepted');
+  const closed = await invoker('keystrokes:send')('prf_missing', [{ char: 'x', delay: 1, key: 'char' }]);
+  must(closed?.ok === false && closed.reason, 'sending to a closed window reported success');
+  await invoker('profiles:stop')(profile.id);
+  return `${result.keys} keys dispatched, invalid plans refused`;
 });
 
 await check('the UI workspace syncs first, then launches the UI\'s own profiles', async () => {

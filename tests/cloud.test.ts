@@ -143,7 +143,7 @@ describe('session lifetime', () => {
 });
 
 describe('server entitlement', () => {
-  it('parses the RPC payload and keeps the administrator flag server-owned', () => {
+  it('parses the entitlement payload and keeps the administrator flag server-owned', () => {
     const ent = parseEntitlement({ plan: 'premium', is_admin: true, profile_limit: null, renews_at: '2027-01-01T00:00:00Z', verified: true });
     expect(ent).toMatchObject({ plan: 'premium', isAdmin: true, profileLimit: null, source: 'server' });
   });
@@ -156,16 +156,29 @@ describe('server entitlement', () => {
     expect(parseEntitlement({ is_admin: 'true' }).isAdmin).toBe(false);
   });
 
-  it('calls the RPC with the user token, not the anon key alone', async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse(200, { plan: 'free', is_admin: false, profile_limit: 2, verified: true }));
+  it('reads the accounts row with the user token, not the anon key alone', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(200, [{ plan: 'free', unlimited: false, profile_limit: 2 }]));
     await fetchEntitlement(CONFIG, session(), fetchImpl as never);
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe('https://demo.supabase.co/rest/v1/rpc/my_entitlement');
+    expect(url).toBe('https://demo.supabase.co/rest/v1/accounts?select=plan,unlimited,profile_limit&id=eq.u1&limit=1');
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer access');
   });
 
+  it('maps the allowlist owner plan to premium plus the administrator flag', async () => {
+    const fetchImpl = async () => jsonResponse(200, [{ plan: 'owner', unlimited: true, profile_limit: null }]);
+    const ent = await fetchEntitlement(CONFIG, session(), fetchImpl as never);
+    expect(ent).toMatchObject({ plan: 'premium', isAdmin: true, profileLimit: null, source: 'server' });
+  });
+
   it('explains a missing migration instead of silently downgrading', async () => {
-    const fetchImpl = async () => jsonResponse(404, { message: 'Could not find the function public.my_entitlement' });
+    const fetchImpl = async () =>
+      jsonResponse(404, { message: "Could not find the table 'public.accounts' in the schema cache" });
+    await expect(fetchEntitlement(CONFIG, session(), fetchImpl as never))
+      .rejects.toMatchObject({ code: 'not_provisioned' });
+  });
+
+  it('refuses to invent a plan when the account has no entitlement row', async () => {
+    const fetchImpl = async () => jsonResponse(200, []);
     await expect(fetchEntitlement(CONFIG, session(), fetchImpl as never))
       .rejects.toMatchObject({ code: 'not_provisioned' });
   });

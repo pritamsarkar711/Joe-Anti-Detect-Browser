@@ -84,7 +84,14 @@ for (const [name, mark] of Object.entries(out)) {
   fs.writeFileSync(path.join(siteMarks, `${name}.svg`), svg);
 }
 
-const joeSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Joe Browser"><title>Joe Browser</title><rect width="64" height="64" rx="2" fill="#ffffff"/><circle cx="32" cy="32" r="24" fill="none" stroke="#D81B60" stroke-width="5"/><circle cx="32" cy="32" r="9" fill="#D81B60"/></svg>\n`;
+/*
+ * The canonical mark: the rounded "J" monogram on a #D81B60 squircle —
+ * the same geometry as src/ui/Brand.tsx (MARK_GEOMETRY / J_PATH). This
+ * generator previously emitted the retired ring-and-dot, so the README
+ * header and both favicons disagreed with the app itself. One source,
+ * never redraw it elsewhere.
+ */
+const joeSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" role="img" aria-label="Joe Browser"><title>Joe Browser</title><rect width="48" height="48" rx="11.5" fill="#D81B60"/><path d="M29.4 12.5v15.4a8.4 8.4 0 0 1-16.8 0" fill="none" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round"/></svg>\n`;
 fs.mkdirSync(path.join(root, 'assets', 'brand'), { recursive: true });
 fs.writeFileSync(path.join(root, 'assets', 'brand', 'joe-browser.svg'), joeSvg);
 fs.writeFileSync(path.join(root, 'public', 'favicon.svg'), joeSvg);

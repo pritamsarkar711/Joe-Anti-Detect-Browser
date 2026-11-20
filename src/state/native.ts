@@ -33,6 +33,9 @@ declare global {
         read(): Promise<NativeWorkspace>;
       };
       on?(channel: string, callback: (data: unknown) => void): () => void;
+      keystrokes?: {
+        send(profileId: string, schedule: Array<{ char: string; delay: number; key: 'char' | 'Backspace' }>): Promise<{ ok?: boolean; keys?: number; reason?: string }>;
+      };
     };
     __joeOnCommand?: (commands: Array<{ id: string; topic: string; payload: Record<string, unknown> }>) => void;
   }

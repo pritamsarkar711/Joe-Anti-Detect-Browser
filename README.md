@@ -51,7 +51,7 @@ Get all three from the [latest GitHub Release](https://github.com/pritamsarkar71
 | Proxies | Assign + geo match | Plus offline and rotation alerts |
 | Extras | History per profile, local probe | Bulk create, import, extension library, paste-as-human typing |
 
-The free limit is enforced twice: in the shared core (`packages/core/src/plans.ts`) so every surface agrees, and again in Postgres by the `profiles_quota` trigger in `supabase/migrations/0002_entitlements.sql`, so a direct API call cannot exceed it either. Existing profiles are never removed when a plan changes. A plan cannot be changed from the client: `entitlements` is read-only to users and Premium is granted by an administrator or a payment provider through the service role.
+The plan itself is enforced twice: in the shared core (`packages/core/src/plans.ts`) so every surface agrees, and in Postgres, where the `guard_account_plan` trigger in `supabase/migrations/0002_accounts_and_licensing.sql` makes every plan and limit column immutable to clients — verified live, where an anonymous write to the relay tables is refused with SQLSTATE 42501. Existing profiles are never removed when a plan changes. Premium is granted by an administrator through the allowlist; there is no in-app upgrade switch. The profile-count quota is enforced client-side today — a server-side quota trigger is an open item, not a claim.
 
 ---
 
@@ -77,7 +77,7 @@ The interface follows the structure of `dunky11/react-saas-template` while adopt
 - **29 observed-device bundles** derived from Apache-2.0 Apify/BrowserForge data, plus 11 curated device classes (Windows 11 Intel/NVIDIA, Windows 10 AMD, macOS Apple-silicon and Intel, Pixel, Galaxy S23, Galaxy Tab S9, iPhone, iPad Pro, Ubuntu). CPU and RAM are drawn as one ordered pair, so a sample is never reported with hardware it never had.
 - **Coherent fingerprint specs**: User-Agent, Client Hints, platform, GPU, screen, DPR, CPU, RAM, fonts, timezone, locale, languages, WebRTC mode and touch points are derived together. WebKit (iPhone/iPad) templates keep Safari-shaped UA and brands instead of inheriting Chromium hints.
 - **30 region presets** with DST-correct timezone offsets and proxy-to-locale matching. Example: <img src="assets/brand/flags/bd.svg" alt="Bangladesh flag" width="16" height="16" /> Bangladesh, <img src="assets/brand/flags/us.svg" alt="United States flag" width="16" height="16" /> United States, <img src="assets/brand/flags/gb.svg" alt="United Kingdom flag" width="16" height="16" /> United Kingdom, <img src="assets/brand/flags/de.svg" alt="Germany flag" width="16" height="16" /> Germany and <img src="assets/brand/flags/jp.svg" alt="Japan flag" width="16" height="16" /> Japan.
-- **Browsing history per profile**: every URL and search, recorded by the desktop and Android shells as they browse, filterable by profile, copyable and openable.
+- **Browsing history per profile**: every URL and search, recorded by the desktop and Android shells as they browse (title refresh, search detection, deterministic dedupe), filterable by profile, copyable and openable.
 - **Real browser controls** in every profile window: tabs, back, forward, reload/stop, home, address bar with search fallback, find on page, zoom, per-profile bookmarks, downloads and deny-by-default site permissions — on Windows and Android alike. Keyboard shortcuts map to the same commands.
 - **Extension library**: 12 real extensions with per-family store deep links (Chrome, Edge, Firefox), recommended entries and opt-in auto-install.
 - **Paste as human**: a reviewed keystroke plan with per-character jitter, word-boundary beats and optional corrections, generated deterministically per seed. It does not solve CAPTCHAs — a person still completes any challenge.
@@ -86,28 +86,32 @@ The interface follows the structure of `dunky11/react-saas-template` while adopt
 - **Local JavaScript probe**: `22 of 22` internal checks pass for the bundled payload. The app links to independent detectors (IP Fighter, Pixelscan, BrowserScan, AmIUnique, CreepJS, BrowserLeaks) for testing inside a launched profile.
 - **Import and transfer**: JSON workspace import/export, CSV profile import/export, cookie JSON or `name=value` import.
 - **Bulk operations**: create, duplicate, launch, stop, export and delete above the free limit on Premium; 250-profile creation is covered by the browser smoke suite.
-- **Desktop and Android sync**: Supabase Realtime commands, RLS-scoped Postgres state, event log and device presence.
+- **Desktop and Android sync**: commands flow through the validated `joe-command-validate` edge function (send / poll / ack), which checks action, profile, device and payload and alone holds the service-role key; RLS keeps clients out of the relay tables, with an event log and device presence alongside.
 - **Local REST API**: the Windows app serves loopback endpoints for health, profiles, launch, quality, surfaces and injection script inspection — bound to loopback, token- and origin-gated.
 - **Validation views**: quality, observed data, JS surfaces, geo presets and explicit engine-level limits are visible in the app rather than hidden.
-- **Accounts**: real Supabase authentication — sign-up, password login, password reset, refresh-token rotation and sign-out. Plans and the administrator flag are read from `my_entitlement()` on the server; there is no local upgrade switch and no email-based administrator check. Without a configured project the app runs on the local free tier and says so.
+- **Accounts**: real Supabase authentication — sign-up with email confirmation, password login, password reset, refresh-token rotation and sign-out, through the dependency-free client in `src/state/cloud.ts`. Plans and the administrator flag are read from the caller's own `public.accounts` row under row-level security; there is no local upgrade switch and no email-based administrator check. Without a configured project the app runs on the local free tier and says so.
 
 ## Accounts and sync
 
 1. Create a Supabase project, then apply both migrations:
    `supabase/migrations/0001_joe_browser_init.sql` and
-   `supabase/migrations/0002_entitlements.sql`.
+   `supabase/migrations/0002_accounts_and_licensing.sql` (already applied to the
+   live project, version `20261119181923`).
 2. In the app: Settings → Sync → paste the project URL and the **publishable (anon)** key.
    A service-role key is refused on purpose; it must never be shipped in a client.
-3. Sign in from Account & plan. The app then reads your plan from `my_entitlement()`
-   and hands the phone's native client your session token, so its PostgREST writes
-   pass row-level security.
-4. The owner account is seeded into `app_admins` by the migration using the address in
-   `OWNER_EMAIL` (`packages/core/src/plans.ts`). That constant is a database bootstrap
-   value only — it is never used to authorise anybody in the client.
+   The relay edge function `joe-command-validate` reads the service-role key from a
+   Supabase project secret, never from any client.
+3. Sign in from Account & plan. The app then reads your plan from your own row in
+   `public.accounts` (row-level security: `auth.uid() = id`) and the Android and
+   Windows shells send commands through the relay with the anon key.
+4. The owner address is seeded into `public.account_allowlist` by the migration
+   using the address in `OWNER_EMAIL` (`packages/core/src/plans.ts`). That constant
+   is a database bootstrap value only — it is never used to authorise anybody in
+   client code, and the allowlist itself denies all access to API roles.
 
-If the second migration is missing, the app reports it and stays on the free tier
-instead of guessing a plan. `docs/VALIDATION.md` and `TEST_REPORT.md` record what was
-and was not executed.
+If the migration or the entitlement row is missing, the app reports it and stays on
+the free tier instead of guessing a plan. `docs/VALIDATION.md` and `TEST_REPORT.md`
+record what was and was not executed.
 
 ## Screenshots
 
@@ -169,10 +173,10 @@ docs/                  architecture, validation and IP protection policy
 ```bash
 npm install
 npm run dev                 # live control plane on http://localhost:5173
-npm test                    # unit, SSR and schema-invariant tests
+npm test                    # unit, SSR, auth and schema-invariant tests
 npm run test:secrets        # credential and key-material scan
 npm run test:fingerprint    # 29/29 injection self-tests + workspace quality
-npm run test:ui             # real-browser UI checks (starts its own server)
+npm run test:ui             # 37 real-browser checks (starts its own server)
 npm run test:devices        # 75 checks across five mobile devices (starts its own server)
 npm run test:java           # Java source parser check
 npm run test:site           # static SEO site checks

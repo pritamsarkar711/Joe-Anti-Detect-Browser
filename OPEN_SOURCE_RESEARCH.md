@@ -21,7 +21,8 @@ re-check before a future integration decision.
 |---|---|---|---|
 | [`supabase/supabase-js`](https://github.com/supabase/supabase-js) | MIT | PostgREST + GoTrue + Realtime client | Used **inside the Electron main process only** (already a dependency there) for Realtime. For renderer authentication it was **not** added: a ~40 KB dependency for five endpoints, and the browser/WebView builds would carry it too. `src/state/cloud.ts` implements the same five calls with `fetch` and no dependency (≈300 lines including error mapping). Revisit if session management grows (OAuth providers, MFA). |
 | [`supabase/gotrue`](https://github.com/supabase/auth) | MIT | The auth service the client speaks to | Not vendored. Studied for the exact request/response shapes: `grant_type=password`, `refresh_token`, `/recover`, `error_description` vs `msg`, and the fact that signup may return a user with no session when confirmation is required. Those behaviours are encoded in the client and its tests. |
-| [`PostgREST/postgrest`](https://github.com/PostgREST/postgrest) | MIT | REST over Postgres, RPC by function name | Not vendored. Its RPC convention (`POST /rest/v1/rpc/<fn>`, JSON body, JSON result) is why `my_entitlement()` is a `STABLE SECURITY DEFINER` function rather than a view: it can be called with a user JWT and return exactly one row of computed facts. |
+| [`supabase/supabase-js`](https://github.com/supabase/supabase-js) | Apache-2.0 | Official Supabase client (GoTrue + Realtime) | Kept for the desktop shell's lazy Realtime connection (`apps/desktop/main.js`, declared in `apps/desktop/package.json`; the root copy satisfies local resolution). The account client itself is deliberately dependency-free `fetch` (`src/state/cloud.ts`) so the same code runs in the browser, Electron and the WebView without a bundler shim. |
+| [`PostgREST/postgrest`](https://github.com/PostgREST/postgrest) | MIT | REST over Postgres, RPC by function name | Not vendored. Its RPC convention (`POST /rest/v1/rpc/<fn>`) informed the licensing `msap_*` RPCs captured from the live project; the app's own entitlement read is a plain row read (`GET /rest/v1/accounts`) scoped by RLS, and relay writes go through the edge function instead of table RPCs. |
 | [PostgreSQL RLS documentation](https://www.postgresql.org/docs/current/ddl-rowsecurity.html) | PostgreSQL licence (permissive) | The policy semantics relied on | Read, not copied. Drove three decisions: policies must be `FOR ALL` with both `USIng` and `WITH CHECK` for writes; `SECURITY DEFINER` functions need `set search_path`; and `revoke all … from public` is required before granting execute, because functions are executable by `PUBLIC` by default. |
 | [`supabase/cli`](https://github.com/supabase/cli) | Apache-2.0 | Migration tooling (`supabase db push`) | Referenced in the README as one of two ways to apply the migrations. Not vendored. |
 
@@ -82,9 +83,6 @@ and worth restating because of the corrected marketing claim:
    engine. The product now says exactly that.
 3. **No engine-level patching was attempted**, consistent with the L3 boundary in
    `docs/RESEARCH.md`; the release notes keep the limitation explicit.
-
----
-
 ## 7. Component evaluations (merged research thread)
 
 A parallel evaluation reached compatible conclusions and covered these

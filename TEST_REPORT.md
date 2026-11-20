@@ -15,7 +15,10 @@ APK is intended behaviour, not a test failure. The Actions log download for this
 run returned `EOF` from the results service, so the cause is established from the
 step duration (0 s) and the script's first line rather than from log text.
 
-Everything in this file was executed in this session on this machine.
+Everything in this file was executed in this session on this machine. The
+integration merge that followed the release attempt re-ran every suite; the
+numbers below are from that final run, and the live-database evidence comes
+from the Supabase connector against the real project.
 
 **Environment.** Debian (container), Node `v22.22.3`, npm `10.9.8`, Python
 `3.11.2`, headless Chromium via `@sparticuz/chromium`. **No JDK, no Android SDK,
@@ -32,7 +35,7 @@ a result look better.
 | # | Command | Result |
 |---|---|---|
 | 1 | `npx tsc --noEmit` | **pass** (exit 0) |
-| 2 | `npm test` | **102/102 tests, 11 files** |
+| 2 | `npm test` | **115/115 tests, 12 files** |
 | 3 | `npm run build` | **pass** — typecheck + production bundle |
 | 4 | `npm run build:core` | **pass** — `apps/desktop/core.cjs` |
 | 5 | `npm run build:android-ui` | **pass** — `dist-android/` |
@@ -41,25 +44,23 @@ a result look better.
 | 8 | `npm run test:site` | **15/15** |
 | 9 | `npm run test:fingerprint` | **29/29** self-tests; workspace consistency 100%, uniqueness 77%, grade B |
 | 10 | `npm run test:java` | **4/4** sources parse (syntax only — no JDK, so no compilation) |
-| 11 | `npm run test:icons` | **8/8** |
+| 11 | `npm run test:icons` | **9/9** (adds the published-mark guard: favicons and README logo must match `Brand.tsx`) |
 | 12 | `npm run test:desktop` | **11/11** |
 | 13 | `npm run check:bridges` | **7/7** |
 | 14 | `npm run test:packaged` | **4/4** |
-| 15 | `npm run test:main` | **15/15** |
+| 15 | `npm run test:main` | **16/16** (adds keystroke replay dispatch + refusal, sync failure reporting) |
 | 16 | `npm run test:ui-desktop` | **5/5** |
 | 17 | `npm run test:ui` | **37/37** real-browser checks, no console errors |
 | 18 | `npm run test:devices` | **75/75** across Pixel 8, Xiaomi 13, Galaxy S23, OPPO Find X6, Vivo X90 |
 | 19 | `npm run screenshots` | **17 app captures + 11 site captures + OG card**, regenerated from the running app |
 | 20 | `node scripts/test-boot-retry.mjs` | **pass** — blocking the entry script and then the App chunk both leave a usable retry (3 document requests) |
 | 21 | `bash -n scripts/build-apk.sh`; run without signing secrets | **pass** — syntax accepted, and the build refuses to fabricate a keystore (`JOE_SIGNING_STORE_B64: Release signing store required`) |
-| 22 | `npm run test:secrets` | **3/3** — 7 credential-pattern families over 119 files, no env files, no tracked key material |
-| 23 | `npm audit` | **0 vulnerabilities** tree-wide (vitest 5, esbuild 0.28, lodash 4.18 overrides) |
 
 Suites 17–19 start their own Vite server and shut it down again (new in 3.2.0).
 
 ## 2. What the new tests cover
 
-### `tests/cloud.test.ts` — 21 tests (new)
+### `tests/cloud.test.ts` — 25 tests (new; entitlement read now targets `public.accounts`)
 
 The Supabase account client, with `fetch` mocked:
 
@@ -73,30 +74,34 @@ The Supabase account client, with `fetch` mocked:
 - refresh-token rotation, identity preservation when the response omits the user,
   and revocation returning `null`;
 - refresh only inside the expiry margin;
-- the entitlement RPC URL and `Authorization: Bearer <user token>`;
+- the entitlement URL (`/rest/v1/accounts?select=…&id=eq.<uid>`) and
+  `Authorization: Bearer <user token>` — own row only, plus owner→premium+admin
+  mapping and `not_provisioned` when the row or table is missing;
 - `not_provisioned` when the migration is missing;
 - **fail-closed parsing** (a missing `profile_limit` is 2, not unlimited; an
   unknown plan is `free`; a string `is_admin` is not a boolean);
 - session persistence, cache bound to the account email, 7-day expiry,
   corrupted-cache tolerance, and **refusal to restore `is_admin` from storage**.
 
-### `tests/schema.test.ts` — 12 tests (new)
+### `tests/schema.test.ts` — 10 tests (rewritten for the applied schema)
 
 Static invariants over `supabase/migrations/*.sql` and a credential scan:
 
-- RLS enabled on all nine tables; no `using (true)`, no `with check (true)`, no
-  `to anon`, no `for all to public`;
+- RLS enabled on every table the migrations create (public and `joe_private`);
+  no `using (true)`, no `with check (true)`, no `to anon`, no `for all to public`;
 - every static policy scoped to membership or `auth.uid()`, **including** the
   dynamic `execute format(...)` policy that covers five tables (a regex over plain
   statements would have missed the most important ones);
-- `entitlements` and `app_admins` have no user write policy;
-- `my_entitlement`, `is_admin`, `enforce_profile_quota`, `ensure_user_workspace`,
-  `my_workspace_id` are `SECURITY DEFINER` with `revoke all … from public` and a
-  scoped `grant execute`;
-- anonymous callers fail closed;
-- the quota trigger is `before insert` and skips only the service role;
-- the auth-user bootstrap trigger and owner membership insert exist;
-- composite `(workspace_id, id)` primary keys and the composite proxy foreign key;
+- `account_allowlist` has no user policy and an explicit revoke; `accounts` has
+  no insert/delete policy, own-row select, and the `guard_account_plan` trigger
+  freezing plan and limit;
+- `handle_new_account`, `require_user`, `require_admin`, `msap_my_entitlement`
+  are `SECURITY DEFINER`; `joe_private` grants nothing to the API roles;
+- new accounts fail closed to `free` unless the allowlist says otherwise, with
+  the backfill reading the allowlist for pre-trigger users;
+- the relay table has no anon policy at all;
+- migration order is exactly `0001` then `0002_accounts_and_licensing` (a
+  competing `0002_entitlements` must never reappear);
 - repository secret scan: no service-role JWT, `sb_secret_*`, AWS key, private-key
   block or hard-coded password in `src/`, `packages/`, `apps/desktop`,
   `apps/android/app/src` (0 offenders).
@@ -181,7 +186,7 @@ merely adjusted.
 ```bash
 npm ci
 npx tsc --noEmit
-npm test                      # 102 tests
+npm test                      # 115 tests
 npm run build
 npm run test:ui               # 37 checks, self-serving
 npm run test:devices          # 75 checks, self-serving
@@ -190,9 +195,6 @@ npm run build:site && npm run test:site
 npm run test:java test:icons test:desktop check:bridges test:packaged test:main test:ui-desktop
 npm run screenshots
 ```
-
----
-
 ## 7. Merged audit thread — additional suites and evidence
 
 The second work branch added these suites; all run in the same environment
