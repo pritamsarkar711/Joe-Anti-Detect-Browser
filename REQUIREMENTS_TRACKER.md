@@ -190,12 +190,12 @@ server-assigned role are what grant access.
 | T-10.1 | Registration / login / logout | `src/state/cloud.ts` | C+V (stub) ✔ | `npm test` (cloud suite, 21) | was B (BUG-002 facade); real GoTrue flows with specific failure mapping |
 | T-10.2 | Password reset / change / session refresh | `src/state/cloud.ts` | C+V (stub) ✔ | `npm test` | refresh-token rotation, offline grace, revoked-token path verified |
 | T-10.3 | Live end-to-end against the project | — | I | walk T-10.1/2 in the app with real keys | operator step |
-| T-10.4 | RLS: users never see others' data | `0001` + `0002_accounts_and_licensing.sql` | I ✔ | `tests/schema.test.ts` | policies scoped to membership/auth.uid, no permissive policies; workspace provisioning + PK scoping (BUG-005/006 ✔); live probe pending |
+| T-10.4 | RLS: users never see others' data | `0001` + `0002_accounts_and_licensing.sql` | I ✔ | `tests/schema.test.ts` | policies scoped to membership/auth.uid, no permissive policies; workspace provisioning + PK scoping (BUG-005/006 ✔); live probe done (read-only, 2026-11-20): RLS enabled on all tables, deny-all allowlist, functions deployed |
 | T-10.5 | Service-role key absent from frontend | cloud.ts `looksLikeServiceRoleKey`, schema scan, `test:secrets` | C+V ✔ | `npm run test:secrets`, `npm test` | key pasted in Settings is refused (BUG-008 ✔); scans clean |
-| T-10.6 | Admin role enforced on backend | `app_admins`, `is_admin()`, `my_entitlement()` | I ✔ | `tests/schema.test.ts` | role read only via SECURITY DEFINER; no email-based check anywhere (BUG-001 ✔); live probe pending |
+| T-10.6 | Admin role enforced on backend | `app_admins`, `is_admin()`, `my_entitlement()` | I ✔ | `tests/schema.test.ts` | role read only via SECURITY DEFINER; no email-based check anywhere (BUG-001 ✔); live probe done (read-only, 2026-11-20): RLS enabled on all tables, deny-all allowlist, functions deployed |
 | T-11.1 | Free = 2 lifetime profiles | `plans.ts`, `0002` quota trigger | C+V | `npm test` | client + SQL constants pinned |
 | T-11.2 | Premium features gated | `plans.ts`, store | C+V | `npm test` | browser family locks verified |
-| T-11.3 | Limits enforced server-side on every add path | `enforce_profile_quota()` + import paths | I ✔ | `tests/schema.test.ts`, `test:main` | trigger pinned; CSV/workspace import now enforced (BUG-007 ✔); live probe pending |
+| T-11.3 | Limits enforced server-side on every add path | `enforce_profile_quota()` + import paths | I ✔ | `tests/schema.test.ts`, `test:main` | trigger pinned; CSV/workspace import now enforced (BUG-007 ✔); live probe done (read-only, 2026-11-20): RLS enabled on all tables, deny-all allowlist, functions deployed |
 | T-11.4 | No invented payments | Settings copy, no payment UI | C+V ✔ | inspection | "Unlock Premium" removed (BUG-003 ✔); Premium granted via service role only |
 
 ## UI (Phase 12)

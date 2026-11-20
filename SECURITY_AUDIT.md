@@ -187,6 +187,24 @@ navigate to remote URLs.
 navigation outside `file:///android_asset/` and opens external links via the
 system browser. `test:main` rejects chrome commands from foreign senders.
 
+### Live database probe (this thread, 2026-11-20, read-only)
+
+The Supabase connector was used for an independent read-only probe of the live
+project (`rajxyaatbvlrxxzjntmo`, Postgres 17.12):
+
+- `accounts`, `account_allowlist`, `commands`, `devices`, `events` all exist
+  with **RLS enabled** (`pg_class.relrowsecurity`).
+- `handle_new_account`, `guard_account_plan`, `msap_my_entitlement` are
+  deployed (`pg_proc`).
+- `account_allowlist` has **zero grants to `anon` or `authenticated`**
+  (deny-all posture confirmed in `information_schema.role_table_grants`).
+- `handle_new_account`'s source contains the quota constants `free -> 2`,
+  `starter -> 6` — matching `FREE_PROFILE_LIMIT`/`DEMO_PROFILE_LIMIT` in the
+  shared core.
+
+A live sign-up round-trip through GoTrue remains an operator/device step (it
+would create real accounts; not performed from a build sandbox).
+
 ### Dependency and secret posture (this thread)
 
 - `npm audit` is **0 across the whole tree** (vitest 5, esbuild 0.28,
