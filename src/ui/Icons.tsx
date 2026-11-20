@@ -14,7 +14,7 @@ import {
   CodeRounded, MemoryRounded, MonitorRounded, WebRounded, EmojiFlagsRounded, RestartAltRounded,
   SaveRounded, VisibilityRounded, VisibilityOffRounded, LaunchRounded, CircleRounded,
   HistoryRounded, KeyboardRounded, PublicOffRounded, SwapHorizRounded, NotificationsActiveRounded,
-  ContentPasteGoRounded, ShieldMoonRounded, BookmarkRounded,
+  ContentPasteGoRounded, ShieldMoonRounded, BookmarkRounded, ShuffleRounded,
 } from '@mui/icons-material';
 import type { SvgIconComponent } from '@mui/icons-material';
 
@@ -29,7 +29,7 @@ const MAP: Record<string, SvgIconComponent> = {
   refresh: RefreshRounded, computer: ComputerRounded, phone: PhoneAndroidRounded,
   language: LanguageRounded, shield: ShieldRounded, science: ScienceRounded, open: OpenInNewRounded,
   chevronDown: KeyboardArrowDownRounded, chevronRight: KeyboardArrowRightRounded, tune: TuneRounded,
-  info: InfoRounded, warn: WarningRounded, ok: CheckCircleRounded, err: ErrorRounded,
+  info: InfoRounded, warn: WarningRounded, warning: WarningRounded, alert: WarningRounded, ok: CheckCircleRounded, err: ErrorRounded,
   bolt: BoltRounded, groups: GroupsRounded, tag: TagRounded, notes: NotesRounded,
   extension: ExtensionRounded, cookie: CookieRounded, link: LinkRounded, cloud: CloudRounded,
   cloudOff: CloudOffRounded, send: SendRounded, filter: FilterListRounded, sort: SortRounded,
@@ -45,7 +45,7 @@ const MAP: Record<string, SvgIconComponent> = {
   launch: LaunchRounded, circle: CircleRounded,
   history: HistoryRounded, keyboard: KeyboardRounded, globeOff: PublicOffRounded,
   swap: SwapHorizRounded, notify: NotificationsActiveRounded, paste: ContentPasteGoRounded,
-  stealth: ShieldMoonRounded, bookmark: BookmarkRounded,
+  stealth: ShieldMoonRounded, bookmark: BookmarkRounded, shuffle: ShuffleRounded,
 };
 
 export type IconName = keyof typeof MAP | string;

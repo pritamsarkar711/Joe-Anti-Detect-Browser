@@ -8,17 +8,17 @@ import { Icon, type IconName } from './Icons';
 import { useStore } from '@/state/store';
 
 export function Btn({
-  children, icon, variant = 'ghost', size = 'medium', onClick, href, target, rel, disabled, type = 'button', full, title,
+  children, icon, variant = 'ghost', size = 'medium', onClick, href, target, rel, disabled, type = 'button', full, title, 'aria-label': ariaLabel,
 }: {
   children?: ReactNode; icon?: IconName; variant?: 'primary' | 'ghost' | 'subtle' | 'danger';
   size?: 'small' | 'medium' | 'large'; onClick?: () => void; href?: string; target?: string; rel?: string;
-  disabled?: boolean; type?: 'button' | 'submit'; full?: boolean; title?: string;
+  disabled?: boolean; type?: 'button' | 'submit'; full?: boolean; title?: string; 'aria-label'?: string;
 }) {
   const isPrimary = variant === 'primary';
   return (
     <Button
       {...(href ? { component: 'a', href, target, rel } : { type })}
-      onClick={onClick} disabled={disabled} fullWidth={full} size={size} title={title}
+      onClick={onClick} disabled={disabled} fullWidth={full} size={size} title={title} aria-label={ariaLabel}
       variant={isPrimary ? 'contained' : 'text'}
       color={variant === 'danger' ? 'error' : 'primary'}
       startIcon={icon ? <Icon name={icon} size={size === 'small' ? 17 : 19} /> : undefined}

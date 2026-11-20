@@ -76,7 +76,7 @@ export function TestsView() {
   return (
     <Box>
       <PageHead
-        title="Leak check" hint="Internal self test plus independent detector links."
+        title="Leak check"
         action={
           <>
             <Btn icon="download" onClick={download}>Save test page</Btn>
@@ -96,12 +96,11 @@ export function TestsView() {
       <Box sx={{ mt: 1.75 }}>
         <Grid container spacing={2}>
           <Grid item xs={12} lg={7}>
-          <Panel title="Live JavaScript probe">
-            <Stack spacing={1.6}>
+          <Panel title="Live probe">
+            <Stack spacing={1.4}>
               <Select size="small" fullWidth value={p?.id ?? ''} onChange={(e) => { setProfileId(e.target.value); setResult(null); }} displayEmpty>
                 {s.profiles.map((x) => <MenuItem key={x.id} value={x.id}>{x.name} · {x.fingerprint.uaClientHints.platform}</MenuItem>)}
               </Select>
-              <Typography variant="body2" color="text.secondary">Runs the exact injection payload in a sandboxed frame and verifies every JS surface against one observed device.</Typography>
               {running && <LinearProgress />}
               {result && (
                 <Paper variant="outlined" sx={{ p: 1.6 }}>
@@ -131,20 +130,16 @@ export function TestsView() {
         </Grid>
 
         <Grid item xs={12} lg={5}>
-          <Panel title="Independent detectors" pad={0}>
+          <Panel title="Detectors" pad={0}>
             <List disablePadding>
               {DETECTORS.map((d) => (
-                <ListItemButton key={d.name} component="a" href={d.url} target="_blank" rel="noreferrer" sx={{ px: 2, py: 1.35, borderBottom: '1px solid', borderColor: 'divider' }}>
-                  <ListItemIcon sx={{ minWidth: 40 }}><Box sx={{ width: 32, height: 32, borderRadius: '50%', display: 'grid', placeItems: 'center', bgcolor: 'rgba(216,27,96,0.10)', color: 'primary.main' }}><Icon name={d.icon} size={19} /></Box></ListItemIcon>
+                <ListItemButton key={d.name} component="a" href={d.url} target="_blank" rel="noreferrer" sx={{ px: 2, py: 1.15, borderBottom: '1px solid', borderColor: 'divider' }}>
+                  <ListItemIcon sx={{ minWidth: 36 }}><Icon name={d.icon} size={18} color="#D81B60" /></ListItemIcon>
                   <ListItemText primary={d.name} secondary={d.focus} primaryTypographyProps={{ fontSize: '0.84rem', fontWeight: 600 }} secondaryTypographyProps={{ variant: 'caption' }} />
-                  <Icon name="open" size={19} />
+                  <Icon name="open" size={18} />
                 </ListItemButton>
               ))}
             </List>
-            <Box sx={{ p: 2 }}>
-              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.6 }}><Official name="github" size={18} /><Typography sx={{ fontSize: '0.82rem', fontWeight: 600 }}>Validation checklist</Typography></Stack>
-              <Typography variant="caption" color="text.secondary">Open each detector in a launched session and compare exit IP geo against timezone, locale, WebRTC, and Client Hints.</Typography>
-            </Box>
           </Panel>
         </Grid>
         </Grid>

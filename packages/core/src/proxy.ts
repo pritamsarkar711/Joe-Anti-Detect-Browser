@@ -92,6 +92,54 @@ export function checkProxy(p: ProxyConfig): ProxyConfig {
 const COUNTRIES = ['US', 'DE', 'GB', 'BD', 'SG', 'NL', 'FR', 'CA', 'IN', 'AE'];
 function guessCountry(seed: number): string { return COUNTRIES[seed % COUNTRIES.length]; }
 
+export function guessProxyCountry(host: string): string {
+  if (!host.trim()) return 'XX';
+  const seed = [...host.trim()].reduce((a, c) => a + c.charCodeAt(0), 0);
+  return guessCountry(seed);
+}
+
+/**
+ * Smart clipboard parser for proxy strings. Accepts:
+ * - proto://user:pass@host:port
+ * - user:pass@host:port
+ * - host:port:user:pass
+ * - user:pass:host:port
+ * - host:port
+ */
+export function smartParseProxy(raw: string): ParsedProxy & { countryHint: string; nameHint: string } {
+  const value = raw.trim().split(/\r?\n/)[0]?.trim() ?? '';
+  if (!value) return { protocol: 'socks5', host: '', port: 0, valid: false, error: 'Empty', countryHint: 'US', nameHint: '' };
+  let parsed: ParsedProxy;
+  if (PROTO_RE.test(value) || value.includes('://')) {
+    parsed = parseProxy(value);
+  } else if (value.includes('@')) {
+    const portHint = Number(value.split(':').pop() || 0);
+    const inferred: ProxyProtocol = portHint === 1080 || portHint === 1081 ? 'socks5' : portHint === 443 ? 'https' : 'http';
+    parsed = parseProxy(`${inferred}://${value}`);
+  } else {
+    const parts = value.split(':');
+    if (parts.length === 2) {
+      const portNum = Number(parts[1]);
+      const inferred: ProxyProtocol = portNum === 1080 || portNum === 1081 ? 'socks5' : portNum === 443 ? 'https' : 'http';
+      parsed = parseProxy(`${inferred}://${parts[0]}:${parts[1]}`);
+    } else if (parts.length === 4) {
+      const hostFirst = /^\d{1,3}(\.\d{1,3}){3}$/.test(parts[0]) || parts[0].includes('.');
+      const host = hostFirst ? parts[0] : parts[2];
+      const port = hostFirst ? parts[1] : parts[3];
+      const user = hostFirst ? parts[2] : parts[0];
+      const pass = hostFirst ? parts[3] : parts[1];
+      const portNum = Number(port);
+      const inferred: ProxyProtocol = portNum === 1080 || portNum === 1081 ? 'socks5' : portNum === 443 ? 'https' : 'http';
+      parsed = parseProxy(`${inferred}://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}`);
+    } else {
+      parsed = parseProxy(value);
+    }
+  }
+  const countryHint = parsed.host ? guessProxyCountry(parsed.host) : 'US';
+  const nameHint = parsed.host ? `${countryHint} · ${parsed.host}` : '';
+  return { ...parsed, countryHint, nameHint };
+}
+
 /** Plain ISO codes render identically everywhere — flag emoji need an emoji font. */
 export function countryCode(country: string): string {
   const c = (country ?? '').trim().toUpperCase();

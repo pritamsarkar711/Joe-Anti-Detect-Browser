@@ -49,7 +49,7 @@ export function FingerprintsView() {
   return (
     <Box>
       <PageHead
-        title="Fingerprints" hint="Coherent observed devices, with the limits stated plainly."
+        title="Fingerprints"
         action={<Btn variant="primary" icon="factcheck" onClick={() => s.setView('tests')}>Open leak check</Btn>}
       />
 
@@ -109,15 +109,10 @@ export function FingerprintsView() {
               )}
             </Panel>
           ) : (
-            <Panel title="Needs attention">
+            <Panel title="Status">
               <Stack direction="row" spacing={1.25} alignItems="center">
-                <Icon name="verified" size={22} color="#D81B60" />
-                <Box>
-                  <Typography sx={{ fontSize: '0.84rem', fontWeight: 600 }}>No contradictions in this workspace</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Every profile agrees with its own UA, platform, GPU, locale and screen. Engine-level limits are listed under Limits.
-                  </Typography>
-                </Box>
+                <Icon name="verified" size={20} color="#D81B60" />
+                <Typography sx={{ fontSize: '0.84rem', fontWeight: 600 }}>No contradictions in this workspace</Typography>
               </Stack>
             </Panel>
           )}
@@ -184,12 +179,9 @@ export function FingerprintsView() {
       )}
 
       {tab === 'limits' && (
-        <Stack spacing={1.2}>
-          <Panel title="Runtime boundaries">
-            <Typography variant="body2" color="text.secondary">JavaScript injection aligns Navigator, Screen, Canvas, Audio, WebGL, timezone, locale, and WebRTC. Lower-level transport and OS driver traits are listed below.</Typography>
-          </Panel>
-          {LIMITS.map(([k, v]) => <Paper key={k} variant="outlined" sx={{ p: 1.3, display: 'flex', gap: 1.2 }}>
-            <Box sx={{ width: 30, height: 30, borderRadius: '50%', display: 'grid', placeItems: 'center', bgcolor: 'rgba(216,27,96,0.10)', color: 'primary.main', flex: 'none' }}><Icon name="warning" size={17} /></Box>
+        <Stack spacing={1}>
+          {LIMITS.map(([k, v]) => <Paper key={k} variant="outlined" sx={{ p: 1.25, display: 'flex', gap: 1.1, alignItems: 'center' }}>
+            <Icon name="warn" size={18} color="#D81B60" />
             <Box><Typography sx={{ fontSize: '0.82rem', fontWeight: 600 }}>{k}</Typography><Typography variant="caption" color="text.secondary">{v}</Typography></Box>
           </Paper>)}
         </Stack>

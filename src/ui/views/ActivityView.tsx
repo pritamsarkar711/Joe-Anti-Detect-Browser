@@ -25,8 +25,8 @@ export function ActivityView() {
   return (
     <Box>
       <PageHead
-        title="Activity" hint="Recent workspace events."
-        action={<Btn icon="download" onClick={() => { downloadFile('joe-activity.json', JSON.stringify(s.activity, null, 2)); s.toast('Activity exported'); }}>Export log</Btn>}
+        title="Activity"
+        action={<Btn icon="download" onClick={() => { downloadFile('joe-activity.json', JSON.stringify(s.activity, null, 2)); s.toast('Exported'); }}>Export log</Btn>}
       />
 
       <MetricStrip

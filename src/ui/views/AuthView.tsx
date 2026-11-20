@@ -75,9 +75,6 @@ export function AuthView() {
               <Btn icon="restart" onClick={() => s.signOut()}>Sign out</Btn>
               <Btn variant="primary" icon="arrow" onClick={() => s.setView('profiles')}>Profiles</Btn>
             </Stack>
-            <Typography variant="caption" color="text.secondary">
-              Plan status syncs directly from your configured account service.
-            </Typography>
           </Stack>
         </Paper>
       </Box>
@@ -91,15 +88,9 @@ export function AuthView() {
           <JoeMark size={40} />
           <Typography variant="h3" sx={{ fontSize: '1.1rem' }}>Joe Browser</Typography>
           <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>
-            {PLANS.free.profileLimit} free profiles for life. Premium unlocks every engine and unlimited profiles.
+            {PLANS.free.profileLimit} free profiles · Premium unlimited
           </Typography>
         </Stack>
-
-        {!cloud && (
-          <Alert severity="info" variant="outlined" sx={{ mb: 2, fontSize: '0.78rem' }}>
-            Configure Supabase URL and publishable key in Settings → Sync to enable cloud sign-in.
-          </Alert>
-        )}
 
         <Tabs
           value={mode} onChange={(_e, v) => setMode(v)}
@@ -151,14 +142,8 @@ export function AuthView() {
           <Divider />
 
           <Btn full icon="arrow" onClick={() => s.continueLocally()}>
-            Continue without an account
+            Continue offline
           </Btn>
-
-          <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>
-            {cloud
-              ? 'Passwords are sent only to your Supabase project and are never stored by the app.'
-              : 'Without a project, this workspace stays on this device and keeps the free tier.'}
-          </Typography>
         </Stack>
       </Paper>
     </Box>

@@ -56,9 +56,8 @@ export function HistoryView() {
     <Box>
       <PageHead
         title="History"
-        hint="Every URL opened from a profile, newest first."
         action={s.history.length > 0 ? (
-          <Btn icon="trash" variant="danger" onClick={() => { s.clearHistory(); s.toast('History cleared'); }}>Clear all</Btn>
+          <Btn icon="trash" variant="danger" onClick={() => { s.clearHistory(); s.toast('Cleared'); }}>Clear</Btn>
         ) : undefined}
       />
 

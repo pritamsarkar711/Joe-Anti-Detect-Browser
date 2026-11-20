@@ -202,9 +202,7 @@ export function ProfileBrowserModal() {
     >
       {/* Top window chrome: profile badge + session stop */}
       <Box sx={{ px: 1.5, py: 1, bgcolor: 'background.default', borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-        <Box sx={{ width: 28, height: 28, borderRadius: '50%', display: 'grid', placeItems: 'center', bgcolor: 'rgba(216,27,96,0.10)', flex: 'none' }}>
-          <Official name={osMark(p.os)} size={16} color="#D81B60" />
-        </Box>
+        <Official name={osMark(p.os)} size={18} />
         <Box sx={{ minWidth: 0 }}>
           <Typography noWrap sx={{ fontSize: '0.84rem', fontWeight: 600 }}>{p.name}</Typography>
           <Typography noWrap variant="caption" color="text.secondary">

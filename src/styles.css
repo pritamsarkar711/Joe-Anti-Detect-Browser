@@ -47,9 +47,20 @@ a { color: var(--pink); text-decoration: none; }
 a:hover { color: var(--pink-dark); }
 code, pre, .mono { font-family: "IBM Plex Sans", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 ::selection { background: var(--pink-soft); }
-::-webkit-scrollbar { width: 9px; height: 9px; }
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(128, 134, 148, 0.24) transparent;
+}
+::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--line); border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb {
+  background: rgba(128, 134, 148, 0.22);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 134, 148, 0.42);
+}
+::-webkit-scrollbar-corner { background: transparent; }
 
 /* Material UI flat surface enforcement */
 .MuiPaper-root,

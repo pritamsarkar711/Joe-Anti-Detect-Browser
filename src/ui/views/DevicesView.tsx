@@ -15,7 +15,7 @@ export function DevicesView() {
 
   return (
     <Box>
-      <PageHead title="Devices" hint="Desktop, Android and the web workspace stay in sync." />
+      <PageHead title="Devices" />
 
       <MetricStrip
         items={[

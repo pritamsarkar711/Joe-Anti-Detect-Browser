@@ -37,9 +37,9 @@ export function profileQuality(p: BrowserProfile, all: BrowserProfile[]): Qualit
   // A workspace with N distinct bundles has log2(N) bits of separation.
   const distinct = new Set(all.map(bundle)).size;
   const entropyBits = Math.log2(Math.max(1, distinct));
-  const uniqueness = all.length <= 1 ? 100 : Math.max(0, Math.min(100,
-    Math.round(100 * (1 - (duplicates - 1) / Math.max(1, all.length - 1)) * (0.55 + 0.45 * Math.min(1, entropyBits / 10))),
-  ));
+  const uniqueness = all.length <= 1 || duplicates <= 1
+    ? 100
+    : Math.max(0, Math.min(100, Math.round(100 * (1 - (duplicates - 1) / Math.max(1, all.length - 1)))));
 
   const surfaces: Array<[string, (p: BrowserProfile) => string]> = [
     ['User agent', (x) => x.fingerprint.userAgent],

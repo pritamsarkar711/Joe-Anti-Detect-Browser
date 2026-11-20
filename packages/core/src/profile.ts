@@ -1,7 +1,7 @@
 import { getTemplate, getRealPreset, templateFromReal, DEVICE_TEMPLATES, type DeviceTemplate, type ScreenSpec, type GpuSpec, type OSType } from './devices';
 import type { RealFingerprint } from './data/realFingerprints';
 import { offsetForZone } from './geo';
-import type { BrowserFamily } from './extensions';
+import { defaultExtensionsForFamily, type BrowserFamily } from './extensions';
 
 /** Every new profile lands on an independent fingerprint check first. */
 export const DEFAULT_START_PAGE = 'https://browserscan.net/';
@@ -135,12 +135,13 @@ export interface CreateProfileInput {
   extensions?: string[];
   browserFamily?: BrowserFamily;
   /** explicit overrides for advanced users */
-  overrides?: Partial<Pick<FingerprintSpec, 'timezone' | 'locale' | 'screen' | 'cores' | 'memoryGb' | 'webrtcMode' | 'doNotTrack'>>;
+  overrides?: Partial<Pick<FingerprintSpec, 'timezone' | 'locale' | 'screen' | 'cores' | 'memoryGb' | 'webrtcMode' | 'doNotTrack' | 'chromeMajor' | 'userAgent'>>;
 }
 
 function applyBrowserIdentity(
   template: DeviceTemplate,
   family: BrowserFamily,
+  chromeMajorOverride?: number,
 ): {
   userAgent: string;
   vendor: string;
@@ -150,7 +151,9 @@ function applyBrowserIdentity(
   major: number;
 } {
   const isAppleWebKit = template.os === 'iOS' || template.os === 'iPadOS';
-  const major = template.chromeMajor;
+  const major = !isAppleWebKit && family !== 'firefox' && chromeMajorOverride
+    ? Math.max(120, Math.min(165, Math.round(chromeMajorOverride)))
+    : template.chromeMajor;
   const ver = String(major);
 
   // iOS / iPadOS always use WebKit/Safari semantics (no Chromium Client Hints, Apple vendor).
@@ -279,7 +282,7 @@ function buildSpec(template: DeviceTemplate, input: CreateProfileInput, h: numbe
   const memoryGb = input.overrides?.memoryGb ?? pair.memoryGb;
   const mobile = template.mobile;
   const family: BrowserFamily = input.browserFamily ?? 'joe';
-  const idSpec = applyBrowserIdentity(template, family);
+  const idSpec = applyBrowserIdentity(template, family, input.overrides?.chromeMajor);
   const chromeMajor = idSpec.major;
   const brands = idSpec.brands;
   const secChUa = brands.length && template.os !== 'iOS' && template.os !== 'iPadOS'
@@ -292,7 +295,7 @@ function buildSpec(template: DeviceTemplate, input: CreateProfileInput, h: numbe
   return {
     templateId: template.id,
     realId: template.realId,
-    userAgent: idSpec.userAgent,
+    userAgent: input.overrides?.userAgent?.trim() || idSpec.userAgent,
     platform: template.platform,
     oscpu: idSpec.oscpu,
     vendor: idSpec.vendor,
@@ -358,7 +361,7 @@ export function createProfile(input: CreateProfileInput, index = 0): BrowserProf
     browserFamily: input.browserFamily ?? 'joe',
     startUrl: input.startUrl ?? DEFAULT_START_PAGE,
     cookies: input.cookies ?? '',
-    extensions: input.extensions ?? [],
+    extensions: input.extensions ?? defaultExtensionsForFamily(input.browserFamily ?? 'joe'),
   };
 }
 

@@ -9,7 +9,7 @@ export * from './history';
 export * from './data/realFingerprints';
 
 export {
-  EXTENSION_CATALOG, storeLink, FAMILY_LABEL,
+  EXTENSION_CATALOG, DEFAULT_PROFILE_EXTENSION_IDS, defaultExtensionsForFamily, storeLink, FAMILY_LABEL,
   type CatalogExtension, type BrowserFamily, type StoreLinks,
 } from './extensions';
 

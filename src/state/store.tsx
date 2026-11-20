@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
-  createProfile, generateProfiles, hashString, DEVICE_TEMPLATES, checkProxy, parseProxyLines, proxyUrl,
+  createProfile, generateProfiles, hashString, DEVICE_TEMPLATES, checkProxy, parseProxyLines, proxyUrl, guessProxyCountry,
   applyRealPreset, getRealPreset, applyGeoToSpec, geoForCountry, profilesFromCsv,
   rebuildProfileFingerprint, offsetForZone,
   planFor, isAdmin, checkProfileQuota, browserAllowed,
@@ -319,6 +319,7 @@ interface Store {
   addProfiles: (p: BrowserProfile[]) => void;
   createOne: (input: Parameters<typeof createProfile>[0]) => BrowserProfile | null;
   updateProfile: (id: string, patch: Partial<BrowserProfile>) => void;
+  toggleProfileExtension: (profileId: string, extId: string) => void;
   updateProfileIdentity: (id: string, opts: { templateId?: string; browserFamily?: BrowserFamily; webrtcMode?: FingerprintSpec['webrtcMode']; timezone?: string; locale?: string }) => void;
   deleteProfiles: (ids: string[]) => void;
   duplicateProfiles: (ids: string[]) => void;
@@ -850,6 +851,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return p;
     },
     updateProfile: (id, patch) => setData((d) => ({ ...d, profiles: d.profiles.map((p) => p.id === id ? { ...p, ...patch, revision: p.revision + 1, updatedAt: new Date().toISOString() } : p) })),
+    toggleProfileExtension: (profileId, extId) => setData((d) => ({
+      ...d,
+      profiles: d.profiles.map((p) => {
+        if (p.id !== profileId) return p;
+        const has = p.extensions.includes(extId);
+        const extensions = has ? p.extensions.filter((x) => x !== extId) : [...p.extensions, extId];
+        return { ...p, extensions, revision: p.revision + 1, updatedAt: new Date().toISOString() };
+      }),
+    })),
     updateProfileIdentity: (id, opts) => setData((d) => ({
       ...d,
       profiles: d.profiles.map((p) => {
@@ -991,7 +1001,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const next = good.map((p, i) => ({
         id: `px_${Date.now().toString(36)}_${i}`, name: `${p.host}:${p.port}`, protocol: p.protocol,
         host: p.host, port: p.port, username: p.username, password: p.password,
-        country: 'XX', status: 'unchecked' as const, latencyMs: null, lastCheckedAt: null,
+        country: guessProxyCountry(p.host), status: 'unchecked' as const, latencyMs: null, lastCheckedAt: null,
       }));
       setData((d) => ({ ...d, proxies: [...next, ...d.proxies] }));
       log('import', `${good.length} proxies imported`);

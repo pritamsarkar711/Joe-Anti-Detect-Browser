@@ -22,7 +22,7 @@ export function SettingsView() {
 
   return (
     <Box>
-      <PageHead title="Settings" hint="Appearance, sync, data and scope." />
+      <PageHead title="Settings" />
 
       <MetricStrip
         items={[
@@ -63,9 +63,6 @@ export function SettingsView() {
               <Alert severity={s.entitlementSource === 'server' ? 'success' : 'info'} variant="outlined" sx={{ py: 0.5, fontSize: '0.76rem' }}>
                 {s.planNotice}
               </Alert>
-              <Typography variant="caption" color="text.secondary">
-                Plan status is synced from your account service. Use Refresh plan after an update.
-              </Typography>
             </Stack>
           </Panel>
         </Grid>
@@ -136,20 +133,14 @@ export function SettingsView() {
           <Panel title="Notifications">
             <Stack spacing={1.1}>
               {([
-                ['proxyAlerts', 'Proxy offline alerts', 'One notification when a proxy drops, one when it recovers'],
-                ['rotationAlerts', 'Rotation alerts', 'Confirm when profiles move to a new exit'],
-              ] as const).map(([key, label, help]) => (
+                ['proxyAlerts', 'Proxy offline alerts'],
+                ['rotationAlerts', 'Rotation alerts'],
+              ] as const).map(([key, label]) => (
                 <Stack key={key} direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
-                  <Box sx={{ minWidth: 0 }}>
-                    <Typography sx={{ fontSize: '0.84rem', fontWeight: 600 }}>{label}</Typography>
-                    <Typography variant="caption" color="text.secondary">{help}</Typography>
-                  </Box>
+                  <Typography sx={{ fontSize: '0.84rem', fontWeight: 600 }}>{label}</Typography>
                   <Switch checked={s.settings[key]} onChange={(e) => s.setSetting(key, e.target.checked)} inputProps={{ 'aria-label': label }} />
                 </Stack>
               ))}
-              <Typography variant="caption" color="text.secondary">
-                Alerts appear in-app and in activity. Nothing leaves the device.
-              </Typography>
             </Stack>
           </Panel>
         </Grid>
@@ -171,8 +162,7 @@ export function SettingsView() {
 
         <Grid item xs={12} md={6}>
           <Panel title="Data">
-            <Stack spacing={1.6}>
-              <Typography variant="body2" color="text.secondary">Profiles are stored locally. Export a workspace file to move them between desktop, Android and the control plane.</Typography>
+            <Stack spacing={1.4}>
               <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 0.8 }}>
                 <Btn icon="download" onClick={exportAll}>Export workspace</Btn>
                 <Btn icon="upload" onClick={() => fileRef.current?.click()}>Import workspace</Btn>
@@ -186,20 +176,17 @@ export function SettingsView() {
         </Grid>
 
         <Grid item xs={12} md={6}>
-          <Panel title="About and scope">
-            <Stack spacing={1.2}>
+          <Panel title="About">
+            <Stack spacing={1.1}>
               {[
                 ['Version', `v${s.appVersion}`],
                 ['Desktop', 'Electron · Windows x64'],
                 ['Android', 'WebView · minSdk 28'],
-                ['License', 'MIT with additional notices'],
+                ['License', 'MIT'],
               ].map(([k, v]) => <Stack key={k} direction="row" justifyContent="space-between"><Typography variant="caption" color="text.secondary">{k}</Typography><Typography variant="caption" sx={{ fontWeight: 600 }}>{v}</Typography></Stack>)}
               <Stack direction="row" spacing={0.8} sx={{ flexWrap: 'wrap', gap: 0.6 }}>
                 {['react', 'typescript', 'mui', 'github', 'vercel'].map((n) => <Paper key={n} variant="outlined" sx={{ width: 28, height: 28, borderRadius: '50%', display: 'grid', placeItems: 'center' }}><Official name={n} size={16} color="#D81B60" /></Paper>)}
               </Stack>
-              <Alert severity="info" variant="outlined" icon={<Icon name="shield" size={21} />}>
-                Isolated local profiles with zero telemetry.
-              </Alert>
             </Stack>
           </Panel>
         </Grid>

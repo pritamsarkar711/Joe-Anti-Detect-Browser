@@ -7,6 +7,7 @@ on:
         required: true
         default: 'v3.2.2'
   push:
+    branches: [main, master]
     tags: ['v*']
 
 permissions:
@@ -169,7 +170,7 @@ jobs:
           cat SHA256SUMS.txt
       - name: Compose release notes
         env:
-          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          TAG: ${{ github.event.inputs.tag || (github.ref_type == 'tag' && github.ref_name) || format('v3.2.2-build.{0}', github.run_number) }}
         run: |
           cat docs/RELEASE-BODY.md > release-notes.md
           (
@@ -211,8 +212,8 @@ jobs:
       - name: Create release with binaries
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
-          name: Joe Browser ${{ github.event.inputs.tag || github.ref_name }}
+          tag_name: ${{ github.event.inputs.tag || (github.ref_type == 'tag' && github.ref_name) || format('v3.2.2-build.{0}', github.run_number) }}
+          name: Joe Browser ${{ github.event.inputs.tag || (github.ref_type == 'tag' && github.ref_name) || format('v3.2.2-build.{0}', github.run_number) }}
           generate_release_notes: true
           draft: false
           prerelease: false

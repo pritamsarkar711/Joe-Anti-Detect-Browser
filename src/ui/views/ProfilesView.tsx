@@ -7,32 +7,13 @@ import {
 import { useStore } from '@/state/store';
 import { checkProfile, profileQuality, profileBrowserLabel, exportWorkspace, downloadFile, profilesToCsv, REAL_DEVICE_PRESETS, type BrowserProfile } from '@joe/core';
 import { Icon } from '../Icons';
-import { Official, CountryFlag } from '../Brand';
+import { CountryFlag, ProfileAvatar } from '../Brand';
 import { Btn, IconBtn, Empty, ScoreRing, PageHead, Tag, MetricStrip } from '../Primitives';
 
 const PAGE_SIZE = 20;
 
-const osMark = (os: string) =>
-  os === 'Windows' ? 'windows'
-    : os === 'macOS' || os === 'iOS' || os === 'iPadOS' ? 'apple'
-      : os === 'Android' ? 'android'
-        : 'linux';
 const statusTone = (s: string) => (s === 'error' ? 'err' : s === 'running' ? 'primary' : 'neutral');
 
-function OsBadge({ os, size = 30 }: { os: string; size?: number }) {
-  return (
-    <Box
-      sx={{
-        width: size, height: size, borderRadius: '50%', display: 'grid', placeItems: 'center',
-        bgcolor: 'rgba(216,27,96,0.08)', flex: 'none',
-      }}
-    >
-      <Official name={osMark(os)} size={size * 0.55} color="#D81B60" />
-    </Box>
-  );
-}
-
-/** Compact card used below 960px — one profile, four facts, two actions. */
 function ProfileCard({ p, selected, onSelect, onOpen }: {
   p: BrowserProfile; selected: boolean; onSelect: () => void; onOpen: () => void;
 }) {
@@ -44,7 +25,7 @@ function ProfileCard({ p, selected, onSelect, onOpen }: {
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1.1, pr: 0.75 }}>
         <Checkbox size="small" checked={selected} onChange={onSelect} sx={{ p: 0.5, ml: -0.5 }} />
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, flex: 1, cursor: 'pointer' }} onClick={onOpen}>
-          <OsBadge os={p.os} size={32} />
+          <ProfileAvatar name={p.name} seed={p.fingerprint.noiseSeed} browserFamily={p.browserFamily} size={32} />
           <Box sx={{ minWidth: 0 }}>
             <Typography noWrap sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{p.name}</Typography>
             <Typography noWrap variant="caption" color="text.secondary">
@@ -62,7 +43,7 @@ function ProfileCard({ p, selected, onSelect, onOpen }: {
             <Typography noWrap variant="caption" color="text.secondary">{px.name}</Typography>
           </Stack>
         ) : (
-          <Typography variant="caption" color="text.secondary">Direct connection</Typography>
+          <Typography variant="caption" color="text.secondary">Direct</Typography>
         )}
         <Box sx={{ flex: 1 }} />
         <Tag tone={statusTone(p.status)}>{p.status}</Tag>
@@ -74,7 +55,7 @@ function ProfileCard({ p, selected, onSelect, onOpen }: {
         {p.status === 'running' && (
           <IconBtn icon="web" size={18} label="Open session" onClick={() => s.setPreviewProfileId(p.id)} />
         )}
-        <IconBtn icon="chevronRight" size={19} label="Open details" onClick={onOpen} />
+        <IconBtn icon="chevronRight" size={19} label="Details" onClick={onOpen} />
       </Box>
     </Paper>
   );
@@ -92,7 +73,6 @@ export function ProfilesView() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(0);
 
-  // The sidebar group filter and the in-page select are the same state.
   useEffect(() => { setGroup(s.groupFilter ?? 'all'); setPage(0); }, [s.groupFilter]);
   useEffect(() => { setPage(0); }, [q, status, sort]);
 
@@ -142,10 +122,10 @@ export function ProfilesView() {
         const text = String(r.result);
         if (f.name.endsWith('.csv')) {
           const n = s.importCsv(text);
-          s.toast(n ? `${n} profiles imported` : 'No profiles found', n ? 'ok' : 'warn');
+          s.toast(n ? `${n} imported` : 'No profiles found', n ? 'ok' : 'warn');
         } else {
-          try { s.toast(`${s.importData(text)} profiles imported`); }
-          catch { s.toast('Invalid workspace file', 'err'); }
+          try { s.toast(`${s.importData(text)} imported`); }
+          catch { s.toast('Invalid file', 'err'); }
         }
       };
       r.readAsText(f);
@@ -157,13 +137,9 @@ export function ProfilesView() {
     <Box>
       <PageHead
         title="Profiles"
-        hint="Isolated profiles with separate storage, proxy, and fingerprint."
         action={(
           <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', gap: 0.75 }}>
             <Btn icon="upload" onClick={importFile}>Import</Btn>
-            {/* The app bar already carries the primary create action on
-                desktop; on phones it is hidden there, so the page header owns
-                it. Exactly one "New profile" is visible at any width. */}
             {mobile && <Btn variant="primary" icon="plus" onClick={() => s.setCreateOpen(true)}>New profile</Btn>}
           </Stack>
         )}
@@ -178,9 +154,8 @@ export function ProfilesView() {
         ]}
       />
 
-      <Paper variant="outlined" sx={{ mt: 1.75, overflow: 'hidden' }}>
-        {/* One compact toolbar. No duplicated header actions. */}
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1, p: 1.25 }}>
+      <Paper variant="outlined" sx={{ mt: 1.5, overflow: 'hidden' }}>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1, p: 1.15 }}>
           <TextField
             size="small" placeholder="Search profiles" value={q} onChange={(e) => setQ(e.target.value)}
             sx={{ flex: { xs: '1 1 100%', sm: '1 1 200px' }, maxWidth: { sm: 280 } }}
@@ -207,25 +182,21 @@ export function ProfilesView() {
             <ToggleButton value="table" aria-label="Table view"><Icon name="list" size={18} /></ToggleButton>
             <ToggleButton value="cards" aria-label="Card view"><Icon name="grid" size={18} /></ToggleButton>
           </ToggleButtonGroup>
-          {/* On phones the page header owns the create action, so the toolbar
-              keeps only search, filters and exports. */}
-          {/* One export control on touch widths: two 40px icon buttons wrapped
-              onto a row of their own and read as stray icons. */}
           <IconBtn icon="download" label="Export CSV" onClick={exportCsv} sx={{ display: { xs: 'none', sm: 'inline-flex' } }} />
-          <IconBtn icon="save" label="Export workspace" onClick={exportJson} sx={{ display: { xs: 'none', sm: 'inline-flex' } }} />
+          <IconBtn icon="save" label="Export JSON" onClick={exportJson} sx={{ display: { xs: 'none', sm: 'inline-flex' } }} />
         </Box>
 
         {selected.size > 0 && (
           <>
             <Divider />
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 0.5, px: 1.25, py: 0.75, bgcolor: 'rgba(216,27,96,0.05)' }}>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 0.5, px: 1.25, py: 0.7, bgcolor: 'rgba(216,27,96,0.05)' }}>
               <Chip label={`${selected.size} selected`} size="small" sx={{ height: 22, fontSize: '0.68rem', bgcolor: 'rgba(216,27,96,0.12)', color: 'primary.main' }} />
               <Btn size="small" icon="play" onClick={() => { s.setStatus(ids, 'running'); clear(); }}>Launch</Btn>
               <Btn size="small" icon="stop" onClick={() => { s.setStatus(ids, 'stopped'); clear(); }}>Stop</Btn>
               <Btn size="small" icon="copy" onClick={() => { s.duplicateProfiles(ids); clear(); }}>Duplicate</Btn>
-              <Btn size="small" icon="globe" onClick={() => { s.geoMatch(ids); clear(); }}>Match region</Btn>
-              <Btn size="small" icon="swap" onClick={() => { s.rotateProxy(ids); clear(); }}>Rotate exit</Btn>
-              <Btn size="small" icon="spark" onClick={() => { s.applyPreset(ids, REAL_DEVICE_PRESETS[s.profiles.length % REAL_DEVICE_PRESETS.length].id); clear(); }}>Apply device</Btn>
+              <Btn size="small" icon="globe" onClick={() => { s.geoMatch(ids); clear(); }}>Geo match</Btn>
+              <Btn size="small" icon="swap" onClick={() => { s.rotateProxy(ids); clear(); }}>Rotate</Btn>
+              <Btn size="small" icon="spark" onClick={() => { s.applyPreset(ids, REAL_DEVICE_PRESETS[s.profiles.length % REAL_DEVICE_PRESETS.length].id); clear(); }}>Randomize</Btn>
               <Box sx={{ flex: 1 }} />
               <Btn size="small" variant="danger" icon="trash" onClick={() => { s.deleteProfiles(ids); clear(); }}>Delete</Btn>
             </Box>
@@ -235,8 +206,7 @@ export function ProfilesView() {
 
         {pageRows.length === 0 ? (
           <Empty
-            icon="profiles" title={s.profiles.length ? 'No matching profiles' : 'No profiles yet'}
-            hint={s.profiles.length ? 'Clear the search or filters to see all profiles.' : 'Create your first isolated profile.'}
+            icon="profiles" title={s.profiles.length ? 'No matching profiles' : 'No profiles'}
             action={<Btn variant="primary" icon="plus" onClick={() => s.setCreateOpen(true)}>New profile</Btn>}
           />
         ) : mobile || view === 'cards' ? (
@@ -278,8 +248,8 @@ export function ProfilesView() {
                         <Checkbox size="small" checked={selected.has(p.id)} onChange={() => toggle(p.id)} />
                       </TableCell>
                       <TableCell>
-                        <Stack direction="row" alignItems="center" spacing={1}>
-                          <OsBadge os={p.os} />
+                        <Stack direction="row" alignItems="center" spacing={1.1}>
+                          <ProfileAvatar name={p.name} seed={p.fingerprint.noiseSeed} browserFamily={p.browserFamily} size={32} />
                           <Box sx={{ minWidth: 0 }}>
                             <Typography noWrap sx={{ fontWeight: 600, fontSize: '0.84rem' }}>{p.name}</Typography>
                             <Typography noWrap variant="caption" color="text.secondary">{p.group}</Typography>
@@ -332,12 +302,12 @@ export function ProfilesView() {
         <Divider />
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 0.85 }}>
           <Typography variant="caption" color="text.secondary">
-            {rows.length === 0 ? 'No results' : `${safePage * PAGE_SIZE + 1}–${Math.min(rows.length, (safePage + 1) * PAGE_SIZE)} of ${rows.length}`}
+            {rows.length === 0 ? '0 results' : `${safePage * PAGE_SIZE + 1}–${Math.min(rows.length, (safePage + 1) * PAGE_SIZE)} of ${rows.length}`}
           </Typography>
           <Box sx={{ flex: 1 }} />
-          <IconBtn icon="back" size={18} label="Previous page" onClick={() => setPage(Math.max(0, safePage - 1))} disabled={safePage === 0} />
+          <IconBtn icon="back" size={18} label="Previous" onClick={() => setPage(Math.max(0, safePage - 1))} disabled={safePage === 0} />
           <Typography variant="caption" color="text.secondary">{safePage + 1}/{pages}</Typography>
-          <IconBtn icon="chevronRight" size={18} label="Next page" onClick={() => setPage(Math.min(pages - 1, safePage + 1))} disabled={safePage >= pages - 1} />
+          <IconBtn icon="chevronRight" size={18} label="Next" onClick={() => setPage(Math.min(pages - 1, safePage + 1))} disabled={safePage >= pages - 1} />
         </Box>
       </Paper>
     </Box>
