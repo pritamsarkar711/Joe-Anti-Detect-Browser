@@ -5,7 +5,7 @@ on:
       tag:
         description: 'Release tag (e.g. v2.0.0)'
         required: true
-        default: 'v3.2.1'
+        default: 'v3.2.2'
   push:
     tags: ['v*']
 
@@ -130,9 +130,19 @@ jobs:
           JOE_SIGNING_ALIAS: ${{ secrets.JOE_SIGNING_ALIAS }}
           JOE_STORE_PASSWORD: ${{ secrets.JOE_STORE_PASSWORD }}
           JOE_KEY_PASSWORD: ${{ secrets.JOE_KEY_PASSWORD }}
+          # With the owner's four secrets the APK gets one stable identity.
+          # Without them it is still built and signed — with a per-build key,
+          # clearly labelled in Android-signing.txt and in the release notes —
+          # so Android users have a real, installable app instead of nothing.
+          JOE_SIGNING_ALLOW_EPHEMERAL: '1'
         run: bash scripts/build-apk.sh
       - uses: actions/upload-artifact@v4
-        with: { name: android-apk, path: apps/android/JoeBrowser.apk, retention-days: 7 }
+        with:
+          name: android-apk
+          path: |
+            apps/android/JoeBrowser.apk
+            apps/android/Android-signing.txt
+          retention-days: 7
 
   publish:
     name: GitHub Release
@@ -171,6 +181,19 @@ jobs:
             for f in *; do
               [ "$f" = "SHA256SUMS.txt" ] || echo "- \`$f\`"
             done
+            if [ -f JoeBrowser.apk ] && [ -f Android-signing.txt ] && grep -q 'mode: ephemeral' Android-signing.txt; then
+              echo ""
+              echo "> ⚠️ **Android signing:** this APK is signed with a per-build key (see"
+              echo "> \`Android-signing.txt\` for the certificate fingerprint). It installs and"
+              echo "> runs, but a later build will carry a different signature, so updating"
+              echo "> means uninstalling first. To give every release one stable identity, run"
+              echo "> \`scripts/setup-signing.sh\` once and re-run this workflow on the same tag."
+            elif [ -f JoeBrowser.apk ]; then
+              echo ""
+              echo "> **Android signing:** project release key — the certificate fingerprint"
+              echo "> is in \`Android-signing.txt\`; future updates will be signed with the same"
+              echo "> key. Verify the fingerprint after downloading."
+            fi
             if [ ! -f JoeBrowser.apk ]; then
               echo ""
               echo "> ⚠️ **The Android APK is not included in this release.** The APK build"

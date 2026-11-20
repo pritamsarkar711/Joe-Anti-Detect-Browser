@@ -411,6 +411,30 @@ the rebuilt bundle and rejects the broken one · `check-asar` fixture tests
 (good passes; absolute-ref and missing-asset asars fail). See
 [`TEST_REPORT.md`](TEST_REPORT.md) §8.
 
+## BUG-023 — Unsigned Windows EXEs trigger SmartScreen · medium (documented, not fixed)
+
+**Found**: 2026-11-20, reasoning about the owner's "pc version bad" report.
+The NSIS installer and portable EXE are not Authenticode-signed (no purchased
+code-signing certificate), so first launch shows "Windows protected your PC".
+Many users read that as "broken or malware".
+
+**Not fixable here**: a Windows code-signing certificate costs money and must
+be purchased by the owner. **Mitigation**: README and release notes now give
+the exact click-through (More info → Run anyway) and the SHA-256 verification
+path (`SHA256SUMS.txt`).
+
+## BUG-024 — Per-build APK keys break in-place updates · medium (accepted, labelled)
+
+**Found**: 2026-11-20. Without the owner's keystore secrets the APK can only
+be signed with a key generated inside the CI run, so a later build will not
+install over an earlier one.
+
+**Accepted** because the alternative is no Android app at all. Every APK
+carries `Android-signing.txt` (mode + certificate SHA-256 fingerprint), the
+release notes state the update consequence, and `scripts/setup-signing.sh`
+ends it permanently by moving to a stable release key. BUG-018's original
+refusal (v3.1.x shipped nothing) was the other side of this same tradeoff.
+
 ## Known open issues (not fixed in this release)
 
 | ID | Issue | Why it is still open | Mitigation |
