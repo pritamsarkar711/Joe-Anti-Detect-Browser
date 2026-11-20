@@ -1,3 +1,27 @@
+# Joe Browser 3.2.1
+
+> **3.2.0 does not start.** Its EXEs opened a window that sat forever on
+> "Starting Joe Browser…" — the release pipeline packaged the web bundle
+> (absolute `/assets/…` paths) instead of the desktop bundle and nothing could
+> load under `file://` (BUG-022). **Use 3.2.1**, which packages the correct
+> bundle and adds boot gates so this failure cannot ship again. The v3.2.0
+> release notes carry the same warning.
+
+## What changed in 3.2.1
+
+- The packaged Windows app boots — reproduced against the broken bundle and
+  verified against the fix in a real Chromium over `file://`
+  (`scripts/boot-check-web.mjs`), plus a real-Electron boot check on the
+  Windows release runner that must pass before anything publishes
+- The pipeline builds `apps/desktop/web-dist` (relative base) and ships exactly
+  that; `npm run test:webdist` and the asar content check keep every shipped
+  reference relative and present
+- Android: `setAllowFileAccessFromFileURLs(true)` on the manager WebView so ES
+  modules load from `file:///android_asset/` on API 30+ (same splash-forever
+  class of failure otherwise); the window still refuses to load anything but
+  bundled assets
+- `npm test` 117/117 with pins that keep the corrected pipeline in place
+
 # Joe Browser 3.2.0
 
 > **Integration note.** After the tag attempt described here, an integration
@@ -154,7 +178,7 @@ reports that and stays on the free tier instead of guessing.
 Executed in the session that produced this release (Debian, Node 22; no JDK,
 Android SDK, Electron runtime, Postgres or device):
 
-`tsc` clean · `npm test` 115/115 (12 files) · `test:ui` 37/37 · `test:devices` 75/75 ·
+`tsc` clean · `npm test` 117/117 (12 files) · `test:ui` 37/37 · `test:devices` 75/75 ·
 `test:fingerprint` 29/29 · `test:site` 15/15 · `test:java` 4/4 (parse only) ·
 `test:icons` 9/9 · `test:desktop` 11/11 · `check:bridges` 7/7 ·
 `test:packaged` 4/4 · `test:main` 16/16 · `test:ui-desktop` 5/5 ·
@@ -169,7 +193,9 @@ Full detail: [`TEST_REPORT.md`](TEST_REPORT.md),
 
 ### Assets
 
-The v3.2.0 release is **published** (2026-11-20, run 44669778563) and marked
+**Use 3.2.1** — see the warning at the top. The v3.2.0 release is published
+(2026-11-20, run 44669778563) but its EXEs are known-broken (BUG-022), and its
+notes say so. It is marked
 *Latest*, with `JoeBrowser-Setup-3.2.0.exe`, `JoeBrowser-Portable-3.2.0.exe`
 and `SHA256SUMS.txt`. The Android APK is **not** included: the build signs only
 with the owner's `JOE_SIGNING_*` secrets and refuses throw-away keys. After the

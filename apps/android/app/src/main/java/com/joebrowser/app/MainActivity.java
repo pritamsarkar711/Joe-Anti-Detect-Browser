@@ -49,6 +49,12 @@ public class MainActivity extends Activity {
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         settings.setAllowFileAccess(true);
+        // ES module scripts are fetched with CORS semantics; on API 30+ WebView
+        // blocks file://→file:// module loads unless this is explicitly enabled.
+        // Scoped safely here: the guard below refuses to load anything that is
+        // not a bundled file:///android_asset/ resource, so no remote page can
+        // ever read local files through this window.
+        settings.setAllowFileAccessFromFileURLs(true);
         settings.setAllowContentAccess(true);
         settings.setLoadWithOverviewMode(true);
         settings.setUseWideViewPort(true);

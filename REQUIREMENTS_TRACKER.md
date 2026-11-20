@@ -1,4 +1,4 @@
-# Requirements tracker — Joe Browser 3.2.0
+# Requirements tracker — Joe Browser 3.2.1
 
 Status vocabulary (from the brief): **COMPLETE AND VERIFIED**,
 **IMPLEMENTED BUT NOT VERIFIED**, **PARTIALLY IMPLEMENTED**, **MISSING**,
@@ -32,7 +32,7 @@ marked verified here; it is marked implemented-but-not-verified with the reason.
 | 19 | Documentation and presentation | **COMPLETE AND VERIFIED** | `README.md`, `docs/`, this file set, `CHANGELOG.md`, `SECURITY.md`, `NOTICE`, `TRADEMARK.md`, `docs/IP-POLICY.md` | README corrected (engine claim, account behaviour, download names, version); screenshots regenerated from the app; licence and trademark positions restated. |
 | 20 | Open-source research | **COMPLETE AND VERIFIED** | `OPEN_SOURCE_RESEARCH.md`, `docs/RESEARCH.md` | Existing survey retained and extended with the components this release needed (auth, RLS, testing), each with licence and a reuse decision. |
 | 21 | Final acceptance test | **PARTIALLY VERIFIED** | `TEST_REPORT.md` §5 | Every item that can be executed here passes. Items requiring a database, a native runtime or a device are listed as unverified rather than checked off. CI `verify` is green on `main`; the Windows binaries were produced by CI but not installed. |
-| 22 | Pull request and publication | **PR OPEN · RELEASE BLOCKED** | PR #15 (integration) · PRs #11/#12/#14 merged earlier · tag `v3.2.0` | PRs #11, #12, #14 are merged to `main`. Tag `v3.2.0` points at `e6de75d`; its release run built Windows but failed the APK on missing signing secrets and skipped publication — **still blocked on the owner adding `JOE_SIGNING_STORE_B64` / `JOE_SIGNING_ALIAS` / `JOE_STORE_PASSWORD` / `JOE_KEY_PASSWORD`**. PR #15 carries the integration merge (edge-function relay, applied accounts migration, keystroke send, clean audit) and must be merged before the next tag. No release exists yet. |
+| 22 | Pull request and publication | **PARTIALLY VERIFIED** | PRs #13/#17/#18/#19/#20/#21 merged · release `v3.2.1` | PRs #13, #17, #18, #19, #20, #21 are merged to `main`. The v3.2.0 release is published (Windows EXEs + checksums) but its EXEs never started — the pipeline packaged the web bundle (BUG-022) — so its notes warn users off. v3.2.1 ships the corrected bundle behind four boot gates (static bundle check, real-Chromium file:// boot, asar-content check, real-Electron boot on the Windows runner). The Android APK remains **blocked on the owner adding `JOE_SIGNING_STORE_B64` / `JOE_SIGNING_ALIAS` / `JOE_STORE_PASSWORD` / `JOE_KEY_PASSWORD`**; the release states this and `gh workflow run "Build and publish binaries" -f tag=v3.2.1` attaches the APK to the same release once the secrets exist. |
 
 ---
 

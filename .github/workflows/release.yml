@@ -5,7 +5,7 @@ on:
       tag:
         description: 'Release tag (e.g. v2.0.0)'
         required: true
-        default: 'v3.2.0'
+        default: 'v3.2.1'
   push:
     tags: ['v*']
 
@@ -26,14 +26,19 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm run build:core
+      - run: npm run build:desktop
       - run: npm run build:android-ui
       - run: npm run build:assets
+      - name: UI bundles are loadable over file:// (relative base, assets present)
+        run: npm run test:webdist
+      - name: Desktop UI boots from file:// in a real Chromium
+        run: npm run test:boot-web
       - run: npm run build:site
       - run: npm run test:site
       - run: npm run test:java
       - run: npm run test:fingerprint
       - uses: actions/upload-artifact@v4
-        with: { name: web-dist, path: dist/, retention-days: 7 }
+        with: { name: web-dist, path: apps/desktop/web-dist/, retention-days: 7 }
       - uses: actions/upload-artifact@v4
         with: { name: core-bundle, path: apps/desktop/core.cjs, retention-days: 7 }
       - uses: actions/upload-artifact@v4
@@ -61,6 +66,9 @@ jobs:
           test -f apps/desktop/core.cjs
           test -f apps/desktop/web-dist/index.html
           node -e "const c=require('./apps/desktop/core.cjs'); console.log('core exports:', Object.keys(c).length)"
+      - name: The downloaded UI bundle is loadable over file://
+        shell: bash
+        run: node scripts/check-webdist.mjs apps/desktop/web-dist
       - name: Verify the package would contain every runtime module
         run: |
           npm run test:desktop
@@ -81,6 +89,9 @@ jobs:
           ls -la release
           ls -la release/win-unpacked/resources || true
           node ../../scripts/check-asar.mjs release/win-unpacked/resources
+      - name: The manager window boots the bundled UI (real Electron)
+        working-directory: apps/desktop
+        run: npx electron ../../scripts/boot-check.cjs web-dist/index.html
       - name: List binaries
         shell: bash
         run: ls -lh apps/desktop/release/*.exe

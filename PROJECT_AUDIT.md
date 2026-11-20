@@ -239,3 +239,21 @@ Android APK ✗ (15s, `JOE_SIGNING_STORE_B64` unset), **GitHub Release ✓ (34s)
 `JoeBrowser-Portable-3.2.0.exe` and `SHA256SUMS.txt`, and its notes carry the
 missing-APK warning verbatim. The owner finishing block above remains the path
 to attaching `JoeBrowser.apk` to the same release.
+
+## v3.2.1 — startup regression: reproduced, fixed, gated (2026-11-20)
+
+The v3.2.0 release published its EXEs, and the first real user run showed the
+app never started: the window sat on "Starting Joe Browser…" forever (BUG-022).
+Root cause: the release workflow's web job uploaded the web `dist/` build
+(absolute `/assets/…` base) as the packaged UI instead of `apps/desktop/web-dist`
+(relative base); under `file://` every script 404'd. No gate loaded the built UI
+anywhere, so the failure reached a user.
+
+v3.2.1 fixes the pipeline (builds and ships the desktop bundle), adds four
+independent gates (static bundle check, real-Chromium `file://` boot,
+asar-content verification, real-Electron boot on the Windows release runner),
+fixes the Android WebView module-access default, and pins all of it in
+`tests/v2.test.ts`. The v3.2.0 release notes carry a prominent warning.
+
+Remaining owner steps are unchanged (APK signing secrets, then
+`gh workflow run "Build and publish binaries" -f tag=v3.2.1` to attach the APK).

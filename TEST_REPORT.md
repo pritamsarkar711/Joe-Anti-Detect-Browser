@@ -35,7 +35,7 @@ a result look better.
 | # | Command | Result |
 |---|---|---|
 | 1 | `npx tsc --noEmit` | **pass** (exit 0) |
-| 2 | `npm test` | **115/115 tests, 12 files** |
+| 2 | `npm test` | **117/117 tests, 12 files** |
 | 3 | `npm run build` | **pass** — typecheck + production bundle |
 | 4 | `npm run build:core` | **pass** — `apps/desktop/core.cjs` |
 | 5 | `npm run build:android-ui` | **pass** — `dist-android/` |
@@ -186,7 +186,7 @@ merely adjusted.
 ```bash
 npm ci
 npx tsc --noEmit
-npm test                      # 115 tests
+npm test                      # 117 tests
 npm run build
 npm run test:ui               # 37 checks, self-serving
 npm run test:devices          # 75 checks, self-serving
@@ -225,3 +225,41 @@ No Windows host (installer/first-launch = release build + packaging gates), no
 live Supabase (migration = static verification; live probes listed in
 `SECURITY_AUDIT.md`), no physical Android (emulator captures only), no
 third-party detector hosts (no scores claimed).
+
+## 8. v3.2.1 — the packaged startup regression (2026-11-20)
+
+The owner ran the v3.2.0 installer and the app sat on "Starting Joe Browser…"
+forever. That failure mode is now reproduced, fixed and gated.
+
+**Reproduction** (`node scripts/boot-check-web.mjs dist/index.html --expect-fail`
+— real headless Chromium over `file://`):
+
+```
+requestfailed: file:///assets/style-….css  (net::ERR_FILE_NOT_FOUND)
+requestfailed: file:///assets/index-….js   (net::ERR_FILE_NOT_FOUND)
+requestfailed: file:///assets/react-….js   (net::ERR_FILE_NOT_FOUND)
+state: { bootHidden: false, rootChildren: 0, bodyText: "Starting Joe Browser…" }
+```
+
+**Fix verification** (`node scripts/boot-check-web.mjs apps/desktop/web-dist/index.html`):
+
+```
+state: { bootHidden: true, rootChildren: 1,
+         bodyText: "Profiles Isolated identities … Import New profile …" }
+problems: []
+```
+
+The harness self-test inverts both directions (`--expect-fail` on the broken
+bundle must fail). The new gates and where they run:
+
+| Gate | What it proves | Runs in |
+| --- | --- | --- |
+| `npm run test:webdist` | built HTML uses relative refs, all assets present | CI `verify`, release `web` job |
+| `npm run test:boot-web` | the bundle mounts from `file://` in real Chromium | CI `verify`, release `web` job |
+| `check-asar` content check | the *packed* index.html resolves inside the archive | release `desktop` job (on the built EXE's contents) |
+| `scripts/boot-check.cjs` | the manager window boots in real Electron | CI `verify` (Linux/xvfb), release `desktop` job (Windows, pre-publish) |
+
+Suite after this work: `npm test` **117/117** (12 files) including the pins
+that keep the corrected pipeline in place (tests/v2.test.ts "ships a UI bundle
+that loads over file:// instead of the v3.2.0 hang"). `tsc` clean;
+`npm run test:webdist` 2/2; `npm run test:boot-web` pass; `npm audit` 0.

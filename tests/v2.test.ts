@@ -230,4 +230,34 @@ describe('v2 provenance and licensing', () => {
     expect(withApk).toContain('JoeBrowser.apk');
     expect(withApk).not.toMatch(/not included in this release/i);
   });
+
+  it('ships a UI bundle that loads over file:// instead of the v3.2.0 hang', () => {
+    // v3.2.0's release pipeline uploaded `dist/` (web build, absolute base) as
+    // the packaged UI: every script 404'd under file:// and the app sat on its
+    // boot splash forever. These pins keep every step of the corrected flow in
+    // place: build the desktop bundle, gate it, ship it, boot it in Electron.
+    const release = file('.github/workflows/release.yml');
+    const ci = file('.github/workflows/ci.yml');
+    expect(release).toContain('npm run build:desktop');
+    expect(release).toContain('name: web-dist, path: apps/desktop/web-dist/');
+    expect(release).not.toMatch(/name: web-dist,\s*path: dist\//);
+    expect(release).toContain('npm run test:webdist');
+    expect(release).toContain('npm run test:boot-web');
+    expect(release).toContain('boot-check.cjs');
+    expect(ci).toContain('npm run build:desktop');
+    expect(ci).toContain('npm run test:webdist');
+    expect(ci).toContain('npm run test:boot-web');
+    expect(ci).toContain('boot-check.cjs');
+    const pkg = JSON.parse(file('package.json')) as { scripts: Record<string, string> };
+    expect(pkg.scripts['test:webdist']).toContain('check-webdist.mjs');
+    expect(pkg.scripts['test:boot-web']).toContain('boot-check-web.mjs');
+    // The Android WebView must allow file→file module fetches or the same
+    // splash-forever failure ships to phones (API 30+ defaults this to false).
+    const activity = file('apps/android/app/src/main/java/com/joebrowser/app/MainActivity.java');
+    expect(activity).toContain('setAllowFileAccessFromFileURLs(true)');
+    // The asar gate reads the packed index.html itself.
+    const asar = file('scripts/check-asar.mjs');
+    expect(asar).toContain('verifyPackedUi');
+    expect(asar).toContain('readAsarFileSync');
+  });
 });

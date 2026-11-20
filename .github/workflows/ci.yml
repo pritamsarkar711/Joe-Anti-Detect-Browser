@@ -54,6 +54,8 @@ jobs:
       - name: Bundle shared core for native shells
         run: npm run build:core
 
+      - name: Build the desktop UI bundle (relative base for file://)
+        run: npm run build:desktop
       - name: Build Android-bundled UI
         run: npm run build:android-ui
 
@@ -74,6 +76,22 @@ jobs:
 
       - name: Verify the packaged desktop app boots
         run: npm run test:packaged
+      - name: UI bundles are loadable over file:// (relative base, assets present)
+        run: npm run test:webdist
+      - name: Desktop UI boots from file:// in a real Chromium
+        run: npm run test:boot-web
+      - name: Install the Electron toolchain for the boot gate
+        run: npm install --prefix apps/desktop --no-audit --no-fund
+      - name: Manager window boots the bundled UI (real Electron)
+        run: |
+          rc=0
+          if command -v xvfb-run >/dev/null 2>&1; then
+            xvfb-run -a apps/desktop/node_modules/.bin/electron --no-sandbox scripts/boot-check.cjs apps/desktop/web-dist/index.html || rc=$?
+          else
+            apps/desktop/node_modules/.bin/electron --no-sandbox scripts/boot-check.cjs apps/desktop/web-dist/index.html || rc=$?
+          fi
+          echo "::error title=boot-check-verdict::electron-exit-$rc"
+          exit $rc
 
       - name: Exercise the desktop main process
         run: npm run test:main

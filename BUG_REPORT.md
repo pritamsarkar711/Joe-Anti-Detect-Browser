@@ -368,6 +368,49 @@ which refuses as intended.
 
 ---
 
+## BUG-022 — The packaged app never left its boot splash (v3.2.0 regression) · critical
+
+**Found**: 2026-11-20, by the repository owner running the released Windows
+installer (screenshot: window "Joe Browser — Profile Workspace", eternal
+"Starting Joe Browser…" with the retry link). Reported as "app not working
+android and pc both useless".
+
+**Root cause**: the release pipeline's `web` job uploaded `dist/` (the web
+build, absolute base — `<script src="/assets/index-….js">`) as the
+`web-dist` artifact, and the desktop job packed that into the EXE. Under
+`file://` (Electron `loadFile`) an absolute `/assets/…` resolves to the
+filesystem root (`file:///C:/assets/…`): every script and stylesheet 404'd,
+`boot.tsx` never executed, and the inline boot splash — static HTML — stayed
+forever. The vite config even documents this failure mode ("with the default
+'/' base every <script src="/assets/..."> resolves to the filesystem root
+under file://, the bundle never loads"), but no gate loaded the built UI.
+
+**Reproduced** (real headless Chromium, `file://`, `scripts/boot-check-web.mjs`):
+the shipped-style bundle fails with `ERR_FILE_NOT_FOUND` for
+`/assets/index-….js`, `/assets/react-….js`, `/assets/style-….css` and never
+mounts; the same UI built with `JOE_TARGET=desktop` (relative base) boots to
+the workspace with zero errors. The Android flow had the same class of gap:
+the manager WebView on API 30+ blocks file→file ES-module fetches unless
+`setAllowFileAccessFromFileURLs(true)` is set, which it was not.
+
+**Fixed**:
+- the pipeline builds `apps/desktop/web-dist` and ships exactly that;
+- `scripts/check-webdist.mjs` (`npm run test:webdist`) fails any bundle whose
+  references are absolute or missing;
+- `scripts/boot-check-web.mjs` (`npm run test:boot-web`) fails any bundle that
+  does not mount from `file://` (harness self-tested against the broken bundle);
+- `check-asar` reads the packed `web-dist/index.html` and verifies every
+  reference resolves inside the archive;
+- `scripts/boot-check.cjs` boots the manager window in real Electron — on the
+  Windows release runner before any asset publishes, and in CI on Linux;
+- the Android manager WebView sets `setAllowFileAccessFromFileURLs(true)`
+  (scoped safely: the window refuses to load anything but bundled assets).
+
+**Verified**: `npm test` 117/117 · `test:webdist` 2/2 · `test:boot-web` boots
+the rebuilt bundle and rejects the broken one · `check-asar` fixture tests
+(good passes; absolute-ref and missing-asset asars fail). See
+[`TEST_REPORT.md`](TEST_REPORT.md) §8.
+
 ## Known open issues (not fixed in this release)
 
 | ID | Issue | Why it is still open | Mitigation |

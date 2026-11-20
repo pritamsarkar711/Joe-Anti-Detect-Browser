@@ -1,4 +1,4 @@
-# Validation report — v3.2.0
+# Validation report — v3.2.1
 
 Every number below comes from a command in this repository. Nothing here is a third-party detector score, and no result is claimed for surfaces the project does not control.
 
@@ -9,7 +9,7 @@ Environment: Debian, Node `v22.22.3`, npm `10.9.8`, Python `3.11.2`, no display 
 | Command | Result |
 |---|---|
 | `npx tsc --noEmit` | pass, exit 0 |
-| `npm test` | 12 files, 115 tests passed (account client, schema invariants, edge-relay unit tests, history, version consistency, core⇄database policy pins) |
+| `npm test` | 12 files, 117 tests passed (account client, schema invariants, edge-relay unit tests, history, version consistency, core⇄database policy pins) |
 | `npm run test:secrets` | clean (7 credential-pattern families, env files, key material) |
 | `npm run test:fingerprint` | 29/29 injection self-tests, exit 0 |
 | `npm run test:ui` | 37/37 real-browser checks, self-served |
@@ -239,3 +239,20 @@ reading them:
 The browser suites (`test:ui`, `test:devices`, `screenshots`) now start and stop
 their own Vite server; previously they required a manually started dev server and
 the device suite overwrote its committed report when that server was missing.
+
+## v3.2.1 — what changed in this report
+
+v3.2.0's packaged EXE never left its boot splash (the pipeline shipped the web
+bundle inside the desktop app). v3.2.1 fixes that and adds the evidence above:
+
+```
+npm run build:desktop && npm run build:android-ui && npm run build:core && npm run build:assets
+npm run test:webdist      # built HTML: relative refs, all assets present (2/2)
+npm run test:boot-web     # mounts from file:// in real Chromium (booted: true)
+node scripts/check-asar.mjs <resources-dir>   # packed UI resolves inside the archive
+```
+
+The release workflow runs `scripts/boot-check.cjs` in real Electron on the
+Windows runner and refuses to publish unless the manager window boots the
+bundled UI. `npm test` is 117/117 (12 files). The v3.2.0 EXEs are known-broken
+and the release notes say so.
