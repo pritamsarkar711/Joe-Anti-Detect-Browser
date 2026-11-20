@@ -4,15 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Joe Browser</title>
-<!--
-  Profile-window chrome.
-
-  This file is the only page a profile window's own webContents ever loads: the
-  browsed site lives in a separate WebContentsView *without* a preload, so a
-  hostile page can never reach the app's IPC bridge. Every control here calls
-  the whitelisted chrome:command channel and renders the nav:state push — no
-  control is decorative: if it has no handler it does not get a button.
--->
 <style>
   :root {
     --pink: #d81b60;
@@ -26,7 +17,7 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; overflow: hidden; }
   body {
-    font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+    font: 13px/1.4 "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
     background: var(--bg); color: var(--ink);
     display: flex; flex-direction: column;
     -webkit-user-select: none; user-select: none;
@@ -35,27 +26,28 @@
   /* ---- tab strip ---- */
   #tabs {
     display: flex; align-items: flex-end; gap: 2px;
-    background: var(--bg); padding: 4px 6px 0; height: 30px;
+    background: var(--bg); padding: 4px 8px 0; height: 30px;
     overflow-x: auto; scrollbar-width: none;
   }
   #tabs::-webkit-scrollbar { display: none; }
   .tab {
     display: flex; align-items: center; gap: 6px;
-    max-width: 190px; min-width: 96px; height: 26px; padding: 0 8px;
+    max-width: 200px; min-width: 96px; height: 26px; padding: 0 8px;
     border: 1px solid var(--line); border-bottom: none;
-    border-radius: 6px 6px 0 0; background: var(--bg); color: var(--muted);
+    border-radius: 4px 4px 0 0; background: var(--bg); color: var(--muted);
     cursor: pointer; font-size: 12px; overflow: hidden; white-space: nowrap;
   }
-  .tab.active { background: var(--bar); color: var(--ink); border-color: var(--line); }
+  .tab.active { background: var(--bar); color: var(--ink); border-color: var(--line); font-weight: 500; }
   .tab .title { flex: 1; overflow: hidden; text-overflow: ellipsis; }
   .tab .close {
-    width: 16px; height: 16px; border: none; background: none; border-radius: 50%;
-    color: var(--muted); cursor: pointer; font-size: 12px; line-height: 1; flex: none;
+    width: 16px; height: 16px; border: none; background: none; border-radius: 2px;
+    color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; flex: none;
   }
   .tab .close:hover { background: var(--hover); color: var(--pink); }
   #new-tab {
     width: 26px; height: 26px; flex: none; border: none; background: none;
-    color: var(--muted); border-radius: 6px; cursor: pointer; font-size: 15px;
+    color: var(--muted); border-radius: 4px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
   }
   #new-tab:hover { background: var(--hover); color: var(--pink); }
 
@@ -67,27 +59,33 @@
   }
   button.ctl {
     width: 28px; height: 28px; flex: none; border: none; background: none;
-    border-radius: 6px; cursor: pointer; color: var(--ink); font-size: 14px;
+    border-radius: 4px; cursor: pointer; color: var(--ink);
     display: inline-flex; align-items: center; justify-content: center;
+  }
+  button.ctl svg, .tab .close svg, #new-tab svg, .row .del svg {
+    width: 15px; height: 15px; stroke: currentColor; fill: none;
+    stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; pointer-events: none;
   }
   button.ctl:hover { background: var(--hover); color: var(--pink); }
   button.ctl:disabled { color: #b9b6bb; cursor: default; background: none; }
   button.ctl.on { color: var(--pink); background: var(--hover); }
+  button.ctl.on svg.star { fill: currentColor; }
 
   #address {
-    flex: 1; height: 28px; min-width: 80px; padding: 0 10px;
-    border: 1px solid var(--line); border-radius: 14px;
+    flex: 1; height: 28px; min-width: 80px; padding: 0 12px;
+    border: 1px solid var(--line); border-radius: 4px;
     background: var(--bg); color: var(--ink); font-size: 12.5px; outline: none;
     user-select: text; -webkit-user-select: text;
   }
   #address:focus { border-color: var(--pink); background: var(--bar); }
 
   .badge {
-    position: absolute; top: 2px; right: 2px; min-width: 14px; height: 14px;
-    padding: 0 3px; border-radius: 7px; background: var(--pink); color: #fff;
-    font-size: 9px; line-height: 14px; text-align: center;
+    position: absolute; top: 1px; right: 1px; min-width: 14px; height: 14px;
+    padding: 0 3px; border-radius: 2px; background: var(--pink); color: #fff;
+    font-size: 9px; font-weight: 600; line-height: 14px; text-align: center;
+    font-variant-numeric: tabular-nums;
   }
-  .wrap { position: relative; }
+  .wrap { position: relative; display: inline-flex; }
 
   /* ---- find bar ---- */
   #find {
@@ -98,30 +96,33 @@
   #find.open { display: flex; }
   #find input {
     width: 220px; height: 24px; padding: 0 8px; border: 1px solid var(--line);
-    border-radius: 12px; outline: none; font-size: 12px;
+    border-radius: 4px; outline: none; font-size: 12px;
     user-select: text; -webkit-user-select: text;
   }
   #find input:focus { border-color: var(--pink); }
-  #matches { color: var(--muted); font-size: 11px; min-width: 42px; }
+  #matches { color: var(--muted); font-size: 11px; min-width: 42px; font-variant-numeric: tabular-nums; }
 
-  /* ---- popovers (bookmarks / downloads / permissions) ---- */
+  /* ---- popovers ---- */
   #pop {
-    position: fixed; top: 74px; right: 10px; width: 280px; max-height: 320px;
+    position: fixed; top: 74px; right: 10px; width: 290px; max-height: 320px;
     overflow: auto; background: var(--bar); border: 1px solid var(--line);
-    border-radius: 8px; box-shadow: 0 12px 28px rgba(28, 25, 29, 0.18);
+    border-radius: 4px; box-shadow: 0 12px 28px rgba(28, 25, 29, 0.14);
     padding: 8px; display: none; z-index: 40;
   }
   #pop.open { display: block; }
   #pop h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 2px 4px 8px; }
   .row {
-    display: flex; align-items: center; gap: 8px; padding: 6px 6px;
-    border-radius: 6px; font-size: 12px;
+    display: flex; align-items: center; gap: 8px; padding: 6px;
+    border-radius: 4px; font-size: 12px;
   }
   .row:hover { background: var(--hover); }
   .row .grow { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .row a { color: var(--ink); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
   .row a:hover { color: var(--pink); }
-  .row .del { border: none; background: none; color: var(--muted); cursor: pointer; border-radius: 50%; width: 18px; height: 18px; }
+  .row .del {
+    border: none; background: none; color: var(--muted); cursor: pointer;
+    border-radius: 2px; width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center;
+  }
   .row .del:hover { color: var(--pink); background: var(--hover); }
   .empty { color: var(--muted); font-size: 12px; padding: 8px 6px; }
   .toggle {
@@ -134,31 +135,73 @@
   }
   .toggle.on { background: var(--pink); }
   .toggle.on::after { left: 14px; }
-  .note { font-size: 10.5px; color: var(--muted); padding: 2px 6px 8px; }
+  .note { font-size: 11px; color: var(--muted); padding: 2px 6px 8px; }
 </style>
 </head>
 <body>
-  <div id="tabs"><button id="new-tab" title="New tab (Ctrl+T)">+</button></div>
+  <div id="tabs">
+    <button id="new-tab" title="New tab (Ctrl+T)" aria-label="New tab">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+  </div>
   <div id="bar">
-    <button class="ctl" id="back" title="Back (Alt+Left)">&#8592;</button>
-    <button class="ctl" id="forward" title="Forward (Alt+Right)">&#8594;</button>
-    <button class="ctl" id="reload" title="Reload (Ctrl+R)">&#8635;</button>
-    <button class="ctl" id="home" title="Home">&#8962;</button>
+    <button class="ctl" id="back" title="Back (Alt+Left)" aria-label="Back">
+      <svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+    </button>
+    <button class="ctl" id="forward" title="Forward (Alt+Right)" aria-label="Forward">
+      <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </button>
+    <button class="ctl" id="reload" title="Reload (Ctrl+R)" aria-label="Reload">
+      <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+    </button>
+    <button class="ctl" id="home" title="Home" aria-label="Home">
+      <svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/></svg>
+    </button>
     <input id="address" spellcheck="false" autocomplete="off" placeholder="Search or enter address">
-    <span class="wrap"><button class="ctl" id="bookmark" title="Bookmark this page">&#9734;</button></span>
-    <span class="wrap"><button class="ctl" id="find-btn" title="Find on page (Ctrl+F)">&#128269;</button></span>
-    <span class="wrap"><button class="ctl" id="downloads" title="Downloads">&#8595;<span class="badge" id="dl-badge" hidden>0</span></button></span>
-    <span class="wrap"><button class="ctl" id="perms" title="Site permissions">&#9881;<span class="badge" id="perm-badge" hidden>0</span></button></span>
-    <button class="ctl" id="zoom-out" title="Zoom out (Ctrl+-)">&minus;</button>
-    <button class="ctl" id="zoom-in" title="Zoom in (Ctrl++)">+</button>
-    <button class="ctl" id="clear" title="Clear cookies and site data">&#128465;</button>
+    <span class="wrap">
+      <button class="ctl" id="bookmark" title="Bookmark this page" aria-label="Bookmark">
+        <svg class="star" viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9Z"/></svg>
+      </button>
+    </span>
+    <span class="wrap">
+      <button class="ctl" id="find-btn" title="Find on page (Ctrl+F)" aria-label="Find on page">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      </button>
+    </span>
+    <span class="wrap">
+      <button class="ctl" id="downloads" title="Downloads" aria-label="Downloads">
+        <svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4"/><path d="M5 19h14"/></svg>
+        <span class="badge" id="dl-badge" hidden>0</span>
+      </button>
+    </span>
+    <span class="wrap">
+      <button class="ctl" id="perms" title="Site permissions" aria-label="Site permissions">
+        <svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.4 8.5 8 9.5 4.6-1 8-4.5 8-9.5V6Z"/></svg>
+        <span class="badge" id="perm-badge" hidden>0</span>
+      </button>
+    </span>
+    <button class="ctl" id="zoom-out" title="Zoom out (Ctrl+-)" aria-label="Zoom out">
+      <svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg>
+    </button>
+    <button class="ctl" id="zoom-in" title="Zoom in (Ctrl++)" aria-label="Zoom in">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+    <button class="ctl" id="clear" title="Clear cookies and site data" aria-label="Clear site data">
+      <svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M7 7l1 13h8l1-13"/></svg>
+    </button>
   </div>
   <div id="find">
     <input id="find-input" placeholder="Find on page" spellcheck="false">
     <span id="matches"></span>
-    <button class="ctl" id="find-prev" title="Previous match">&#8593;</button>
-    <button class="ctl" id="find-next" title="Next match">&#8595;</button>
-    <button class="ctl" id="find-close" title="Close (Esc)">&#10005;</button>
+    <button class="ctl" id="find-prev" title="Previous match" aria-label="Previous match">
+      <svg viewBox="0 0 24 24"><path d="M12 19V5m0 0-6 6m6-6 6 6"/></svg>
+    </button>
+    <button class="ctl" id="find-next" title="Next match" aria-label="Next match">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14m0 0-6-6m6 6 6-6"/></svg>
+    </button>
+    <button class="ctl" id="find-close" title="Close (Esc)" aria-label="Close find bar">
+      <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+    </button>
   </div>
   <div id="pop"></div>
 
@@ -166,6 +209,10 @@
 (() => {
   const api = window.joeChrome;
   const $ = (id) => document.getElementById(id);
+
+  const ICON_RELOAD = '<svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>';
+  const ICON_STOP = '<svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>';
+  const ICON_CLOSE = '<svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>';
 
   let state = {
     tabs: [], activeId: null, url: '', title: '', canBack: false, canForward: false,
@@ -188,7 +235,7 @@
       const close = document.createElement('button');
       close.className = 'close';
       close.title = 'Close tab (Ctrl+W)';
-      close.textContent = '\u00d7';
+      close.innerHTML = ICON_CLOSE;
       close.addEventListener('click', (e) => { e.stopPropagation(); send('tabs:close', t.id); });
       el.appendChild(close);
       el.addEventListener('click', () => send('tabs:select', t.id));
@@ -200,11 +247,10 @@
     renderTabs();
     $('back').disabled = !state.canBack;
     $('forward').disabled = !state.canForward;
-    $('reload').innerHTML = state.loading ? '&#10005;' : '&#8635;';
+    $('reload').innerHTML = state.loading ? ICON_STOP : ICON_RELOAD;
     $('reload').title = state.loading ? 'Stop (Esc)' : 'Reload (Ctrl+R)';
     const addr = $('address');
     if (document.activeElement !== addr) addr.value = state.url;
-    $('bookmark').innerHTML = state.bookmarks.some((b) => b.url === state.url) ? '&#9733;' : '&#9734;';
     $('bookmark').classList.toggle('on', state.bookmarks.some((b) => b.url === state.url));
     $('find').classList.toggle('open', state.findOpen);
     $('matches').textContent = state.findMatches;
@@ -226,7 +272,7 @@
         ? state.bookmarks.map((b, i) => `
           <div class="row">
             <a href="#" data-i="${i}" title="${esc(b.url)}">${esc(b.title || b.url)}</a>
-            <button class="del" data-del="${i}" title="Remove">&#10005;</button>
+            <button class="del" data-del="${i}" title="Remove">${ICON_CLOSE}</button>
           </div>`).join('')
         : '<div class="empty">No bookmarks in this profile yet.</div>';
       pop.innerHTML = `<h4>Bookmarks</h4>${rows}`;
@@ -272,7 +318,6 @@
     }
   }
 
-  // ---- controls ----
   $('back').addEventListener('click', () => send('back'));
   $('forward').addEventListener('click', () => send('forward'));
   $('reload').addEventListener('click', () => send(state.loading ? 'stop' : 'reload'));
@@ -308,8 +353,9 @@
 
   document.addEventListener('click', (e) => {
     if (popMode && !$('pop').contains(e.target)
-        && !['downloads', 'perms'].includes(e.target.id)
-        && e.target.id !== 'bookmark') {
+        && !$('downloads').contains(e.target)
+        && !$('perms').contains(e.target)
+        && !$('bookmark').contains(e.target)) {
       popMode = null;
       $('pop').classList.remove('open');
     }

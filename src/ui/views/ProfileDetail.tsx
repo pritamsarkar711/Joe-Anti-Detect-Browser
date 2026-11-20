@@ -4,8 +4,9 @@ import {
 } from '@mui/material';
 import { useStore } from '@/state/store';
 import {
-  checkProfile, profileQuality, REAL_DEVICE_PRESETS, geoForCountry,
-  getRealPreset, FINGERPRINT_DATA_SOURCE, downloadFile,
+  checkProfile, profileQuality, profileBrowserLabel, REAL_DEVICE_PRESETS, geoForCountry,
+  getRealPreset, FINGERPRINT_DATA_SOURCE, downloadFile, BROWSER_SUPPORT,
+  type BrowserFamily, type FingerprintSpec,
 } from '@joe/core';
 import { surfaces } from '@joe/fingerprint';
 import { Icon } from '../Icons';
@@ -16,7 +17,7 @@ import { PasteAsHuman } from './PasteAsHuman';
 type TabKey = 'overview' | 'fingerprint' | 'network' | 'data' | 'devices' | 'tools';
 
 function osMark(os: string): string {
-  return os === 'Windows' ? 'windows' : os === 'macOS' ? 'apple' : os === 'Android' ? 'android' : 'linux';
+  return os === 'Windows' ? 'windows' : os === 'Android' ? 'android' : os === 'macOS' || os === 'iOS' || os === 'iPadOS' ? 'apple' : 'linux';
 }
 
 export function ProfileDetail() {
@@ -88,7 +89,7 @@ export function ProfileDetail() {
 
             <Grid container spacing={2}>
               {[
-                ['Device', `${p.fingerprint.uaClientHints.platform} · Chrome ${p.fingerprint.chromeMajor}`],
+                ['Device', `${p.fingerprint.uaClientHints.platform} · ${profileBrowserLabel(p)}`],
                 ['Screen', `${p.fingerprint.screen.width}×${p.fingerprint.screen.height} @${p.fingerprint.screen.dpr}`],
                 ['Timezone', p.fingerprint.timezone],
                 ['Locale', p.fingerprint.locale],
@@ -101,6 +102,27 @@ export function ProfileDetail() {
                 </Grid>
               ))}
             </Grid>
+
+            <Box>
+              <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>Browser identity</Typography>
+              <Select
+                size="small"
+                fullWidth
+                value={p.browserFamily}
+                onChange={(e) => {
+                  const fam = e.target.value as BrowserFamily;
+                  if (s.lockedBrowser(fam)) { s.toast('Edge and Brave require Premium.', 'warn'); return; }
+                  s.updateProfileIdentity(p.id, { browserFamily: fam });
+                  s.toast('Browser identity updated');
+                }}
+              >
+                {BROWSER_SUPPORT.filter((b) => b.available).map((b) => (
+                  <MenuItem key={b.family} value={b.family}>
+                    {b.label}{s.lockedBrowser(b.family) ? ' (Premium)' : ''}
+                  </MenuItem>
+                ))}
+              </Select>
+            </Box>
 
             {real && <Paper variant="outlined" sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.2 }}>
               <Box sx={{ width: 34, height: 34, borderRadius: '50%', display: 'grid', placeItems: 'center', bgcolor: 'rgba(216,27,96,0.10)' }}><Official name={osMark(real.os)} size={19} color="#D81B60" /></Box>
@@ -146,21 +168,63 @@ export function ProfileDetail() {
 
         {tab === 'network' && (
           <Stack spacing={2}>
-            {px ? (
-              <Paper variant="outlined" sx={{ p: 1.8, display: 'flex', alignItems: 'center', gap: 1.4 }}>
-                <CountryFlag code={px.country} size={38} title={geo?.name} />
-                <Box sx={{ minWidth: 0, flex: 1 }}><Typography sx={{ fontWeight: 600, fontSize: '0.86rem' }}>{px.name}</Typography><Typography variant="caption" color="text.secondary">{px.protocol} · {px.host}:{px.port}</Typography></Box>
+            <Box>
+              <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 0.6 }}>Assigned proxy</Typography>
+              <Select
+                fullWidth
+                size="small"
+                displayEmpty
+                value={p.proxyId ?? ''}
+                onChange={(e) => {
+                  const nextId = e.target.value || null;
+                  s.updateProfile(p.id, { proxyId: nextId });
+                  s.toast(nextId ? 'Proxy assigned' : 'Switched to direct connection');
+                }}
+              >
+                <MenuItem value="">Direct connection</MenuItem>
+                {s.proxies.map((x) => (
+                  <MenuItem key={x.id} value={x.id}>{x.name} ({x.country}) · {x.protocol}://{x.host}:{x.port}</MenuItem>
+                ))}
+              </Select>
+            </Box>
+
+            {px && (
+              <Paper variant="outlined" sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.4 }}>
+                <CountryFlag code={px.country} size={34} title={geo?.name} />
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Typography sx={{ fontWeight: 600, fontSize: '0.84rem' }}>{px.name}</Typography>
+                  <Typography variant="caption" color="text.secondary">{px.protocol} · {px.host}:{px.port}</Typography>
+                </Box>
                 <Tag tone={px.status === 'ok' ? 'primary' : 'neutral'}>{px.status}</Tag>
               </Paper>
-            ) : <Empty icon="globe" title="Direct connection" hint="No proxy assigned." />}
-            <Paper variant="outlined" sx={{ p: 1.5 }}>
-              <Stack direction="row" alignItems="center" spacing={1.2} sx={{ mb: 1 }}><Icon name="language" size={21} /><Typography sx={{ fontWeight: 600, fontSize: '0.84rem' }}>Proxy geo match</Typography></Stack>
-              <Typography variant="caption" color="text.secondary">Timezone, locale, Accept Language and WebRTC follow the exit country.</Typography>
-              <Box sx={{ mt: 1.4 }}><Btn size="small" icon="globe" onClick={() => { s.geoMatch([p.id]); s.toast('Geo match applied'); }} disabled={!px}>Match region</Btn></Box>
+            )}
+
+            <Paper variant="outlined" sx={{ p: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, flexWrap: 'wrap' }}>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography sx={{ fontWeight: 600, fontSize: '0.84rem' }}>Proxy geo match</Typography>
+                <Typography variant="caption" color="text.secondary">Align timezone, locale, and WebRTC to exit region.</Typography>
+              </Box>
+              <Btn size="small" icon="globe" onClick={() => s.geoMatch([p.id])} disabled={!px}>Match region</Btn>
             </Paper>
+
             <Grid container spacing={2}>
-              <Grid item xs={6}><Typography variant="overline" color="text.secondary" sx={{ display: 'block' }}>WebRTC</Typography><Typography sx={{ fontSize: '0.84rem' }}>{p.fingerprint.webrtcMode}</Typography></Grid>
-              <Grid item xs={6}><Typography variant="overline" color="text.secondary" sx={{ display: 'block' }}>Do Not Track</Typography><Typography sx={{ fontSize: '0.84rem' }}>{p.fingerprint.doNotTrack ?? 'off'}</Typography></Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 0.6 }}>WebRTC policy</Typography>
+                <Select
+                  fullWidth
+                  size="small"
+                  value={p.fingerprint.webrtcMode}
+                  onChange={(e) => s.updateProfileIdentity(p.id, { webrtcMode: e.target.value as FingerprintSpec['webrtcMode'] })}
+                >
+                  <MenuItem value="replace">Replace (strip local/mDNS)</MenuItem>
+                  <MenuItem value="proxy">Proxy IP only</MenuItem>
+                  <MenuItem value="disabled">Disabled</MenuItem>
+                </Select>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 0.6 }}>Do Not Track</Typography>
+                <Typography sx={{ fontSize: '0.84rem', pt: 1 }}>{p.fingerprint.doNotTrack ?? 'off'}</Typography>
+              </Grid>
             </Grid>
           </Stack>
         )}

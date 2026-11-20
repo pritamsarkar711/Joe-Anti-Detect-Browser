@@ -39,7 +39,6 @@ export function TestsView() {
   const [result, setResult] = useState<ProbeResult | null>(null);
   const [running, setRunning] = useState(false);
   const [runKey, setRunKey] = useState(0);
-  const [iframeSrc, setIframeSrc] = useState('');
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const p = s.profiles.find((x) => x.id === profileId) ?? s.profiles[0];
   const report = p ? checkProfile(p) : null;
@@ -94,8 +93,9 @@ export function TestsView() {
         ]}
       />
 
-      <Grid container spacing={2}>
-        <Grid item xs={12} lg={7}>
+      <Box sx={{ mt: 1.75 }}>
+        <Grid container spacing={2}>
+          <Grid item xs={12} lg={7}>
           <Panel title="Live JavaScript probe">
             <Stack spacing={1.6}>
               <Select size="small" fullWidth value={p?.id ?? ''} onChange={(e) => { setProfileId(e.target.value); setResult(null); }} displayEmpty>
@@ -121,7 +121,7 @@ export function TestsView() {
                 </Paper>
               )}
               <Alert severity="info" variant="outlined" icon={<Icon name="info" size={22} />}>
-                A passing local probe means JavaScript surfaces agree. It does not certify TLS, HTTP/2, font rasterisation, GPU driver or CDP side channels.
+                Verifies internal JS, Canvas, Audio, WebGL, timezone, and WebRTC consistency.
               </Alert>
               {running && probeDoc && (
                 <iframe key={runKey} ref={frameRef} title="Joe Browser local probe" sandbox="allow-scripts" srcDoc={probeDoc} style={{ width: 1, height: 1, border: 0, position: 'absolute', opacity: 0 }} />
@@ -142,12 +142,13 @@ export function TestsView() {
               ))}
             </List>
             <Box sx={{ p: 2 }}>
-              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.8 }}><Official name="github" size={18} /><Typography sx={{ fontSize: '0.82rem', fontWeight: 600 }}>How to validate</Typography></Stack>
-              <Typography variant="caption" color="text.secondary">Open each detector inside a launched desktop or Android profile. Compare the proxy exit country with timezone, locale, WebRTC and Client Hints. Record contradictions rather than chasing a perfect score.</Typography>
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.6 }}><Official name="github" size={18} /><Typography sx={{ fontSize: '0.82rem', fontWeight: 600 }}>Validation checklist</Typography></Stack>
+              <Typography variant="caption" color="text.secondary">Open each detector in a launched session and compare exit IP geo against timezone, locale, WebRTC, and Client Hints.</Typography>
             </Box>
           </Panel>
         </Grid>
-      </Grid>
+        </Grid>
+      </Box>
     </Box>
   );
 }

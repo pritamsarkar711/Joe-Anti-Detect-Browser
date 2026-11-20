@@ -111,16 +111,16 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
         <Divider sx={{ my: 1 }} />
         <Typography variant="overline" color="text.secondary" sx={{ px: 1.25, display: 'block', mb: 0.25 }}>Groups</Typography>
-        <List disablePadding>
+        <List disablePadding sx={{ maxHeight: 196, overflowY: 'auto' }}>
           <ListItemButton
             dense selected={!activeGroup} onClick={() => { s.setGroupFilter(null); s.setView('profiles'); onNavigate?.(); }}
             sx={{ minHeight: 30, px: 1.25, borderRadius: 1, '&.Mui-selected': { bgcolor: 'rgba(216,27,96,0.09)', color: 'primary.main' } }}
           >
             <ListItemIcon sx={{ minWidth: 28, color: 'inherit' }}><Icon name="grid" size={16} /></ListItemIcon>
             <ListItemText primary="All profiles" primaryTypographyProps={{ fontSize: '0.78rem' }} />
-            <Typography variant="caption" color="text.secondary">{s.profiles.length}</Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }}>{s.profiles.length}</Typography>
           </ListItemButton>
-          {s.groups.slice(0, 12).map((g) => (
+          {s.groups.map((g) => (
             <ListItemButton
               key={g} dense selected={activeGroup === g}
               onClick={() => { s.setGroupFilter(g); s.setView('profiles'); onNavigate?.(); }}
@@ -128,7 +128,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             >
               <ListItemIcon sx={{ minWidth: 28, color: 'inherit' }}><Icon name="folder" size={15} /></ListItemIcon>
               <ListItemText primary={g} primaryTypographyProps={{ fontSize: '0.78rem', noWrap: true }} />
-              <Typography variant="caption" color="text.secondary">{counts.get(g) ?? 0}</Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }}>{counts.get(g) ?? 0}</Typography>
             </ListItemButton>
           ))}
         </List>
@@ -136,10 +136,9 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
       <Box sx={{ px: 1.75, py: 1.25, borderTop: '1px solid', borderColor: 'divider' }}>
         <Stack direction="row" alignItems="center" spacing={0.75}>
-          <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'primary.main' }} />
           <Typography variant="caption" color="text.secondary">{s.nativeLabel}</Typography>
           <Box sx={{ flex: 1 }} />
-          <Typography variant="caption" color="text.secondary">v{s.appVersion}</Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }}>v{s.appVersion}</Typography>
         </Stack>
       </Box>
     </Box>
@@ -233,8 +232,8 @@ export function Shell({ children }: { children: ReactNode }) {
                 <Icon name="menu" size={22} />
               </IconButton>
             )}
-            {mobile ? <JoeMark size={26} /> : <Box sx={{ flex: 1 }} />}
-            {!mobile && <Box sx={{ flex: 1 }} />}
+            {mobile && <JoeMark size={26} />}
+            <Box sx={{ flex: 1 }} />
             <Tooltip title="Search (Ctrl K)" arrow>
               <IconButton size="small" onClick={() => s.setPaletteOpen(true)} aria-label="Search">
                 <Icon name="search" size={20} />

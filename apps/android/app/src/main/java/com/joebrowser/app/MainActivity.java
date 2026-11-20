@@ -272,6 +272,12 @@ public class MainActivity extends Activity {
                         ? "" : p.optJSONObject("fingerprint").optString("userAgent", "");
                 String url = p.optString("startUrl", "https://browserscan.net/");
                 String cookies = p.optString("cookies", "");
+                String injectionScript = p.optString("injectionScript", "");
+                String acceptLanguage = p.optString("acceptLanguage", "");
+
+                if (injectionScript != null && !injectionScript.isEmpty()) {
+                    writeDynamicInjection(id, injectionScript);
+                }
 
                 writeSuffix(id);
                 Intent i = new Intent(MainActivity.this, BrowserActivity.class);
@@ -279,10 +285,26 @@ public class MainActivity extends Activity {
                 i.putExtra("userAgent", ua);
                 i.putExtra("url", url);
                 i.putExtra("cookies", cookies);
+                i.putExtra("acceptLanguage", acceptLanguage);
                 startActivity(i);
                 return "{\"ok\":true}";
             } catch (Exception e) {
                 return "{\"ok\":false,\"error\":\"" + e.getMessage() + "\"}";
+            }
+        }
+
+        private void writeDynamicInjection(String id, String script) {
+            FileOutputStream out = null;
+            try {
+                File dir = new File(getFilesDir(), "injection");
+                if (!dir.exists()) dir.mkdirs();
+                String safe = id.replaceAll("[^a-zA-Z0-9_-]", "_");
+                File f = new File(dir, safe + ".js");
+                out = new FileOutputStream(f, false);
+                out.write(script.getBytes("UTF-8"));
+            } catch (Exception ignored) {
+            } finally {
+                if (out != null) try { out.close(); } catch (Exception ignored) {}
             }
         }
 

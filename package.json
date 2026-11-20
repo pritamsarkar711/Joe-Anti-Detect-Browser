@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Joe Browser — Material UI profile-isolation workspace for Windows, Android and the web, synced with Supabase and Vercel.",
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
+    "dev": "vite --host 0.0.0.0 --port 3000",
     "build": "tsc --noEmit && vite build",
     "build:core": "esbuild packages/desktop-entry.ts --bundle --platform=node --format=cjs --outfile=apps/desktop/core.cjs",
     "build:android-ui": "node scripts/build-ui.mjs android",

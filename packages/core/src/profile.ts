@@ -138,6 +138,131 @@ export interface CreateProfileInput {
   overrides?: Partial<Pick<FingerprintSpec, 'timezone' | 'locale' | 'screen' | 'cores' | 'memoryGb' | 'webrtcMode' | 'doNotTrack'>>;
 }
 
+function applyBrowserIdentity(
+  template: DeviceTemplate,
+  family: BrowserFamily,
+): {
+  userAgent: string;
+  vendor: string;
+  oscpu: string;
+  brands: Array<{ brand: string; version: string }>;
+  fullVersion: string;
+  major: number;
+} {
+  const isAppleWebKit = template.os === 'iOS' || template.os === 'iPadOS';
+  const major = template.chromeMajor;
+  const ver = String(major);
+
+  // iOS / iPadOS always use WebKit/Safari semantics (no Chromium Client Hints, Apple vendor).
+  if (isAppleWebKit) {
+    const safariMajor = template.osVersion.split('.')[0] || '17';
+    return {
+      userAgent: template.ua,
+      vendor: 'Apple Computer, Inc.',
+      oscpu: '',
+      brands: [{ brand: 'Safari', version: safariMajor }],
+      fullVersion: `${major}.0.0.0`,
+      major,
+    };
+  }
+
+  // Firefox (Gecko) semantics when selected via API/preset.
+  if (family === 'firefox') {
+    const ffMajor = 135;
+    const osToken = template.os === 'Windows'
+      ? 'Windows NT 10.0; Win64; x64'
+      : template.os === 'macOS'
+        ? 'Macintosh; Intel Mac OS X 10.15'
+        : template.os === 'Android'
+          ? 'Android 14; Mobile'
+          : 'X11; Linux x86_64';
+    const oscpu = template.os === 'Windows'
+      ? 'Windows NT 10.0; Win64; x64'
+      : template.os === 'macOS'
+        ? 'Intel Mac OS X 10.15'
+        : template.os === 'Android'
+          ? 'Linux armv8l'
+          : 'Linux x86_64';
+    return {
+      userAgent: `Mozilla/5.0 (${osToken}; rv:${ffMajor}.0) Gecko/20100101 Firefox/${ffMajor}.0`,
+      vendor: '',
+      oscpu,
+      brands: [],
+      fullVersion: `${ffMajor}.0`,
+      major: ffMajor,
+    };
+  }
+
+  // Chromium family: never expose oscpu, always report 'Google Inc.' vendor.
+  // Normalize UA by stripping any trailing Edg/ or EdgA/ token from another sample.
+  const baseUa = template.ua
+    .replace(/\s+Chrome\/[\d.]+(\s+Mobile)?\s+Safari\/[\d.]+(?:\s+EdgA?\/[\d.]+)?/i, (_, mob) => ` Chrome/${ver}.0.0.0${mob ?? ''} Safari/537.36`)
+    .replace(/\s+EdgA?\/[\d.]+/gi, '');
+
+  if (family === 'edge') {
+    const edgeToken = template.os === 'Android' ? `EdgA/${ver}.0.0.0` : `Edg/${ver}.0.0.0`;
+    return {
+      userAgent: `${baseUa} ${edgeToken}`,
+      vendor: 'Google Inc.',
+      oscpu: '',
+      brands: [
+        { brand: 'Not/A)Brand', version: '99' },
+        { brand: 'Microsoft Edge', version: ver },
+        { brand: 'Chromium', version: ver },
+      ],
+      fullVersion: `${ver}.0.0.0`,
+      major,
+    };
+  }
+
+  if (family === 'brave') {
+    return {
+      userAgent: baseUa,
+      vendor: 'Google Inc.',
+      oscpu: '',
+      brands: [
+        { brand: 'Not/A)Brand', version: '99' },
+        { brand: 'Brave', version: ver },
+        { brand: 'Chromium', version: ver },
+      ],
+      fullVersion: `${ver}.0.0.0`,
+      major,
+    };
+  }
+
+  if (family === 'chromium') {
+    return {
+      userAgent: baseUa,
+      vendor: 'Google Inc.',
+      oscpu: '',
+      brands: [
+        { brand: 'Not/A)Brand', version: '99' },
+        { brand: 'Chromium', version: ver },
+      ],
+      fullVersion: `${ver}.0.0.0`,
+      major,
+    };
+  }
+
+  // 'chrome' or 'joe'
+  const brands = template.brands.length && !template.brands.some((b) => /Edge/i.test(b.brand))
+    ? template.brands.map((b) => (/^Not/i.test(b.brand) ? b : { ...b, version: ver }))
+    : [
+        { brand: 'Not/A)Brand', version: '99' },
+        { brand: 'Google Chrome', version: ver },
+        { brand: 'Chromium', version: ver },
+      ];
+
+  return {
+    userAgent: baseUa,
+    vendor: 'Google Inc.',
+    oscpu: '',
+    brands,
+    fullVersion: `${ver}.0.0.0`,
+    major,
+  };
+}
+
 function buildSpec(template: DeviceTemplate, input: CreateProfileInput, h: number, rnd: () => number): FingerprintSpec {
   const pick = <T,>(arr: T[]): T => arr[Math.floor(rnd() * arr.length) % arr.length];
   const screen = input.overrides?.screen ?? pick(template.screens);
@@ -152,30 +277,32 @@ function buildSpec(template: DeviceTemplate, input: CreateProfileInput, h: numbe
   const pair = pick(template.hardware);
   const cores = input.overrides?.cores ?? pair.cores;
   const memoryGb = input.overrides?.memoryGb ?? pair.memoryGb;
-  const chromeMajor = template.chromeMajor;
   const mobile = template.mobile;
-
-  const brands = template.brands.length ? template.brands : [
-    { brand: 'Not A(Brand', version: '99' },
-    { brand: 'Google Chrome', version: String(chromeMajor) },
-    { brand: 'Chromium', version: String(chromeMajor) },
-  ];
-  const secChUa = brands.map((b) => `"${b.brand}";v="${b.version}"`).join(', ');
+  const family: BrowserFamily = input.browserFamily ?? 'joe';
+  const idSpec = applyBrowserIdentity(template, family);
+  const chromeMajor = idSpec.major;
+  const brands = idSpec.brands;
+  const secChUa = brands.length && template.os !== 'iOS' && template.os !== 'iPadOS'
+    ? brands.map((b) => `"${b.brand}";v="${b.version}"`).join(', ')
+    : '';
+  const fullVersion = family === 'chrome' || family === 'joe' || family === 'edge' || family === 'brave' || family === 'chromium'
+    ? `${chromeMajor}.0.${6778 + (h % 40)}.${(h >>> 8) % 200}`
+    : idSpec.fullVersion;
 
   return {
     templateId: template.id,
     realId: template.realId,
-    userAgent: template.ua,
+    userAgent: idSpec.userAgent,
     platform: template.platform,
-    oscpu: template.os === 'Windows' ? 'Windows NT 10.0; Win64; x64' : template.os === 'macOS' ? 'Intel Mac OS X 14.6' : template.os === 'Android' ? 'Linux armv8l' : 'Linux x86_64',
-    vendor: 'Google Inc.',
+    oscpu: idSpec.oscpu,
+    vendor: idSpec.vendor,
     chromeMajor,
     uaClientHints: {
       brands,
       mobile,
       platform: template.secChUaPlatform || template.os,
-      platformVersion: template.os === 'Windows' ? '15.0.0' : template.os === 'macOS' ? '14.6.0' : template.os === 'Android' ? '14.0.0' : '6.8.0',
-      fullVersion: `${chromeMajor}.0.${6778 + (h % 40)}.${(h >>> 8) % 200}`,
+      platformVersion: template.os === 'Windows' ? '15.0.0' : template.os === 'macOS' ? '14.6.0' : template.os === 'Android' ? '14.0.0' : template.os === 'iOS' || template.os === 'iPadOS' ? template.osVersion : '6.8.0',
+      fullVersion,
       secChUa,
       secChUaMobile: mobile ? '?1' : '?0',
     },
@@ -210,9 +337,6 @@ export function createProfile(input: CreateProfileInput, index = 0): BrowserProf
   const rnd = seeded(h);
   const real = input.realPresetId ? getRealPreset(input.realPresetId) : undefined;
   const template = real ? templateFromReal(real) : getTemplate(input.templateId ?? DEVICE_TEMPLATES[h % DEVICE_TEMPLATES.length].id);
-  // Stagger creation times by one second per seed index. Without this every
-  // seeded profile shares a timestamp and "newest first" falls back to array
-  // order, which hides the intended ordering.
   const now = new Date(Date.now() - index * 1000).toISOString();
   return {
     id: `prf_${h.toString(36)}${index.toString(36)}`,
@@ -232,8 +356,6 @@ export function createProfile(input: CreateProfileInput, index = 0): BrowserProf
     lastLaunchedAt: null,
     device: null,
     browserFamily: input.browserFamily ?? 'joe',
-    // Every new profile opens on BrowserScan: the first thing a user should see
-    // is an independent read of the fingerprint they just created.
     startUrl: input.startUrl ?? DEFAULT_START_PAGE,
     cookies: input.cookies ?? '',
     extensions: input.extensions ?? [],
@@ -247,6 +369,7 @@ export function applyRealPreset(profile: BrowserProfile, real: RealFingerprint):
   const rnd = seeded(h);
   const spec = buildSpec(template, {
     name: profile.name,
+    browserFamily: profile.browserFamily,
     overrides: { timezone: profile.fingerprint.timezone, locale: profile.fingerprint.locale },
   }, h, rnd);
   return {
@@ -260,6 +383,38 @@ export function applyRealPreset(profile: BrowserProfile, real: RealFingerprint):
   };
 }
 
+/** Re-derive fingerprint specs when changing browserFamily or device template on an existing profile. */
+export function rebuildProfileFingerprint(
+  profile: BrowserProfile,
+  opts: { templateId?: string; browserFamily?: BrowserFamily } = {},
+): BrowserProfile {
+  const family = opts.browserFamily ?? profile.browserFamily;
+  const template = getTemplate(opts.templateId ?? profile.templateId);
+  const h = profile.fingerprint.noiseSeed || hashString(profile.id);
+  const rnd = seeded(h);
+  const spec = buildSpec(template, {
+    name: profile.name,
+    browserFamily: family,
+    overrides: {
+      timezone: profile.fingerprint.timezone,
+      locale: profile.fingerprint.locale,
+      webrtcMode: profile.fingerprint.webrtcMode,
+      doNotTrack: profile.fingerprint.doNotTrack,
+    },
+  }, h, rnd);
+  spec.webrtcPublicIp = profile.fingerprint.webrtcPublicIp;
+  return {
+    ...profile,
+    templateId: template.id,
+    realId: template.realId,
+    os: template.os,
+    browserFamily: family,
+    fingerprint: spec,
+    revision: profile.revision + 1,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 /** Unlimited bulk creation — no artificial caps. */
 export function generateProfiles(count: number, base: Omit<CreateProfileInput, 'name'>, prefix = 'Profile'): BrowserProfile[] {
   return Array.from({ length: count }, (_, i) =>
@@ -267,6 +422,15 @@ export function generateProfiles(count: number, base: Omit<CreateProfileInput, '
   );
 }
 
+export function profileBrowserLabel(p: BrowserProfile): string {
+  if (p.os === 'iOS' || p.os === 'iPadOS') return `Safari ${p.fingerprint.uaClientHints.brands[0]?.version ?? '17'}`;
+  if (p.browserFamily === 'edge') return `Edge ${p.fingerprint.chromeMajor}`;
+  if (p.browserFamily === 'brave') return `Brave ${p.fingerprint.chromeMajor}`;
+  if (p.browserFamily === 'chromium') return `Chromium ${p.fingerprint.chromeMajor}`;
+  if (p.browserFamily === 'firefox') return `Firefox ${p.fingerprint.chromeMajor}`;
+  return `Chrome ${p.fingerprint.chromeMajor}`;
+}
+
 export function profileLabel(p: BrowserProfile): string {
-  return `${p.fingerprint.uaClientHints.platform} · Chrome ${p.fingerprint.chromeMajor}`;
+  return `${p.fingerprint.uaClientHints.platform} · ${profileBrowserLabel(p)}`;
 }

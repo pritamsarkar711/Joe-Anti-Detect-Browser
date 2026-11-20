@@ -33,7 +33,7 @@ export default defineConfig({
       '@': r('./src'),
     },
   },
-  server: { host: '0.0.0.0', port: 5173, allowedHosts: true, strictPort: true },
+  server: { host: '0.0.0.0', port: 3000, allowedHosts: true, strictPort: true },
   preview: { host: '0.0.0.0', port: 4173, allowedHosts: true },
   build: {
     outDir: isDesktop ? 'apps/desktop/web-dist' : isAndroid ? 'dist-android' : 'dist',

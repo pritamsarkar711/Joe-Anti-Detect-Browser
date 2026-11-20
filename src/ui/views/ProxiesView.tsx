@@ -23,6 +23,7 @@ function ProxyCard({ p, selected, onSelect }: { p: ProxyConfig; selected: boolea
         <Stack direction="row" spacing={0.8} sx={{ mt: 0.5 }}><Tag tone={p.status === 'failed' ? 'err' : p.status === 'ok' ? 'primary' : 'neutral'}>{p.status}</Tag><Typography variant="caption">{p.latencyMs ? `${p.latencyMs} ms` : ''}</Typography></Stack>
       </Box>
       <IconBtn icon="refresh" label="Check" onClick={() => s.checkProxies([p.id])} />
+      <IconBtn icon="trash" label="Delete" onClick={() => s.deleteProxies([p.id])} />
     </Paper>
   );
 }
@@ -92,7 +93,7 @@ export function ProxiesView() {
             <Table size="small" className="data-table" sx={{ tableLayout: 'fixed' }}>
               <TableHead><TableRow>
                 <TableCell padding="checkbox" sx={{ width: 40 }}><Checkbox size="small" checked={selected.size === s.proxies.length && s.proxies.length > 0} onChange={() => setSelected(selected.size === s.proxies.length ? new Set() : new Set(s.proxies.map((p) => p.id)))} /></TableCell>
-                <TableCell sx={{ width: '24%' }}>Name</TableCell><TableCell sx={{ width: '28%' }}>Endpoint</TableCell><TableCell sx={{ width: '16%' }}>Country</TableCell><TableCell sx={{ width: 84 }}>Latency</TableCell><TableCell sx={{ width: 84 }}>Status</TableCell><TableCell sx={{ width: 70 }}>Used</TableCell><TableCell align="right" sx={{ width: 48 }} />
+                <TableCell sx={{ width: '24%' }}>Name</TableCell><TableCell sx={{ width: '26%' }}>Endpoint</TableCell><TableCell sx={{ width: '16%' }}>Country</TableCell><TableCell sx={{ width: 84 }}>Latency</TableCell><TableCell sx={{ width: 84 }}>Status</TableCell><TableCell sx={{ width: 64 }}>Used</TableCell><TableCell align="right" sx={{ width: 80 }} />
               </TableRow></TableHead>
               <TableBody>{s.proxies.map((p) => (
                 <TableRow key={p.id} hover>
@@ -103,7 +104,12 @@ export function ProxiesView() {
                   <TableCell><Typography variant="caption">{p.latencyMs ? `${p.latencyMs} ms` : '—'}</Typography></TableCell>
                   <TableCell><Tag tone={p.status === 'failed' ? 'err' : p.status === 'ok' ? 'primary' : 'neutral'}>{p.status}</Tag></TableCell>
                   <TableCell>{s.profiles.filter((x) => x.proxyId === p.id).length}</TableCell>
-                  <TableCell align="right"><IconBtn icon="refresh" label="Check" onClick={() => s.checkProxies([p.id])} size={19} /></TableCell>
+                  <TableCell align="right">
+                    <Stack direction="row" spacing={0.2} justifyContent="flex-end">
+                      <IconBtn icon="refresh" label="Check" onClick={() => s.checkProxies([p.id])} size={18} />
+                      <IconBtn icon="trash" label="Delete" onClick={() => s.deleteProxies([p.id])} size={18} />
+                    </Stack>
+                  </TableCell>
                 </TableRow>
               ))}</TableBody>
             </Table>

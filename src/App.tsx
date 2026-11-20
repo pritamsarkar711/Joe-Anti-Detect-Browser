@@ -16,6 +16,7 @@ import { ExtensionsView } from '@/ui/views/ExtensionsView';
 import { AuthView } from '@/ui/views/AuthView';
 import { CreateProfile } from '@/ui/views/CreateProfile';
 import { ProfileDetail } from '@/ui/views/ProfileDetail';
+import { ProfileBrowserModal } from '@/ui/views/ProfileBrowserModal';
 
 function Router() {
   const s = useStore();
@@ -43,6 +44,7 @@ function ThemedApp() {
       <Shell><Router /></Shell>
       <CreateProfile />
       <ProfileDetail />
+      <ProfileBrowserModal />
       <Toasts />
     </ThemeProvider>
   );

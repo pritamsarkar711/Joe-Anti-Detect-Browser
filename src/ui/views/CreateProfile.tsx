@@ -29,9 +29,8 @@ const osMark = (os: string) =>
  * rather than a feature. The list therefore comes from `BROWSER_SUPPORT`, which
  * also carries the reason shown to the user.
  */
-const MARKS: Record<string, string | null> = { joe: null, chrome: 'chrome', edge: 'edge', brave: 'brave', firefox: 'firefox' };
+const MARKS: Record<string, string | null> = { joe: null, chrome: 'chrome', chromium: 'chrome', edge: 'edge', brave: 'brave', firefox: 'firefox' };
 const FAMILIES = BROWSER_SUPPORT.map((b) => ({ id: b.family, label: b.label, mark: MARKS[b.family] ?? null, available: b.available, note: b.note }));
-const UNAVAILABLE = FAMILIES.filter((f) => !f.available);
 
 export function CreateProfile() {
   const s = useStore();
@@ -139,8 +138,7 @@ export function CreateProfile() {
             })}
           </Grid>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
-            All of these run on the Chromium engine bundled with the app. No browser installed on this machine is used or detected.
-            {UNAVAILABLE.length > 0 && ` ${UNAVAILABLE.map((f) => `${f.label} is not available: ${f.note.replace(/^Not offered: /, '')}`).join(' ')}`}
+            Runs in an isolated session on the bundled engine.
           </Typography>
         </Box>
 

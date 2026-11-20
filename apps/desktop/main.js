@@ -203,13 +203,19 @@ function supportsClientHints(spec) {
   return !webkitOnly && !firefox;
 }
 
+function formatAcceptLanguage(langs) {
+  const list = Array.isArray(langs) && langs.length ? langs : ['en-US', 'en'];
+  return list.map((l, i) => (i === 0 ? l : `${l};q=${Math.max(0.1, Number((1 - i * 0.1).toFixed(1)))}`)).join(',');
+}
+
 function applyHeaders(ses, spec) {
   const h = spec.uaClientHints;
   const clientHints = supportsClientHints(spec);
+  const acceptLang = formatAcceptLanguage(spec.languages);
   ses.webRequest.onBeforeSendHeaders({ urls: ['*://*/*'] }, (details, callback) => {
     const headers = { ...details.requestHeaders };
     headers['User-Agent'] = spec.userAgent;
-    headers['Accept-Language'] = spec.languages.join(',') + ';q=0.9';
+    headers['Accept-Language'] = acceptLang;
     if (clientHints) {
       headers['Sec-CH-UA'] = h.secChUa || h.brands.map((b) => `"${b.brand}";v="${b.version}"`).join(', ');
       headers['Sec-CH-UA-Mobile'] = h.secChUaMobile || (h.mobile ? '?1' : '?0');
@@ -222,7 +228,8 @@ function applyHeaders(ses, spec) {
         if (/^sec-ch-ua/i.test(key)) delete headers[key];
       }
     }
-    if (spec.doNotTrack) headers['DNT'] = '1';
+    if (spec.doNotTrack === '1') headers['DNT'] = '1';
+    else delete headers['DNT'];
     callback({ requestHeaders: headers });
   });
 }
@@ -639,25 +646,28 @@ const chromeRecipients = new WeakMap();
 
 function attachInjection(wc, spec) {
   try {
-    wc.debugger.attach('1.3');
+    if (!wc.debugger.isAttached()) wc.debugger.attach('1.3');
     const script = core.buildInjectionScript(spec, { maskToString: true, selfTestHook: true });
     wc.debugger.sendCommand('Page.enable');
     wc.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument', { source: script });
     wc.debugger.sendCommand('Network.enable');
-    wc.debugger.sendCommand('Network.setUserAgentOverride', {
+    const override = {
       userAgent: spec.userAgent,
-      acceptLanguage: spec.languages.join(','),
+      acceptLanguage: formatAcceptLanguage(spec.languages),
       platform: spec.platform,
-      userAgentMetadata: {
+    };
+    if (supportsClientHints(spec) && spec.uaClientHints) {
+      override.userAgentMetadata = {
         brands: spec.uaClientHints.brands,
         fullVersionList: spec.uaClientHints.brands.map((b) => ({ brand: b.brand, version: spec.uaClientHints.fullVersion })),
         fullVersion: spec.uaClientHints.fullVersion,
         platform: spec.uaClientHints.platform,
         platformVersion: spec.uaClientHints.platformVersion,
         architecture: spec.uaClientHints.platform === 'Android' ? 'arm' : 'x86',
-        model: '', mobile: spec.uaClientHints.mobile, bitness: '64', wow64: false,
-      },
-    });
+        model: '', mobile: !!spec.uaClientHints.mobile, bitness: '64', wow64: false,
+      };
+    }
+    wc.debugger.sendCommand('Network.setUserAgentOverride', override);
   } catch (e) { console.error('CDP injection error', e); }
 }
 
@@ -866,7 +876,7 @@ function registerIpc() {
     const rec = windows.get(profileId);
     if (!rec || !rec.win || rec.win.isDestroyed()) return { ok: false, reason: 'That profile window is not open.' };
     const tab = rec.tabs ? rec.tabs.get(rec.activeTab) : null;
-    const target = tab && tab.webContents ? tab.webContents : rec.win.webContents;
+    const target = tab && tab.wc ? tab.wc : rec.win.webContents;
     const run = (typingRuns.get(profileId) ?? 0) + 1;
     typingRuns.set(profileId, run);
     try {

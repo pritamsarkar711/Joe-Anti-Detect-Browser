@@ -1,7 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The complete mark as one vector: #D81B60 squircle with the white "J".
-     Intrinsic size is 88dp so a layer-list can centre it without per-item
-     sizing. Geometry mirrors MARK_GEOMETRY in src/ui/Brand.tsx. -->
+<!-- Complete mark as one vector: #D81B60 squircle with octagonal frame and architectural "J". -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="88dp"
     android:height="88dp"
@@ -12,8 +10,15 @@
         android:pathData="M11.5,0 H36.5 A11.5,11.5 0 0 1 48,11.5 V36.5 A11.5,11.5 0 0 1 36.5,48 H11.5 A11.5,11.5 0 0 1 0,36.5 V11.5 A11.5,11.5 0 0 1 11.5,0 Z" />
     <path
         android:fillColor="#00000000"
+        android:strokeColor="#55FFFFFF"
+        android:strokeWidth="2.4"
+        android:strokeLineJoin="round"
+        android:pathData="M15 9.5h18l5.5 5.5v18L33 38.5H15L9.5 33V15L15 9.5z" />
+    <path
+        android:fillColor="#00000000"
         android:strokeColor="#FFFFFF"
-        android:strokeWidth="5"
+        android:strokeWidth="4.6"
         android:strokeLineCap="round"
-        android:pathData="M29.4 12.5v15.4a8.4 8.4 0 0 1-16.8 0" />
+        android:strokeLineJoin="round"
+        android:pathData="M21.2 14.5h8.2v13.8a8 8 0 0 1-16 0" />
 </vector>

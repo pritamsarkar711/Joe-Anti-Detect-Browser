@@ -8,10 +8,8 @@ import { useStore } from '@/state/store';
 import { nativeExtensions, nativeCanInstallExtensions, type InstalledExtension } from '@/state/native';
 import { Icon } from '../Icons';
 import { Official } from '../Brand';
-import { Btn, IconBtn, PageHead } from '../Primitives';
+import { Btn, Field, Modal, PageHead } from '../Primitives';
 
-// `mark` is an official brand key from src/ui/brandPaths.ts. Edge is pinned from
-// simple-icons v11 because v16 removed it.
 const FAMILIES: Array<{ id: BrowserFamily; mark: string | null; label: string; short: string }> = [
   { id: 'chrome', mark: 'chrome', label: 'Chrome', short: 'Chrome' },
   { id: 'edge', mark: 'edge', label: 'Edge', short: 'Edge' },
@@ -30,6 +28,9 @@ export function ExtensionsView() {
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]>('All');
   const [added, setAdded] = useState<Set<string>>(new Set());
   const [installed, setInstalled] = useState<InstalledExtension[]>([]);
+  const [installTarget, setInstallTarget] = useState<CatalogExtension | null>(null);
+  const [zipPath, setZipPath] = useState('');
+  const [installing, setInstalling] = useState(false);
   const canInstall = nativeCanInstallExtensions();
 
   const rows = useMemo(() => {
@@ -40,52 +41,37 @@ export function ExtensionsView() {
     ));
   }, [q, category]);
 
-  const openStore = (ext: CatalogExtension, fam: BrowserFamily = family) => {
-    window.open(storeLink(ext, fam), '_blank', 'noopener,noreferrer');
-  };
+  const familyStoreUrl = family === 'firefox'
+    ? 'https://addons.mozilla.org/firefox/'
+    : family === 'edge'
+      ? 'https://microsoftedge.microsoft.com/addons/'
+      : 'https://chromewebstore.google.com/';
 
-  /**
-   * Install into the app's own extensions folder.
-   *
-   * The desktop shell owns the filesystem, so it does the work. Everywhere else
-   * there is nowhere to install to — the button becomes a store link and the UI
-   * never reports a success that did not happen.
-   */
-  const install = async (ext: CatalogExtension) => {
+  const submitInstall = async () => {
     const bridge = nativeExtensions();
-    if (!bridge) {
-      openStore(ext);
-      s.toast('The desktop build installs this for you. Opening the store listing.', 'info');
-      return;
-    }
-    const packagePath = window.prompt(
-      `Choose the .zip package for ${ext.name}\n\nPaste its full path. The app verifies it, unpacks it into its own folder and attaches it to the selected profile.`,
-      '',
-    );
-    if (!packagePath) return;
+    if (!bridge || !installTarget || !zipPath.trim()) return;
+    setInstalling(true);
     try {
-      const installed = await bridge.install(packagePath.trim(), ext.id);
-      setInstalled((prev) => [...prev.filter((e) => e.dir !== installed.dir), installed]);
-      setAdded((prev) => new Set(prev).add(ext.id));
-      s.toast(`${installed.name} ${installed.version} installed`);
+      const ext = await bridge.install(zipPath.trim(), installTarget.id);
+      setInstalled((prev) => [...prev.filter((e) => e.dir !== ext.dir), ext]);
+      setAdded((prev) => new Set(prev).add(installTarget.id));
+      s.toast(`${ext.name} ${ext.version} installed`);
+      setInstallTarget(null);
+      setZipPath('');
     } catch (e) {
       s.toast(String((e as Error).message || 'Install failed'), 'err');
+    } finally {
+      setInstalling(false);
     }
   };
-
 
   return (
     <Box>
       <PageHead
         title="Extensions"
-        hint="Add extensions to a profile, or open the listing for the browser you use."
+        hint="Attach extensions to profiles or open browser store listings."
         action={(
-          <Btn icon="open" onClick={() => window.open(
-            family === 'firefox' ? 'https://addons.mozilla.org/firefox/'
-              : family === 'edge' ? 'https://microsoftedge.microsoft.com/addons/'
-                : 'https://chromewebstore.google.com/',
-            '_blank', 'noopener,noreferrer',
-          )}>
+          <Btn icon="open" href={familyStoreUrl} target="_blank" rel="noreferrer">
             {FAMILY_LABEL[family]} store
           </Btn>
         )}
@@ -104,9 +90,6 @@ export function ExtensionsView() {
           >
             {FAMILIES.map((f) => (
               <ToggleButton key={f.id} value={f.id} aria-label={f.label}>
-                {/* Icon-only chips were indistinguishable as bare glyphs, so
-                    the family name stays visible at every width and the chip
-                    simply gets tighter on phones. */}
                 {f.mark ? <Official name={f.mark} size={14} /> : <Icon name="web" size={14} />}
                 <Box component="span" sx={{ ml: 0.5 }}>{f.short}</Box>
               </ToggleButton>
@@ -125,6 +108,7 @@ export function ExtensionsView() {
         <Box sx={{ p: { xs: 1.25, md: 2 }, display: 'grid', gap: 1.25, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(3, 1fr)' } }}>
           {rows.map((ext) => {
             const isAdded = added.has(ext.id);
+            const listingUrl = storeLink(ext, family);
             return (
               <Paper key={ext.id} variant="outlined" sx={{ p: 1.5, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
                 <Stack direction="row" alignItems="center" spacing={1}>
@@ -144,16 +128,26 @@ export function ExtensionsView() {
                   {ext.description}
                 </Typography>
                 <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 'auto', pt: 0.25 }}>
-                  <Btn
-                    size="small" variant={isAdded ? 'ghost' : 'primary'}
-                    icon={isAdded ? 'check' : 'plus'}
-                    onClick={() => { void install(ext); }}
-                    disabled={isAdded}
-                  >
-                    {isAdded ? 'Installed' : canInstall ? 'Install' : 'Get'}
-                  </Btn>
+                  {canInstall ? (
+                    <Btn
+                      size="small" variant={isAdded ? 'ghost' : 'primary'}
+                      icon={isAdded ? 'check' : 'plus'}
+                      onClick={() => { setInstallTarget(ext); setZipPath(''); }}
+                      disabled={isAdded}
+                    >
+                      {isAdded ? 'Installed' : 'Install'}
+                    </Btn>
+                  ) : (
+                    <Btn
+                      size="small" variant="primary" icon="open"
+                      href={listingUrl} target="_blank" rel="noreferrer"
+                      onClick={() => s.toast(`Opening ${ext.name} in ${FAMILY_LABEL[family]} store`, 'info')}
+                    >
+                      Get
+                    </Btn>
+                  )}
                   <Box sx={{ flex: 1 }} />
-                  <Btn size="small" icon="open" onClick={() => openStore(ext)}>Store</Btn>
+                  <Btn size="small" icon="open" href={listingUrl} target="_blank" rel="noreferrer">Store</Btn>
                 </Stack>
               </Paper>
             );
@@ -180,6 +174,28 @@ export function ExtensionsView() {
           </Stack>
         </Paper>
       )}
+
+      <Modal
+        open={!!installTarget}
+        onClose={() => { if (!installing) setInstallTarget(null); }}
+        title={installTarget ? `Install ${installTarget.name}` : 'Install extension'}
+        subtitle="Provide a verified unpacked .zip archive path for the desktop shell."
+        actions={(
+          <>
+            <Btn onClick={() => setInstallTarget(null)} disabled={installing}>Cancel</Btn>
+            <Btn variant="primary" icon="plus" onClick={() => { void submitInstall(); }} disabled={!zipPath.trim() || installing}>
+              {installing ? 'Installing…' : 'Install package'}
+            </Btn>
+          </>
+        )}
+      >
+        <Field
+          label="Extension archive (.zip)"
+          value={zipPath}
+          onChange={setZipPath}
+          placeholder="C:\\Downloads\\extension.zip"
+        />
+      </Modal>
     </Box>
   );
 }

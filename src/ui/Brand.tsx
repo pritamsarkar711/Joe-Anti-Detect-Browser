@@ -22,33 +22,28 @@ export const MARK_COLOR = '#D81B60';
 /**
  * Canonical geometry on a 48-unit grid.
  *
- * `tile` is the squircle; `j` is the stroke path; the stroke width is tuned so
- * the glyph's counter (the hook) stays open at 16px.
+ * A precision architectural "J" inside a chamfered stealth-aperture octagon.
+ * Two geometric paths, zero gradients, legible from 16px favicon to 512px icon.
  */
 export const MARK_GEOMETRY = {
   /** corner radius of the squircle, 48-grid */
   radius: 11.5,
-  /** vertical stem start, and the baseline the hook curves from */
-  stem: { x: 29.4, top: 12.5 },
-  /** hook radius */
-  hook: { r: 8.4 },
-  stroke: 5,
+  /** stem and hook geometry */
+  stem: { x: 29.4, top: 14.5 },
+  hook: { r: 8 },
+  stroke: 4.6,
 } as const;
 
-const J_PATH = 'M29.4 12.5v15.4a8.4 8.4 0 0 1-16.8 0';
+const J_PATH = 'M21.2 14.5h8.2v13.8a8 8 0 0 1-16 0';
+const FRAME_PATH = 'M15 9.5h18l5.5 5.5v18L33 38.5H15L9.5 33V15L15 9.5z';
 
 export interface MarkProps {
   size?: number;
-  /** Outline-only rendering for favicons/tray where a solid block would smear. */
   tone?: 'color' | 'mono';
   color?: string;
   title?: string;
 }
 
-/**
- * The canonical mark. `id` suffixes keep gradient-free SVG ids unique when the
- * mark appears several times on one page (no <defs> collisions).
- */
 export function JoeMark({
   size = 32,
   tone = 'color',
@@ -56,10 +51,8 @@ export function JoeMark({
   title = 'Joe Browser',
   tile = false,
 }: MarkProps & { tile?: boolean }) {
-  // `tile` draws the filled squircle behind the glyph (favicon, launcher,
-  // installer). `tile: false` is the transparent glyph for app chrome, where
-  // the surrounding surface already provides the background.
   const ink = tone === 'mono' ? color : MARK_COLOR;
+  const fg = tile ? '#FFFFFF' : ink;
   return (
     <svg
       width={size}
@@ -73,39 +66,35 @@ export function JoeMark({
       <title>{title}</title>
       {tile && <rect width="48" height="48" rx={MARK_GEOMETRY.radius} fill={ink} />}
       <path
+        d={FRAME_PATH}
+        fill="none"
+        stroke={fg}
+        strokeOpacity={tile ? 0.34 : 0.28}
+        strokeWidth="2.4"
+        strokeLinejoin="round"
+      />
+      <path
         d={J_PATH}
         fill="none"
-        stroke={tile ? '#FFFFFF' : ink}
+        stroke={fg}
         strokeWidth={MARK_GEOMETRY.stroke}
         strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );
 }
 
-/** Mark + wordmark lockup. `compact` drops the sub-label for tight headers. */
-export function Logo({ size = 30, withText = true, compact = false }: { size?: number; withText?: boolean; compact?: boolean }) {
+/** Mark + wordmark lockup. */
+export function Logo({ size = 28, withText = true, compact = false }: { size?: number; withText?: boolean; compact?: boolean }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
-      <JoeMark size={size} />
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+      <JoeMark size={size} tile />
       {withText && (
         <span style={{ display: 'grid', lineHeight: 1.1, minWidth: 0 }}>
           <strong style={{ fontSize: compact ? 13.5 : 15, fontWeight: 600, letterSpacing: '-0.02em', whiteSpace: 'nowrap' }}>
             Joe Browser
           </strong>
-          {!compact && (
-            <span
-              style={{
-                fontSize: 9,
-                letterSpacing: '0.14em',
-                color: 'var(--muted, #666c7a)',
-                fontWeight: 600,
-                textTransform: 'uppercase',
-              }}
-            >
-              Profiles
-            </span>
-          )}
         </span>
       )}
     </span>

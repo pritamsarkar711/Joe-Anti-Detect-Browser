@@ -1,4 +1,5 @@
 import type { BrowserProfile, ProxyConfig } from '@joe/core';
+import { buildInjectionScript } from '@joe/fingerprint';
 
 /** Typed view of the bridges exposed by the Electron preload and the Android Java bridge. */
 declare global {
@@ -229,7 +230,10 @@ export async function pullDesktopWorkspace(): Promise<NativeWorkspace | null> {
 export async function nativeLaunch(profile: BrowserProfile): Promise<string | null> {
   if (typeof window === 'undefined') return null;
   if (window.JoeBridge) {
-    window.JoeBridge.launchProfile(JSON.stringify(profile));
+    const langs = profile.fingerprint?.languages?.length ? profile.fingerprint.languages : [profile.fingerprint?.locale || 'en-US'];
+    const acceptLanguage = langs.map((l, i) => (i === 0 ? l : `${l};q=${Math.max(0.1, Number((1 - i * 0.1).toFixed(1)))}`)).join(',');
+    const injectionScript = buildInjectionScript(profile.fingerprint, { selfTestHook: true });
+    window.JoeBridge.launchProfile(JSON.stringify({ ...profile, injectionScript, acceptLanguage }));
     return null;
   }
   if (!window.joe) return null;

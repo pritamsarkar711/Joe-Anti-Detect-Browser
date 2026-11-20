@@ -37,7 +37,7 @@ export function ActivityView() {
         ]}
       />
 
-      <Panel pad={0} sx={{ overflow: 'hidden' }}>
+      <Panel pad={0} sx={{ mt: 1.75, overflow: 'hidden' }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ p: 1.6, flexWrap: 'wrap', gap: 1 }}>
           <ToggleButtonGroup size="small" exclusive value={filter} onChange={(_, v) => v && setFilter(v)}>
             <ToggleButton value="all" sx={{ px: 1.4, fontSize: '0.75rem' }}>All</ToggleButton>

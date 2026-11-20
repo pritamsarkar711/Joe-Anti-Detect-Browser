@@ -125,9 +125,7 @@ export function PasteAsHuman({ profileName, profileId, initial = '' }: Props) {
       </Stack>
 
       <Typography variant="caption" color="text.secondary">
-        {schedule.length ? describeSchedule(schedule) : 'Nothing queued yet.'} Keys are paced with per-character jitter and
-        word-boundary beats. This helps with ordinary typing-detection heuristics; it does not solve CAPTCHAs, and a person must
-        complete any challenge a site presents.
+        {schedule.length ? `${describeSchedule(schedule)} with per-keystroke jitter.` : 'Enter text above to preview the keystroke timing plan.'}
       </Typography>
     </Stack>
   );

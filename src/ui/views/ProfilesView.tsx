@@ -5,14 +5,18 @@ import {
   ToggleButton, ToggleButtonGroup, Chip,
 } from '@mui/material';
 import { useStore } from '@/state/store';
-import { checkProfile, profileQuality, exportWorkspace, downloadFile, profilesToCsv, REAL_DEVICE_PRESETS, type BrowserProfile } from '@joe/core';
+import { checkProfile, profileQuality, profileBrowserLabel, exportWorkspace, downloadFile, profilesToCsv, REAL_DEVICE_PRESETS, type BrowserProfile } from '@joe/core';
 import { Icon } from '../Icons';
 import { Official, CountryFlag } from '../Brand';
 import { Btn, IconBtn, Empty, ScoreRing, PageHead, Tag, MetricStrip } from '../Primitives';
 
 const PAGE_SIZE = 20;
 
-const osMark = (os: string) => (os === 'Windows' ? 'windows' : os === 'macOS' ? 'apple' : os === 'Android' ? 'android' : 'linux');
+const osMark = (os: string) =>
+  os === 'Windows' ? 'windows'
+    : os === 'macOS' || os === 'iOS' || os === 'iPadOS' ? 'apple'
+      : os === 'Android' ? 'android'
+        : 'linux';
 const statusTone = (s: string) => (s === 'error' ? 'err' : s === 'running' ? 'primary' : 'neutral');
 
 function OsBadge({ os, size = 30 }: { os: string; size?: number }) {
@@ -44,7 +48,7 @@ function ProfileCard({ p, selected, onSelect, onOpen }: {
           <Box sx={{ minWidth: 0 }}>
             <Typography noWrap sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{p.name}</Typography>
             <Typography noWrap variant="caption" color="text.secondary">
-              {p.group} · {p.fingerprint.uaClientHints.platform} {p.fingerprint.chromeMajor}
+              {p.group} · {p.fingerprint.uaClientHints.platform} · {profileBrowserLabel(p)}
             </Typography>
           </Box>
         </Box>
@@ -67,6 +71,9 @@ function ProfileCard({ p, selected, onSelect, onOpen }: {
           label={p.status === 'running' ? 'Stop' : 'Launch'}
           onClick={() => s.setStatus([p.id], p.status === 'running' ? 'stopped' : 'running')}
         />
+        {p.status === 'running' && (
+          <IconBtn icon="web" size={18} label="Open session" onClick={() => s.setPreviewProfileId(p.id)} />
+        )}
         <IconBtn icon="chevronRight" size={19} label="Open details" onClick={onOpen} />
       </Box>
     </Paper>
@@ -150,7 +157,7 @@ export function ProfilesView() {
     <Box>
       <PageHead
         title="Profiles"
-        hint="Isolated identities, each with its own storage, proxy and coherent fingerprint."
+        hint="Isolated profiles with separate storage, proxy, and fingerprint."
         action={(
           <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', gap: 0.75 }}>
             <Btn icon="upload" onClick={importFile}>Import</Btn>
@@ -257,7 +264,7 @@ export function ProfilesView() {
                   <TableCell sx={{ width: '20%' }}>Proxy</TableCell>
                   <TableCell sx={{ width: 96 }}>Score</TableCell>
                   <TableCell sx={{ width: 84 }}>Status</TableCell>
-                  <TableCell align="right" sx={{ width: 104 }}>Actions</TableCell>
+                  <TableCell align="right" sx={{ width: 128 }}>Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -281,7 +288,7 @@ export function ProfilesView() {
                       </TableCell>
                       <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>
                         <Typography noWrap sx={{ fontSize: '0.8rem' }}>{p.fingerprint.uaClientHints.platform}</Typography>
-                        <Typography noWrap variant="caption" color="text.secondary">Chrome {p.fingerprint.chromeMajor}</Typography>
+                        <Typography noWrap variant="caption" color="text.secondary">{profileBrowserLabel(p)}</Typography>
                       </TableCell>
                       <TableCell>
                         {px ? (
@@ -296,10 +303,7 @@ export function ProfilesView() {
                       <TableCell>
                         <Stack direction="row" alignItems="center" spacing={0.9}>
                           <ScoreRing value={score} size={32} />
-                          <Box sx={{ minWidth: 0 }}>
-                            <Typography sx={{ fontWeight: 600, fontSize: '0.78rem', lineHeight: 1.2 }}>{score}</Typography>
-                            <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>Uniq {quality.uniqueness}%</Typography>
-                          </Box>
+                          <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>Uniq {quality.uniqueness}%</Typography>
                         </Stack>
                       </TableCell>
                       <TableCell><Tag tone={statusTone(p.status)}>{p.status}</Tag></TableCell>
@@ -310,6 +314,9 @@ export function ProfilesView() {
                             label={p.status === 'running' ? 'Stop' : 'Launch'}
                             onClick={() => s.setStatus([p.id], p.status === 'running' ? 'stopped' : 'running')}
                           />
+                          {p.status === 'running' && (
+                            <IconBtn icon="web" size={17} label="Open session" onClick={() => s.setPreviewProfileId(p.id)} />
+                          )}
                           <IconBtn icon="copy" size={18} label="Duplicate" onClick={() => s.duplicateProfiles([p.id])} />
                           <IconBtn icon="chevronRight" size={18} label="Details" onClick={() => s.setSelectedId(p.id)} />
                         </Stack>

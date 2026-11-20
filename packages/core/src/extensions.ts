@@ -9,7 +9,7 @@
  * `stores` lists the families where the extension really exists, because the
  * same functionality often has a different id per store.
  */
-export type BrowserFamily = 'chrome' | 'edge' | 'firefox' | 'brave' | 'joe';
+export type BrowserFamily = 'chrome' | 'edge' | 'firefox' | 'brave' | 'chromium' | 'joe';
 
 export interface CatalogExtension {
   id: string;
@@ -157,6 +157,7 @@ export interface StoreLinks {
   edge: string;
   firefox: string;
   brave: string;
+  chromium: string;
   joe: string;
 }
 
@@ -165,7 +166,7 @@ export interface StoreLinks {
  * `joe` maps to the in-app catalogue so the custom shell never needs a store.
  */
 export function storeLink(ext: CatalogExtension, family: BrowserFamily): string {
-  const edgeCompatible = ['chrome', 'edge', 'brave', 'joe'].includes(family);
+  const edgeCompatible = ['chrome', 'edge', 'brave', 'chromium', 'joe'].includes(family);
   if (family === 'firefox') {
     return ext.firefoxSlug
       ? `https://addons.mozilla.org/firefox/addon/${ext.firefoxSlug}/`
@@ -183,9 +184,10 @@ export function storeLink(ext: CatalogExtension, family: BrowserFamily): string 
 }
 
 export const FAMILY_LABEL: Record<BrowserFamily, string> = {
-  chrome: 'Google Chrome',
-  edge: 'Microsoft Edge',
-  firefox: 'Mozilla Firefox',
+  chrome: 'Chrome',
+  edge: 'Edge',
+  firefox: 'Firefox',
   brave: 'Brave',
+  chromium: 'Chromium',
   joe: 'Joe Browser',
 };

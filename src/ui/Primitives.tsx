@@ -8,16 +8,17 @@ import { Icon, type IconName } from './Icons';
 import { useStore } from '@/state/store';
 
 export function Btn({
-  children, icon, variant = 'ghost', size = 'medium', onClick, disabled, type = 'button', full, title,
+  children, icon, variant = 'ghost', size = 'medium', onClick, href, target, rel, disabled, type = 'button', full, title,
 }: {
   children?: ReactNode; icon?: IconName; variant?: 'primary' | 'ghost' | 'subtle' | 'danger';
-  size?: 'small' | 'medium' | 'large'; onClick?: () => void; disabled?: boolean;
-  type?: 'button' | 'submit'; full?: boolean; title?: string;
+  size?: 'small' | 'medium' | 'large'; onClick?: () => void; href?: string; target?: string; rel?: string;
+  disabled?: boolean; type?: 'button' | 'submit'; full?: boolean; title?: string;
 }) {
   const isPrimary = variant === 'primary';
   return (
     <Button
-      type={type} onClick={onClick} disabled={disabled} fullWidth={full} size={size} title={title}
+      {...(href ? { component: 'a', href, target, rel } : { type })}
+      onClick={onClick} disabled={disabled} fullWidth={full} size={size} title={title}
       variant={isPrimary ? 'contained' : 'text'}
       color={variant === 'danger' ? 'error' : 'primary'}
       startIcon={icon ? <Icon name={icon} size={size === 'small' ? 17 : 19} /> : undefined}
@@ -34,17 +35,23 @@ export function Btn({
 }
 
 export function IconBtn({
-  icon, label, onClick, size = 19, disabled, color, sx,
+  icon, label, onClick, href, target, rel, size = 19, disabled, color, sx,
 }: {
-  icon: IconName; label: string; onClick?: () => void; size?: number; disabled?: boolean;
-  color?: string; /** layout hints, applied to the wrapper so call sites can hide it */ sx?: SxProps;
+  icon: IconName; label: string; onClick?: () => void; href?: string; target?: string; rel?: string;
+  size?: number; disabled?: boolean; color?: string; sx?: SxProps;
 }) {
   return (
     <Tooltip title={label} placement="top" arrow enterDelay={420}>
       <Box component="span" sx={[{ display: 'inline-flex' }, ...(Array.isArray(sx) ? sx : [sx])]}>
-        <IconButton onClick={onClick} disabled={disabled} aria-label={label} size="small" sx={{ p: 0.7 }}>
-          <Icon name={icon} size={size} color={color} />
-        </IconButton>
+        {href ? (
+          <IconButton component="a" href={href} target={target} rel={rel} disabled={disabled} aria-label={label} size="small" sx={{ p: 0.7 }}>
+            <Icon name={icon} size={size} color={color} />
+          </IconButton>
+        ) : (
+          <IconButton onClick={onClick} disabled={disabled} aria-label={label} size="small" sx={{ p: 0.7 }}>
+            <Icon name={icon} size={size} color={color} />
+          </IconButton>
+        )}
       </Box>
     </Tooltip>
   );
@@ -159,7 +166,7 @@ export function MetricStrip({ items }: { items: Array<{ label: string; value: Re
       {items.map((i) => (
         <Box key={i.label} sx={{ minWidth: 0 }}>
           <Typography variant="overline" color="text.secondary" sx={{ display: 'block', lineHeight: 1.2 }}>{i.label}</Typography>
-          <Typography sx={{ fontWeight: 600, fontSize: '1.05rem', lineHeight: 1.25 }}>{i.value}</Typography>
+          <Typography sx={{ fontWeight: 600, fontSize: '1.05rem', lineHeight: 1.25, fontVariantNumeric: 'tabular-nums' }}>{i.value}</Typography>
         </Box>
       ))}
     </Paper>
@@ -183,7 +190,7 @@ export function ScoreRing({ value, size = 34, label }: { value: number; size?: n
         />
       </svg>
       <Box sx={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center' }}>
-        <Typography sx={{ fontWeight: 700, fontSize: size > 50 ? '1rem' : '0.68rem', lineHeight: 1 }}>
+        <Typography sx={{ fontWeight: 700, fontSize: size > 50 ? '1rem' : '0.68rem', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
           {label ?? Math.round(value)}
         </Typography>
       </Box>

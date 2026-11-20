@@ -25,7 +25,8 @@ export function DevicesView() {
         ]}
       />
 
-      <Grid container spacing={2} sx={{ mb: 2.5 }}>
+      <Box sx={{ mt: 1.75, mb: 2.5 }}>
+        <Grid container spacing={2}>
         {s.devices.map((d) => (
           <Grid item xs={12} sm={6} lg={4} key={d.kind}>
             <Paper variant="outlined" sx={{ p: 2, height: '100%' }}>
@@ -58,7 +59,8 @@ export function DevicesView() {
             </Stack>
           </Paper>
         </Grid>
-      </Grid>
+        </Grid>
+      </Box>
 
       <Panel title="Commands" action={<Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 0.8 }}>
         <Btn size="small" icon="play" onClick={() => { void s.send('command:launch', { profileIds: s.profiles.slice(0, 1).map((p) => p.id) }, 'android-apk'); s.toast('Launch command sent'); }}>Launch on APK</Btn>

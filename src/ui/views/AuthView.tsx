@@ -76,7 +76,7 @@ export function AuthView() {
               <Btn variant="primary" icon="arrow" onClick={() => s.setView('profiles')}>Profiles</Btn>
             </Stack>
             <Typography variant="caption" color="text.secondary">
-              The plan is read from your project's `my_entitlement()` function on every refresh. This screen cannot change it.
+              Plan status syncs directly from your configured account service.
             </Typography>
           </Stack>
         </Paper>
@@ -97,8 +97,7 @@ export function AuthView() {
 
         {!cloud && (
           <Alert severity="info" variant="outlined" sx={{ mb: 2, fontSize: '0.78rem' }}>
-            No account service is configured on this device. Add your Supabase project URL and publishable key in
-            Settings → Sync to enable sign-up, login and password reset.
+            Configure Supabase URL and publishable key in Settings → Sync to enable cloud sign-in.
           </Alert>
         )}
 

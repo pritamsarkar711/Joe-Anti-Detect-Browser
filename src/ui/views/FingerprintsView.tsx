@@ -24,7 +24,7 @@ const LIMITS = [
 ];
 
 function osMark(os: string): string {
-  return os === 'Windows' ? 'windows' : os === 'macOS' ? 'apple' : os === 'Android' ? 'android' : 'linux';
+  return os === 'Windows' ? 'windows' : os === 'macOS' || os === 'iOS' || os === 'iPadOS' ? 'apple' : os === 'Android' ? 'android' : 'linux';
 }
 
 export function FingerprintsView() {
@@ -62,7 +62,7 @@ export function FingerprintsView() {
         ]}
       />
 
-      <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto" sx={{ borderBottom: '1px solid', borderColor: 'divider', mb: 2 }}>
+      <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto" sx={{ mt: 1, borderBottom: '1px solid', borderColor: 'divider', mb: 2 }}>
         <Tab value="quality" label="Quality" /><Tab value="data" label="Observed data" /><Tab value="surfaces" label="Surfaces" /><Tab value="geo" label="Regions" /><Tab value="limits" label="Limits" />
       </Tabs>
 
@@ -141,7 +141,7 @@ export function FingerprintsView() {
         <Stack spacing={1}>
           <Paper variant="outlined" sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.2 }}>
             <Box sx={{ width: 34, height: 34, borderRadius: '50%', display: 'grid', placeItems: 'center', bgcolor: 'rgba(216,27,96,0.10)', color: 'primary.main', flex: 'none' }}><Icon name="storage" size={22} /></Box>
-            <Box><Typography sx={{ fontWeight: 600, fontSize: '0.84rem' }}>{FINGERPRINT_DATA_SOURCE}</Typography><Typography variant="caption" color="text.secondary">{REAL_DEVICE_PRESETS.length} coherent samples · Apache 2.0 · generated locally, no external runtime dependency</Typography></Box>
+            <Box><Typography sx={{ fontWeight: 600, fontSize: '0.84rem' }}>{FINGERPRINT_DATA_SOURCE}</Typography><Typography variant="caption" color="text.secondary">{REAL_DEVICE_PRESETS.length} observed device samples · Apache 2.0 · stored locally</Typography></Box>
           </Paper>
           {REAL_DEVICE_PRESETS.map((r) => (
             <Paper key={r.id} variant="outlined" sx={{ p: 1.25, display: 'flex', alignItems: 'center', gap: 1.2 }}>
@@ -185,10 +185,9 @@ export function FingerprintsView() {
 
       {tab === 'limits' && (
         <Stack spacing={1.2}>
-          <Paper variant="outlined" sx={{ p: 1.8, borderLeft: '3px solid', borderColor: 'primary.main' }}>
-            <Stack direction="row" alignItems="center" spacing={1}><Icon name="info" size={22} color="#D81B60" /><Typography variant="h5">JS injection is not an engine fork</Typography></Stack>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.8 }}>AdsPower, GoLogin, Dolphin Anty, Camoufox and Shard Browser patch Chromium or Firefox at C++ level. Joe Browser uses TypeScript plus Electron and Android WebView. It cannot honestly claim undetectable, 100% clean or 100% unique results.</Typography>
-          </Paper>
+          <Panel title="Runtime boundaries">
+            <Typography variant="body2" color="text.secondary">JavaScript injection aligns Navigator, Screen, Canvas, Audio, WebGL, timezone, locale, and WebRTC. Lower-level transport and OS driver traits are listed below.</Typography>
+          </Panel>
           {LIMITS.map(([k, v]) => <Paper key={k} variant="outlined" sx={{ p: 1.3, display: 'flex', gap: 1.2 }}>
             <Box sx={{ width: 30, height: 30, borderRadius: '50%', display: 'grid', placeItems: 'center', bgcolor: 'rgba(216,27,96,0.10)', color: 'primary.main', flex: 'none' }}><Icon name="warning" size={17} /></Box>
             <Box><Typography sx={{ fontSize: '0.82rem', fontWeight: 600 }}>{k}</Typography><Typography variant="caption" color="text.secondary">{v}</Typography></Box>

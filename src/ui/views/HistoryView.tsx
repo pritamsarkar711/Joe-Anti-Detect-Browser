@@ -43,10 +43,6 @@ export function HistoryView() {
   const safePage = Math.min(page, pages - 1);
   const pageRows = rows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
 
-  const openUrl = (url: string) => {
-    window.open(url, '_blank', 'noopener,noreferrer');
-  };
-
   const copy = async (url: string) => {
     try {
       await navigator.clipboard.writeText(url);
@@ -112,7 +108,7 @@ export function HistoryView() {
                   <Typography variant="caption" color="text.secondary">{h.profileName} · {when(h.at)}</Typography>
                   <Box sx={{ flex: 1 }} />
                   <IconBtn icon="copy" size={17} label="Copy link" onClick={() => void copy(h.url)} />
-                  <IconBtn icon="open" size={17} label="Open URL" onClick={() => openUrl(h.url)} />
+                  <IconBtn icon="open" size={17} label="Open URL" href={h.url} target="_blank" rel="noreferrer" />
                 </Box>
               </Box>
             ))}
@@ -146,7 +142,7 @@ export function HistoryView() {
                   <TableCell align="right">
                     <Stack direction="row" spacing={0.2} justifyContent="flex-end">
                       <IconBtn icon="copy" size={18} label="Copy link" onClick={() => void copy(h.url)} />
-                      <IconBtn icon="open" size={18} label="Open URL" onClick={() => openUrl(h.url)} />
+                      <IconBtn icon="open" size={18} label="Open URL" href={h.url} target="_blank" rel="noreferrer" />
                     </Stack>
                   </TableCell>
                 </TableRow>

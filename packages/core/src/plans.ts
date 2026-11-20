@@ -47,11 +47,12 @@ export interface BrowserSupport {
 }
 
 export const BROWSER_SUPPORT: BrowserSupport[] = [
-  { family: 'joe', label: 'Joe Browser', engine: 'chromium', available: true, note: 'Bundled Chromium build. No browser installed on the machine is used.' },
-  { family: 'chrome', label: 'Chrome', engine: 'chromium', available: true, note: 'Chrome-compatible identity on the bundled Chromium.' },
-  { family: 'edge', label: 'Edge', engine: 'chromium', available: true, note: 'Edge-compatible identity on the bundled Chromium.' },
-  { family: 'brave', label: 'Brave', engine: 'chromium', available: true, note: 'Brave-compatible identity on the bundled Chromium.' },
-  { family: 'firefox', label: 'Firefox', engine: 'chromium', available: false, note: 'Not offered: this build bundles no Gecko engine, and a Firefox identity on Chromium would be incoherent.' },
+  { family: 'joe', label: 'Joe Browser', engine: 'chromium', available: true, note: 'Isolated Chromium build.' },
+  { family: 'chrome', label: 'Chrome', engine: 'chromium', available: true, note: 'Chrome-compatible identity.' },
+  { family: 'chromium', label: 'Chromium', engine: 'chromium', available: true, note: 'Clean Chromium identity.' },
+  { family: 'edge', label: 'Edge', engine: 'chromium', available: true, note: 'Edge-compatible identity.' },
+  { family: 'brave', label: 'Brave', engine: 'chromium', available: true, note: 'Brave-compatible identity.' },
+  { family: 'firefox', label: 'Firefox', engine: 'chromium', available: false, note: 'Requires a standalone Gecko binary.' },
 ];
 
 export function browserSupport(family: BrowserFamily): BrowserSupport {
@@ -77,11 +78,11 @@ export const PLANS: Record<PlanId, Plan> = {
     name: 'Free',
     price: 'Lifetime',
     profileLimit: FREE_PROFILE_LIMIT,
-    browsers: ['chrome', 'joe'],
+    browsers: ['chrome', 'chromium', 'joe'],
     summary: 'Two profiles you keep forever.',
     features: [
       '2 browser profiles, no expiry',
-      'Chrome and Joe Browser engines',
+      'Joe Browser, Chrome and Chromium identities',
       'Isolated cookies, cache and storage per profile',
       'Coherent device fingerprint per profile',
       'Local probe and independent detector links',
@@ -97,7 +98,7 @@ export const PLANS: Record<PlanId, Plan> = {
     summary: 'Explore every engine with the sample workspace.',
     features: [
       'Sample workspace with six profiles',
-      'Every bundled engine unlocked while exploring',
+      'Every bundled identity unlocked while exploring',
       'Sign in to choose Free (2 lifetime profiles) or Premium',
     ],
   },
@@ -107,10 +108,10 @@ export const PLANS: Record<PlanId, Plan> = {
     price: 'Subscription',
     profileLimit: null,
     browsers: ALL_BROWSERS,
-    summary: 'Unlimited profiles, every bundled engine, advanced controls.',
+    summary: 'Unlimited profiles, every bundled identity, advanced controls.',
     features: [
       'Unlimited browser profiles',
-      'Joe Browser, Chrome, Edge and Brave identities on the bundled engine',
+      'Joe Browser, Chrome, Chromium, Edge and Brave identities',
       'Advanced fingerprint classes and observed-device rotation',
       'Proxy monitor with offline and rotation alerts',
       'Bulk create, import and per-profile history export',

@@ -33,7 +33,8 @@ export function SettingsView() {
         ]}
       />
 
-      <Grid container spacing={2} sx={{ mb: 2 }}>
+      <Box sx={{ mt: 1.75, mb: 2 }}>
+        <Grid container spacing={2}>
         <Grid item xs={12} md={6}>
           <Panel title="Account and plan">
             <Stack spacing={1.25}>
@@ -63,8 +64,7 @@ export function SettingsView() {
                 {s.planNotice}
               </Alert>
               <Typography variant="caption" color="text.secondary">
-                Premium is assigned by your account service administrators or a payment provider — there is no
-                in-app upgrade switch. Ask for your account to be flagged premium, then press Refresh plan.
+                Plan status is synced from your account service. Use Refresh plan after an update.
               </Typography>
             </Stack>
           </Panel>
@@ -90,7 +90,8 @@ export function SettingsView() {
             </Stack>
           </Panel>
         </Grid>
-      </Grid>
+        </Grid>
+      </Box>
 
       <Grid container spacing={2}>
         <Grid item xs={12} md={6}>
@@ -197,7 +198,7 @@ export function SettingsView() {
                 {['react', 'typescript', 'mui', 'github', 'vercel'].map((n) => <Paper key={n} variant="outlined" sx={{ width: 28, height: 28, borderRadius: '50%', display: 'grid', placeItems: 'center' }}><Official name={n} size={16} color="#D81B60" /></Paper>)}
               </Stack>
               <Alert severity="info" variant="outlined" icon={<Icon name="shield" size={21} />}>
-                Built for legitimate privacy, QA and account separation work. Profile isolation reduces linkability between your own sessions. It is not a guarantee of invisibility to any detection system. No telemetry is collected.
+                Isolated local profiles with zero telemetry.
               </Alert>
             </Stack>
           </Panel>

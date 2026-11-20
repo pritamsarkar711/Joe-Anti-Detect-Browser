@@ -63,6 +63,7 @@ public class BrowserActivity extends Activity {
     private String profileId = "default";
     /** The launch URL, reused by the Home button. */
     private String homeUrl = "https://browserscan.net/";
+    private String acceptLanguage = "";
     /** Controls */
     private Button backBtn;
     private Button forwardBtn;
@@ -121,10 +122,11 @@ public class BrowserActivity extends Activity {
         final String ua = getIntent().getStringExtra("userAgent");
         final String url = getIntent().getStringExtra("url");
         final String cookies = getIntent().getStringExtra("cookies");
+        acceptLanguage = getIntent().getStringExtra("acceptLanguage");
         homeUrl = url == null || url.isEmpty() ? "https://browserscan.net/" : url;
         profileId = getIntent().getStringExtra("profileId");
         if (profileId == null || profileId.isEmpty()) profileId = "default";
-        injection = readAsset("injection/" + profileId + ".js");
+        injection = loadInjectionForProfile(profileId);
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -133,16 +135,27 @@ public class BrowserActivity extends Activity {
         // ---- address row ----
         LinearLayout addressRow = new LinearLayout(this);
         addressRow.setOrientation(LinearLayout.HORIZONTAL);
-        addressRow.setPadding(dp(8), dp(6), dp(8), dp(6));
+        addressRow.setPadding(dp(8), dp(8), dp(8), dp(4));
         addressRow.setBackgroundColor(Color.WHITE);
+
+        android.graphics.drawable.GradientDrawable addrBg = new android.graphics.drawable.GradientDrawable();
+        addrBg.setColor(Color.parseColor("#F6F7F9"));
+        addrBg.setCornerRadius(dp(4));
+        addrBg.setStroke(dp(1), Color.parseColor("#E4E2E6"));
+
         address = new EditText(this);
         address.setSingleLine(true);
         address.setTextSize(13);
         address.setHint("Search or enter address");
+        address.setPadding(dp(10), dp(7), dp(10), dp(7));
+        address.setBackground(addrBg);
+        address.setTextColor(Color.parseColor("#1C191D"));
+        address.setHintTextColor(Color.parseColor("#655F66"));
         address.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_GO);
         address.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         addressRow.addView(address);
-        Button goBtn = smallButton("Go");
+
+        Button goBtn = primaryButton("Go");
         addressRow.addView(goBtn);
         root.addView(addressRow);
 
@@ -153,12 +166,12 @@ public class BrowserActivity extends Activity {
         controls.setBackgroundColor(Color.WHITE);
         backBtn = smallButton("\u2190");
         forwardBtn = smallButton("\u2192");
-        reloadBtn = smallButton("\u21BB");
-        Button homeBtn = smallButton("\u2302");
-        Button findBtn = smallButton("\u2315");
-        Button zoomOut = smallButton("\u2212");
+        reloadBtn = smallButton("Reload");
+        Button homeBtn = smallButton("Home");
+        Button findBtn = smallButton("Find");
+        Button zoomOut = smallButton("-");
         Button zoomIn = smallButton("+");
-        Button clearBtn = smallButton("\u232B");
+        Button clearBtn = smallButton("Clear");
         controls.addView(backBtn);
         controls.addView(forwardBtn);
         controls.addView(reloadBtn);
@@ -169,22 +182,29 @@ public class BrowserActivity extends Activity {
         controls.addView(clearBtn);
         root.addView(controls);
 
+        View divider = new View(this);
+        divider.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)));
+        divider.setBackgroundColor(Color.parseColor("#E4E2E6"));
+        root.addView(divider);
+
         // ---- find row (hidden until requested) ----
         findRow = new LinearLayout(this);
         findRow.setOrientation(LinearLayout.HORIZONTAL);
-        findRow.setPadding(dp(8), dp(2), dp(8), dp(6));
-        findRow.setBackgroundColor(Color.parseColor("#F3E5F5"));
+        findRow.setPadding(dp(8), dp(6), dp(8), dp(6));
+        findRow.setBackgroundColor(Color.parseColor("#FAF9FA"));
         findInput = new EditText(this);
         findInput.setSingleLine(true);
         findInput.setTextSize(12);
         findInput.setHint("Find on page");
+        findInput.setTextColor(Color.parseColor("#1C191D"));
         findInput.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         findCount = new TextView(this);
         findCount.setTextSize(11);
+        findCount.setTextColor(Color.parseColor("#655F66"));
         findCount.setPadding(dp(6), 0, dp(6), 0);
-        Button findPrev = smallButton("\u2191");
-        Button findNext = smallButton("\u2193");
-        Button findClose = smallButton("\u2715");
+        Button findPrev = smallButton("Prev");
+        Button findNext = smallButton("Next");
+        Button findClose = smallButton("Close");
         findRow.addView(findInput);
         findRow.addView(findCount);
         findRow.addView(findPrev);
@@ -348,7 +368,10 @@ public class BrowserActivity extends Activity {
         });
         homeBtn.setOnClickListener(new View.OnClickListener() {
             @Override
-            public void onClick(View v) { web.loadUrl(homeUrl); }
+            public void onClick(View v) {
+                if (acceptLanguage != null && !acceptLanguage.isEmpty()) loadWithHeaders(homeUrl);
+                else web.loadUrl(homeUrl);
+            }
         });
         findBtn.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -406,8 +429,44 @@ public class BrowserActivity extends Activity {
         });
 
         seedCookies(cookies, homeUrl);
-        web.loadUrl(homeUrl);
+        loadWithHeaders(homeUrl);
         refreshControls();
+    }
+
+    private void loadWithHeaders(String targetUrl) {
+        if (acceptLanguage != null && !acceptLanguage.isEmpty()) {
+            java.util.HashMap<String, String> headers = new java.util.HashMap<String, String>();
+            headers.put("Accept-Language", acceptLanguage);
+            web.loadUrl(targetUrl, headers);
+        } else {
+            web.loadUrl(targetUrl);
+        }
+    }
+
+    private String loadInjectionForProfile(String id) {
+        String dynamic = readDynamicInjection(id);
+        if (dynamic != null && !dynamic.isEmpty()) return dynamic;
+        String bundled = readAsset("injection/" + id + ".js");
+        if (bundled != null && !bundled.isEmpty()) return bundled;
+        return readAsset("injection/default.js");
+    }
+
+    private String readDynamicInjection(String id) {
+        BufferedReader reader = null;
+        try {
+            String safe = id.replaceAll("[^a-zA-Z0-9_-]", "_");
+            File f = new File(new File(getFilesDir(), "injection"), safe + ".js");
+            if (!f.exists()) return "";
+            reader = new BufferedReader(new InputStreamReader(new FileInputStream(f), "UTF-8"));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) sb.append(line).append('\n');
+            return sb.toString();
+        } catch (Exception e) {
+            return "";
+        } finally {
+            if (reader != null) try { reader.close(); } catch (Exception ignored) {}
+        }
     }
 
     /** Address bar text to a navigable URL: URLs as-is, bare hosts with https, anything else as a search. */
@@ -415,11 +474,11 @@ public class BrowserActivity extends Activity {
         String target = raw == null ? "" : raw.trim();
         if (target.isEmpty()) return;
         if (target.startsWith("http://") || target.startsWith("https://")) {
-            web.loadUrl(target);
+            loadWithHeaders(target);
         } else if (target.matches("^[\\w-]+(\\.[\\w-]+)+(/.*)?$")) {
-            web.loadUrl("https://" + target);
+            loadWithHeaders("https://" + target);
         } else {
-            web.loadUrl("https://www.google.com/search?q=" + Uri.encode(target));
+            loadWithHeaders("https://www.google.com/search?q=" + Uri.encode(target));
         }
     }
 
@@ -428,18 +487,29 @@ public class BrowserActivity extends Activity {
         if (backBtn == null) return;
         backBtn.setEnabled(web.canGoBack());
         forwardBtn.setEnabled(web.canGoForward());
-        reloadBtn.setText(web.getProgress() < 100 ? "\u2715" : "\u21BB");
+        reloadBtn.setText(web.getProgress() < 100 ? "Stop" : "Reload");
         if (address != null && !address.hasFocus() && web.getUrl() != null) {
             address.setText(web.getUrl());
         }
     }
 
+    private Button primaryButton(String label) {
+        Button b = smallButton(label);
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setColor(Color.parseColor("#D81B60"));
+        bg.setCornerRadius(dp(4));
+        b.setBackground(bg);
+        b.setTextColor(Color.WHITE);
+        b.setPadding(dp(12), dp(6), dp(12), dp(6));
+        return b;
+    }
+
     private Button smallButton(String label) {
         Button b = new Button(this);
         b.setText(label);
-        b.setTextSize(14);
+        b.setTextSize(12);
         b.setMinWidth(0);
-        b.setMinimumWidth(dp(40));
+        b.setMinimumWidth(dp(36));
         b.setPadding(dp(8), dp(4), dp(8), dp(4));
         b.setAllCaps(false);
         b.setBackgroundColor(Color.TRANSPARENT);

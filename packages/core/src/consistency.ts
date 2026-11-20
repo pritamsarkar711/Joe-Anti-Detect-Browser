@@ -33,7 +33,9 @@ export function checkConsistency(spec: FingerprintSpec): ConsistencyReport {
 
   // 1. UA vs platform / client hints
   if (ua.includes('Windows') && spec.platform !== 'Win32') add('critical', 'UA ↔ platform', 'Windows UA with non-Windows navigator.platform', 'Use Win32');
-  if (ua.includes('Macintosh') && spec.platform !== 'MacIntel') add('critical', 'UA ↔ platform', 'macOS UA with non-Mac platform', 'Use MacIntel');
+  if (ua.includes('Macintosh') && !ua.includes('iPhone') && !ua.includes('iPad') && spec.platform !== 'MacIntel') add('critical', 'UA ↔ platform', 'macOS UA with non-Mac platform', 'Use MacIntel');
+  if (ua.includes('iPhone') && spec.platform !== 'iPhone') add('critical', 'UA ↔ platform', 'iPhone UA with non-iPhone platform', 'Use iPhone');
+  if (ua.includes('iPad') && spec.platform !== 'iPad') add('critical', 'UA ↔ platform', 'iPad UA with non-iPad platform', 'Use iPad');
   if (ua.includes('Android') && !spec.platform.startsWith('Linux')) add('critical', 'UA ↔ platform', 'Android UA with non-Linux platform', 'Use Linux armv8l / aarch64');
   if (ua.includes('Mobile') !== spec.uaClientHints.mobile) add('critical', 'UA ↔ Client Hints', 'Sec-CH-UA-Mobile contradicts UA', 'Keep both flags in sync');
 
@@ -50,9 +52,10 @@ export function checkConsistency(spec: FingerprintSpec): ConsistencyReport {
   }
 
   // 3. Mobile vs screen / touch
+  const isTablet = t.os === 'iPadOS' || (t.os === 'Android' && spec.screen.width >= 768);
   if (t.mobile && spec.touchPoints === 0) add('critical', 'Touch ↔ OS', 'Mobile device reports 0 touch points', 'Set maxTouchPoints ≥ 1');
   if (!t.mobile && spec.touchPoints > 0) add('warning', 'Touch ↔ OS', 'Desktop device reports touch points', 'Set maxTouchPoints = 0 or use a convertible template');
-  if (t.mobile && spec.screen.width > 600) add('warning', 'Screen ↔ OS', 'Mobile UA with a desktop-width screen', 'Use a phone viewport');
+  if (t.mobile && !isTablet && spec.screen.width > 600) add('warning', 'Screen ↔ OS', 'Phone UA with a desktop-width screen', 'Use a phone viewport');
   if (!t.mobile && spec.screen.width < 800) add('warning', 'Screen ↔ OS', 'Desktop UA with a phone-width screen', 'Use a desktop viewport');
   if (spec.screen.dpr < 1 || spec.screen.dpr > 4) add('warning', 'Screen', 'Implausible device pixel ratio', 'Keep DPR between 1 and 4');
 
@@ -87,24 +90,38 @@ export function checkConsistency(spec: FingerprintSpec): ConsistencyReport {
   if (spec.uaClientHints.fullVersion.split('.')[0] !== String(spec.chromeMajor)) {
     add('critical', 'Client Hints', 'Sec-CH-UA-Full-Version does not match UA major', 'Derive both from the template');
   }
-  /**
-   * WebKit engines (Safari on iOS/iPadOS, and the iPadOS desktop-mode UA) never
-   * send Sec-CH-UA at all. Applying the Chromium cross-check to them produced a
-   * false critical on every Apple template, so the branch is explicit: a WebKit
-   * UA must instead *not* advertise Chromium brands.
-   */
-  const isWebKit = spec.uaClientHints.brands.some((b) => /^Safari$/i.test(b.brand))
-    || (!/Chrome\//.test(spec.userAgent) && !/Edg\//.test(spec.userAgent) && !/Firefox\//.test(spec.userAgent));
+
+  const isFirefox = /Firefox\//.test(spec.userAgent);
+  const isWebKit = !isFirefox && (
+    spec.uaClientHints.brands.some((b) => /^Safari$/i.test(b.brand))
+    || (!/Chrome\//.test(spec.userAgent) && !/EdgA?\//.test(spec.userAgent))
+  );
   if (isWebKit) {
-    if (spec.uaClientHints.brands.some((b) => /Chromium|Google Chrome/i.test(b.brand))) {
+    if (spec.uaClientHints.brands.some((b) => /Chromium|Google Chrome|Microsoft Edge|Brave/i.test(b.brand))) {
       add('critical', 'Client Hints', 'WebKit profile advertises Chromium brands', 'Safari sends no Sec-CH-UA brands');
     }
+    if (spec.vendor !== 'Apple Computer, Inc.') {
+      add('critical', 'Vendor ↔ Engine', 'WebKit profile should report Apple Computer, Inc.', 'Set vendor to Apple Computer, Inc.');
+    }
+  } else if (isFirefox) {
+    if (spec.uaClientHints.brands.length > 0) {
+      add('critical', 'Client Hints', 'Firefox profile exposes Chromium Client Hints', 'Firefox sends no Sec-CH-UA');
+    }
+    if (spec.vendor !== '') {
+      add('critical', 'Vendor ↔ Engine', 'Firefox profile exposes non-empty navigator.vendor', 'Set vendor to empty string');
+    }
   } else {
-    if (!new RegExp(`Chrome/${spec.chromeMajor}\\.`).test(spec.userAgent) && !new RegExp(`Edg/${spec.chromeMajor}\\.`).test(spec.userAgent)) {
+    if (spec.oscpu) {
+      add('warning', 'Engine ↔ oscpu', 'Chromium profile exposes non-empty navigator.oscpu', 'Leave oscpu empty on Chromium');
+    }
+    if (!new RegExp(`Chrome/${spec.chromeMajor}\\.`).test(spec.userAgent) && !new RegExp(`EdgA?/${spec.chromeMajor}\\.`).test(spec.userAgent)) {
       add('critical', 'Client Hints', 'UA major does not match Client Hints major', 'Derive both from one observed device');
     }
     if (spec.uaClientHints.brands.length && !spec.uaClientHints.brands.some((b) => b.version === String(spec.chromeMajor))) {
       add('critical', 'Client Hints', 'Sec-CH-UA brand versions do not match UA', 'Use the brands from the same real device');
+    }
+    if (/EdgA?\//.test(spec.userAgent) && !spec.uaClientHints.brands.some((b) => /Edge/i.test(b.brand))) {
+      add('critical', 'Client Hints', 'Edge UA without Microsoft Edge brand', 'Include Microsoft Edge brand');
     }
   }
   if (spec.timezoneOffset === 0 && /^(America|Asia|Australia)\//.test(spec.timezone)) {

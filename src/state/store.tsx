@@ -2,9 +2,10 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import {
   createProfile, generateProfiles, hashString, DEVICE_TEMPLATES, checkProxy, parseProxyLines, proxyUrl,
   applyRealPreset, getRealPreset, applyGeoToSpec, geoForCountry, profilesFromCsv,
+  rebuildProfileFingerprint, offsetForZone,
   planFor, isAdmin, checkProfileQuota, browserAllowed,
   historyEntryId, mergeHistory,
-  type Account, type BrowserProfile, type ProxyConfig, type ProfileStatus, type Entitlement,
+  type Account, type BrowserFamily, type BrowserProfile, type FingerprintSpec, type ProxyConfig, type ProfileStatus, type Entitlement,
   importWorkspace as parseWorkspace, exportWorkspace as makeExport, type WorkspaceExport,
 } from '@joe/core';
 import { createLocalTransport, SyncClient, DEFAULT_PRESENCE, type DeviceKind, type DevicePresence, type SyncEnvelope, type Topic } from '@joe/sync';
@@ -213,12 +214,19 @@ function seed(): Persisted {
    * index 0 (Storefront US) heads the list. The template list therefore starts
    * with the two Windows desktops a new workspace should open on.
    */
-  const created = names.map(([name, group], i) => createProfile({
-    name, group, templateId: templates[i % templates.length],
-    proxyId: i % 4 === 0 ? null : proxies[i % proxies.length].id,
-    tags: i % 5 === 0 ? ['priority'] : i % 7 === 0 ? ['review'] : [],
-    seed: `seed::${name}`,
-  }, i));
+  const created = names.map(([name, group], i) => {
+    const px = i % 4 === 0 ? null : proxies[i % proxies.length];
+    const base = createProfile({
+      name, group, templateId: templates[i % templates.length],
+      proxyId: px ? px.id : null,
+      tags: i % 5 === 0 ? ['priority'] : i % 7 === 0 ? ['review'] : [],
+      seed: `seed::${name}`,
+    }, i);
+    if (px && geoForCountry(px.country)) {
+      return { ...base, fingerprint: applyGeoToSpec(base.fingerprint, px.country) };
+    }
+    return base;
+  });
   const profiles = [...created].reverse();
   return {
     account: DEMO_ACCOUNT,
@@ -305,11 +313,13 @@ interface Store {
   addHistory: (entries: HistoryEntryInput[]) => void;
   clearHistory: (profileId?: string) => void;
   selectedId: string | null; setSelectedId: (id: string | null) => void;
+  previewProfileId: string | null; setPreviewProfileId: (id: string | null) => void;
   createOpen: boolean; setCreateOpen: (v: boolean) => void;
   paletteOpen: boolean; setPaletteOpen: (v: boolean) => void;
   addProfiles: (p: BrowserProfile[]) => void;
   createOne: (input: Parameters<typeof createProfile>[0]) => BrowserProfile | null;
   updateProfile: (id: string, patch: Partial<BrowserProfile>) => void;
+  updateProfileIdentity: (id: string, opts: { templateId?: string; browserFamily?: BrowserFamily; webrtcMode?: FingerprintSpec['webrtcMode']; timezone?: string; locale?: string }) => void;
   deleteProfiles: (ids: string[]) => void;
   duplicateProfiles: (ids: string[]) => void;
   applyPreset: (ids: string[], realId: string) => void;
@@ -342,6 +352,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [view, setView] = useState<View>('profiles');
   const [groupFilter, setGroupFilter] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [previewProfileId, setPreviewProfileId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -820,7 +831,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         history: profileId ? d.history.filter((h) => h.profileId !== profileId) : [],
       }));
     },
-    selectedId, setSelectedId, createOpen, setCreateOpen, paletteOpen, setPaletteOpen, syncEvents,
+    selectedId, setSelectedId, previewProfileId, setPreviewProfileId, createOpen, setCreateOpen, paletteOpen, setPaletteOpen, syncEvents,
     addProfiles: (ps) => {
       const quota = checkProfileQuota(data.account, data.profiles.length, ps.length);
       if (!quota.allowed) { toast(quota.reason, 'warn'); return; }
@@ -839,6 +850,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return p;
     },
     updateProfile: (id, patch) => setData((d) => ({ ...d, profiles: d.profiles.map((p) => p.id === id ? { ...p, ...patch, revision: p.revision + 1, updatedAt: new Date().toISOString() } : p) })),
+    updateProfileIdentity: (id, opts) => setData((d) => ({
+      ...d,
+      profiles: d.profiles.map((p) => {
+        if (p.id !== id) return p;
+        const base = opts.templateId || opts.browserFamily
+          ? rebuildProfileFingerprint(p, { templateId: opts.templateId, browserFamily: opts.browserFamily })
+          : p;
+        const tz = opts.timezone ?? base.fingerprint.timezone;
+        const loc = opts.locale ?? base.fingerprint.locale;
+        const fp: FingerprintSpec = {
+          ...base.fingerprint,
+          timezone: tz,
+          timezoneOffset: opts.timezone ? offsetForZone(tz) : base.fingerprint.timezoneOffset,
+          locale: loc,
+          languages: opts.locale ? [loc, ...base.fingerprint.languages.filter((l) => l !== loc)] : base.fingerprint.languages,
+          webrtcMode: opts.webrtcMode ?? base.fingerprint.webrtcMode,
+        };
+        return { ...base, fingerprint: fp, revision: base.revision + 1, updatedAt: new Date().toISOString() };
+      }),
+    })),
     deleteProfiles: (ids) => {
       const set = new Set(ids);
       setData((d) => ({ ...d, profiles: d.profiles.filter((p) => !set.has(p.id)) }));
@@ -931,9 +962,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         } : p),
       }));
       log(status === 'running' ? 'launch' : 'stop', `${ids.length} profiles ${status === 'running' ? 'launched' : 'stopped'}`, device ?? undefined);
-      if (nativeKind() !== 'web') {
-        // A failed launch must be visible: it previously sat in a floating
-        // promise while the row still showed "running".
+      if (nativeKind() === 'web') {
+        if (status === 'running' && ids.length === 1) setPreviewProfileId(ids[0]);
+        else if (status === 'stopped' && previewProfileId && set.has(previewProfileId)) setPreviewProfileId(null);
+      } else {
         data.profiles.filter((p) => set.has(p.id)).forEach((p) => {
           const run = status === 'running' ? nativeLaunch(p) : nativeStop(p);
           void run.then((problem) => {
@@ -1029,7 +1061,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setDevices((d) => d.map((x) => x.kind === kind ? { ...x, online, lastSeen: new Date().toISOString() } : x));
       log('sync', `${kind} ${online ? 'connected' : 'disconnected'}`);
     },
-  }), [data, devices, toasts, view, groupFilter, selectedId, createOpen, paletteOpen, syncEvents, log, toast, pushHistory,
+  }), [data, devices, toasts, view, groupFilter, selectedId, previewProfileId, createOpen, paletteOpen, syncEvents, log, toast, pushHistory,
     entitlementSource, authStatus, authBusy, cloudConfigured, session, signIn, signUp, resetPassword, doSignOut, refreshEntitlement]);
 
   useEffect(() => {

@@ -35,20 +35,26 @@ function roundRectAlpha(x, y, w, h, r) {
 }
 
 /**
- * Coverage of the "J" monogram.
- *
- * The path is two primitives, mirroring MARK_GEOMETRY in src/ui/Brand.tsx:
- *   1. a vertical stem from (29.4, 12.5) down to (29.4, 27.9)
- *   2. a half-circle hook of radius 8.4 centred at (21.0, 27.9), covering the
- *      lower half (the SVG arc sweeps 0deg -> 180deg through +y)
- * Distance to the union of those two is the exact stroke distance, so the
- * anti-aliased result matches the vector mark.
+ * Coverage of the "J" monogram + octagonal stealth frame, mirroring
+ * MARK_GEOMETRY in src/ui/Brand.tsx.
  */
 const J = {
-  stemX: 29.4, stemTop: 12.5, stemBottom: 27.9,
-  hookCx: 21.0, hookCy: 27.9, hookR: 8.4,
-  stroke: 5,
+  barX1: 21.2, barX2: 29.4, barY: 14.5,
+  stemX: 29.4, stemTop: 14.5, stemBottom: 28.3,
+  hookCx: 21.4, hookCy: 28.3, hookR: 8.0,
+  stroke: 4.6,
 };
+
+const FRAME_SEGMENTS = [
+  [15, 9.5, 33, 9.5],
+  [33, 9.5, 38.5, 15],
+  [38.5, 15, 38.5, 33],
+  [38.5, 33, 33, 38.5],
+  [33, 38.5, 15, 38.5],
+  [15, 38.5, 9.5, 33],
+  [9.5, 33, 9.5, 15],
+  [9.5, 15, 15, 9.5],
+];
 
 /** Distance from (x,y) to the segment (ax,ay)-(bx,by). */
 function sdSegment(x, y, ax, ay, bx, by) {
@@ -66,15 +72,27 @@ function sdHook(x, y) {
   const dx = x - J.hookCx;
   const dy = y - J.hookCy;
   if (dy >= 0) return Math.abs(Math.hypot(dx, dy) - J.hookR);
-  // Upper half is not part of the glyph: nearest point is an arc endpoint.
   return Math.min(Math.hypot(x - (J.hookCx + J.hookR), dy), Math.hypot(x - (J.hookCx - J.hookR), dy));
 }
 
 /** 1 inside the stroke, 0 outside, anti-aliased across one pixel. */
 function jAlpha(x, y, px) {
-  const d = Math.min(sdSegment(x, y, J.stemX, J.stemTop, J.stemX, J.stemBottom), sdHook(x, y));
+  const d = Math.min(
+    sdSegment(x, y, J.barX1, J.barY, J.barX2, J.barY),
+    sdSegment(x, y, J.stemX, J.stemTop, J.stemX, J.stemBottom),
+    sdHook(x, y),
+  );
   const edge = J.stroke / 2;
   return clamp((edge - d) / px + 0.5, 0, 1);
+}
+
+function frameAlpha(x, y, px) {
+  let d = Infinity;
+  for (let i = 0; i < FRAME_SEGMENTS.length; i++) {
+    const s = FRAME_SEGMENTS[i];
+    d = Math.min(d, sdSegment(x, y, s[0], s[1], s[2], s[3]));
+  }
+  return clamp((1.2 - d) / px + 0.5, 0, 1) * 0.34;
 }
 
 function renderRGBA(size) {
@@ -88,10 +106,15 @@ function renderRGBA(size) {
         for (let sx = 0; sx < ss; sx++) {
           const vx = (px + (sx + 0.5) / ss) * scale;
           const vy = (py + (sy + 0.5) / ss) * scale;
-          // squircle tile in #D81B60, then the white glyph over it
           const tileA = roundRectAlpha(vx, vy, 48, 48, 11.5);
           if (tileA <= 0) continue;
           let cr = PINK[0], cg = PINK[1], cb = PINK[2];
+          const f = frameAlpha(vx, vy, scale);
+          if (f > 0) {
+            cr = cr * (1 - f) + 255 * f;
+            cg = cg * (1 - f) + 255 * f;
+            cb = cb * (1 - f) + 255 * f;
+          }
           const j = jAlpha(vx, vy, scale);
           if (j > 0) {
             cr = cr * (1 - j) + 255 * j;
